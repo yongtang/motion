@@ -1,10 +1,13 @@
+import io
 import pathlib
 import socket
 import subprocess
 import time
 import uuid
+import zipfile
 
 import pytest
+import requests
 
 
 def pytest_addoption(parser):
@@ -149,3 +152,27 @@ def browser_run(browser_container, react_container, server_container):
         return proc
 
     return f
+
+
+@pytest.fixture(scope="session")
+def scene_on_server(server_container):
+    base = f"http://{server_container['addr']}:{server_container['port']}"
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("hello.txt", "world")
+    buf.seek(0)
+
+    files = {"file": ("scene.zip", buf, "application/zip")}
+    r = requests.post(f"{base}/scene", files=files, timeout=5.0)
+    assert r.status_code == 200
+    scene = r.json()["uuid"]
+    assert scene
+
+    yield base, scene
+
+    # teardown once all tests are finished
+    try:
+        requests.delete(f"{base}/scene/{scene}", timeout=5.0)
+    except Exception:
+        pass
