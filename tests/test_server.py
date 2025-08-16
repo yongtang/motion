@@ -1,5 +1,6 @@
 import asyncio
 import io
+import uuid
 import zipfile
 
 import requests
@@ -16,7 +17,7 @@ def test_server_health(server_container):
 def test_server_scene(server_container):
     base = f"http://{server_container['addr']}:{server_container['port']}"
 
-    # --- create ---
+    # create: upload a tiny in-memory zip
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("hello.txt", "world")
@@ -26,20 +27,39 @@ def test_server_scene(server_container):
     r = requests.post(f"{base}/scene", files=files, timeout=5.0)
     assert r.status_code == 200
     scene = r.json()["uuid"]
-    assert len(scene) > 0
+    assert scene
 
-    # --- lookup ---
-    r = requests.get(f"{base}/scene/{scene}", timeout=2.0)
+    # search: should find the scene by exact uuid
+    r = requests.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
     assert r.status_code == 200
-    assert r.json()["uuid"] == scene
+    assert r.json() == [scene]
 
-    # --- delete ---
-    r = requests.delete(f"{base}/scene/{scene}", timeout=2.0)
+    # lookup: download the stored zip and check contents
+    r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
+    assert r.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        assert "hello.txt" in z.namelist()
+        with z.open("hello.txt") as f:
+            assert f.read().decode("utf-8") == "world"
+
+    # search for a random uuid should be empty
+    bogus = str(uuid.uuid4())
+    r = requests.get(f"{base}/scene", params={"q": bogus}, timeout=5.0)
+    assert r.status_code == 200
+    assert r.json() == []
+
+    # delete
+    r = requests.delete(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"status": "deleted", "uuid": scene}
 
-    # --- lookup after delete ---
-    r = requests.get(f"{base}/scene/{scene}", timeout=2.0)
+    # search after delete should be empty
+    r = requests.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
+    assert r.status_code == 200
+    assert r.json() == []
+
+    # lookup after delete should 404
+    r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 404
 
 

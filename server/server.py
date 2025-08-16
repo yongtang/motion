@@ -6,11 +6,12 @@ from fastapi import (
     FastAPI,
     File,
     HTTPException,
+    Query,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 app = FastAPI()
 
@@ -27,29 +28,34 @@ async def health():
 async def scene_create(file: UploadFile = File(...)):
     scene = str(uuid.uuid4())
     filename = os.path.join(storage_scene, f"{scene}.zip")
-
     with open(filename, "wb") as f:
         shutil.copyfileobj(file.file, f)
-
     return {"uuid": scene}
 
 
-@app.delete("/scene/{scene}")
-async def scene_delete(scene: str):
+@app.delete("/scene/{scene:uuid}")
+async def scene_delete(scene: uuid.UUID):
     filename = os.path.join(storage_scene, f"{scene}.zip")
     if not os.path.exists(filename):
         raise HTTPException(status_code=404, detail="scene not found")
     os.remove(filename)
-    return {"status": "deleted", "uuid": scene}
+    return {"status": "deleted", "uuid": str(scene)}
 
 
-@app.get("/scene/{scene}")
-async def scene_lookup(scene: str):
-    filename = os.path.join(storage_scene, f"{scene}.zip")
-    if not os.path.exists(filename):
+@app.get("/scene/{scene:uuid}")
+async def scene_lookup(scene: uuid.UUID):
+    path = os.path.join(storage_scene, f"{scene}.zip")
+    if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="scene not found")
+    return FileResponse(path, media_type="application/zip", filename=f"{scene}.zip")
 
-    return {"uuid": scene}
+
+@app.get("/scene")
+async def scene_search(
+    q: str = Query(..., description="search terms; for now, only exact uuid")
+):
+    filename = os.path.join(storage_scene, f"{q}.zip")
+    return [q] if os.path.exists(filename) else []
 
 
 @app.websocket("/ws")
