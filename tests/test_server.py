@@ -34,8 +34,13 @@ def test_server_scene(server_container):
     assert r.status_code == 200
     assert r.json() == [scene]
 
-    # lookup: download the stored zip and check contents
+    # lookup: returns minimal JSON
     r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
+    assert r.status_code == 200
+    assert r.json() == {"uuid": scene}
+
+    # export: download the stored zip and check contents
+    r = requests.get(f"{base}/scene/{scene}/export", timeout=5.0)
     assert r.status_code == 200
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
         assert "hello.txt" in z.namelist()
@@ -60,6 +65,10 @@ def test_server_scene(server_container):
 
     # lookup after delete should 404
     r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
+    assert r.status_code == 404
+
+    # export after delete should also 404
+    r = requests.get(f"{base}/scene/{scene}/export", timeout=5.0)
     assert r.status_code == 404
 
 

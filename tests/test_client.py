@@ -1,4 +1,3 @@
-import io
 import pathlib
 import tempfile
 import uuid
@@ -11,7 +10,7 @@ import motion
 
 def test_client_scene(server_container):
     base = f"http://{server_container['addr']}:{server_container['port']}"
-    client = motion.client(url=base, timeout=5.0)
+    client = motion.client(base=base, timeout=5.0)
 
     # create: make a tiny zip file on disk
     with tempfile.TemporaryDirectory() as tdir:
@@ -24,10 +23,14 @@ def test_client_scene(server_container):
     # search: should find the scene
     assert client.scene.search(scene) == [scene]
 
-    # lookup: download and check contents
+    # lookup: returns minimal JSON {"uuid": "<id>"}
+    meta = client.scene.lookup(scene)
+    assert meta == {"uuid": scene}
+
+    # export: download and check contents
     with tempfile.TemporaryDirectory() as tdir:
         out = pathlib.Path(tdir) / f"{scene}.zip"
-        client.scene.lookup(scene, out)
+        client.scene.export(scene, out)
         with zipfile.ZipFile(out) as z:
             with z.open("hello.txt") as f:
                 assert f.read().decode("utf-8") == "world"
@@ -43,11 +46,9 @@ def test_client_scene(server_container):
     assert client.scene.search(scene) == []
 
     # lookup after delete should raise HTTPError (404)
-    with tempfile.TemporaryDirectory() as tdir:
-        out = pathlib.Path(tdir) / f"{scene}.zip"
-        try:
-            client.scene.lookup(scene, out)
-            assert False, "expected HTTPError for deleted scene"
-        except requests.HTTPError as e:
-            assert e.response is not None
-            assert e.response.status_code == 404
+    try:
+        client.scene.lookup(scene)
+        assert False, "expected HTTPError for deleted scene"
+    except requests.HTTPError as e:
+        assert e.response is not None
+        assert e.response.status_code == 404

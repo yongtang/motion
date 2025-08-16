@@ -47,6 +47,14 @@ async def scene_lookup(scene: uuid.UUID):
     path = os.path.join(storage_scene, f"{scene}.zip")
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="scene not found")
+    return {"uuid": str(scene)}
+
+
+@app.get("/scene/{scene:uuid}/export")
+async def scene_export(scene: uuid.UUID):
+    path = os.path.join(storage_scene, f"{scene}.zip")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="scene not found")
     return FileResponse(path, media_type="application/zip", filename=f"{scene}.zip")
 
 
