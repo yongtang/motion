@@ -25,3 +25,4 @@ pythonpath = [
 testpaths = [
     "tests"
 ]
+addopts = "-v -rP --show-capture=all"
