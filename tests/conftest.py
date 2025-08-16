@@ -104,8 +104,8 @@ def react_container(docker_container, request):
 @pytest.fixture(scope="session")
 def server_container(docker_container, request):
     image = request.config.getoption("--server-image")
-    mount = pathlib.Path.cwd() / "server"
-    run = "pip install -r requirements.txt && uvicorn server:app --host 0.0.0.0 --port 8080"
+    mount = pathlib.Path.cwd()
+    run = "pip install -r server/requirements.txt && pip install -e . && uvicorn server.server:app --host 0.0.0.0 --port 8080"
     yield from docker_container(
         image=image, name_prefix="test-server", mount_dir=mount, port=8080, run=run
     )
