@@ -1,14 +1,13 @@
-import json
-
 import motion
 
 
-def test_config_from_dict():
-    s = motion.Scene({"robot": "ur5"})
-    assert s.config["robot"] == "ur5"
+def test_scene_minimal():
+    scene = motion.Scene(name="Warehouse")
+    assert scene.name == "Warehouse"
+    assert scene.usd is None
 
 
-def test_config_from_json_string():
-    cfg = {"world": "warehouse"}
-    s = motion.Scene(json.dumps(cfg))
-    assert s.config["world"] == "warehouse"
+def test_scene_with_usd():
+    scene = motion.Scene(name="Factory", usd="factory.usd")
+    assert scene.name == "Factory"
+    assert scene.usd == "factory.usd"

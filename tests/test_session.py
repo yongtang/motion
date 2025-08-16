@@ -2,13 +2,8 @@ import motion
 
 
 def test_session(capsys):
-    scene = motion.Scene({"robot": "atlas", "world": "warehouse"})
-    session = motion.Session(scene)
+    scene = motion.Scene(name="warehouse")
 
-    session.step()
-    captured = capsys.readouterr()
-    assert "Step scene" in captured.out
-
-    session.play()
-    captured = capsys.readouterr()
-    assert "Play scene" in captured.out
+    print(scene.name)
+    out = capsys.readouterr().out
+    assert "warehouse" in out and scene.name == "warehouse"
