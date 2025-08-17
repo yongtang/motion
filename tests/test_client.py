@@ -1,5 +1,6 @@
 import pathlib
 import tempfile
+import time
 import uuid
 import zipfile
 
@@ -67,9 +68,10 @@ def test_client_session(scene_on_server):
 
     # ---- DELETE: then REST lookup should 404
     assert client.session.delete(session_uuid) == {
-        "status": "deleted",
+        "status": "deleting",
         "uuid": session_uuid,
     }
+    time.sleep(20)
     r = requests.get(f"{base}/session/{session_uuid}", timeout=5.0)
     assert r.status_code == 404
 

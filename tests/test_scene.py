@@ -1,6 +1,4 @@
-import io
 import uuid
-import zipfile
 
 import pytest
 import requests

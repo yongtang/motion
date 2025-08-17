@@ -1,5 +1,6 @@
 import asyncio
 import io
+import time
 import uuid
 import zipfile
 
@@ -86,7 +87,9 @@ def test_server_session(scene_on_server):
     # delete
     r = requests.delete(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"status": "deleted", "uuid": session}
+    assert r.json() == {"status": "deleting", "uuid": session}
+
+    time.sleep(20)
 
     # lookup after delete → 404
     r = requests.get(f"{base}/session/{session}", timeout=5.0)

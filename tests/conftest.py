@@ -45,6 +45,8 @@ def docker_container(request):
                 name,
                 "-v",
                 f"{mount_dir}:/app",
+                "-v",
+                "/var/run/docker.sock:/var/run/docker.sock",
                 "-w",
                 "/app",
                 image,
@@ -68,7 +70,7 @@ def docker_container(request):
             text=True,
         ).strip()
 
-        deadline = time.time() + 60
+        deadline = time.time() + 300
         while True:
             try:
                 with socket.create_connection((addr, int(port)), timeout=1.0):
@@ -108,7 +110,7 @@ def react_container(docker_container, request):
 def server_container(docker_container, request):
     image = request.config.getoption("--server-image")
     mount = pathlib.Path.cwd()
-    run = "pip install -r server/requirements.txt && pip install -e . && uvicorn server.server:app --host 0.0.0.0 --port 8080"
+    run = "apt -y -qq update && apt -y -qq install docker.io && pip install -r server/requirements.txt && pip install -e . && uvicorn server.server:app --host 0.0.0.0 --port 8080"
     yield from docker_container(
         image=image, name_prefix="test-server", mount_dir=mount, port=8080, run=run
     )
