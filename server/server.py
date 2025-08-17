@@ -99,7 +99,8 @@ async def scene_search(q: str = Query(..., description="search terms; exact uuid
 
 
 async def session_spin(session_id: str):
-    session_image = "nginx"
+    session_gpu = os.environ.get("TASK_GPU")
+    session_image = os.environ.get("TASK_IMAGE", "nginx")
     sp = os.path.join(storage_session, f"{session_id}.json")
 
     if not os.path.exists(sp):
@@ -130,20 +131,25 @@ async def session_spin(session_id: str):
     os.replace(tmp_path, sp)
 
     name = f"session-{session_id[:12]}"
-    cmd = [
-        "docker",
-        "run",
-        "-d",
-        "--name",
-        name,
-        "--label",
-        f"motion.session={session_id}",
-        "--label",
-        f"motion.scene={scene_uuid}",
-        "-v",
-        "/storage:/storage:ro",
-        session_image,
-    ]
+    cmd = (
+        [
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            name,
+            "--label",
+            f"motion.session={session_id}",
+            "--label",
+            f"motion.scene={scene_uuid}",
+            "-v",
+            "/storage:/storage:ro",
+        ]
+        + (["--gpus", "all"] if session_gpu else [])
+        + [
+            session_image,
+        ]
+    )
     proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True)
 
     # Re-check state
