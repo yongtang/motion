@@ -13,16 +13,13 @@ def test_client_scene(server_container):
     base = f"http://{server_container['addr']}:{server_container['port']}"
     client = motion.client(base=base, timeout=5.0)
 
-    # ---- create: returns a uuid str
-    scene = client.scene.create()
-    assert scene
-
-    # ---- load (upload) content for that scene
+    # ---- create (+ upload) in one step: returns a uuid str
     with tempfile.TemporaryDirectory() as tdir:
         zip_path = pathlib.Path(tdir) / "scene.zip"
         with zipfile.ZipFile(zip_path, "w") as z:
             z.writestr("hello.txt", "world")
-        assert client.scene.load(scene, zip_path) == {"status": "ok", "uuid": scene}
+        scene = client.scene.create(zip_path)
+    assert scene
 
     # ---- search: should find the scene
     assert client.scene.search(scene) == [scene]
@@ -32,10 +29,10 @@ def test_client_scene(server_container):
     assert r.status_code == 200
     assert r.json() == {"uuid": scene}
 
-    # ---- save (download) and check contents
+    # ---- archive (download) and check contents
     with tempfile.TemporaryDirectory() as tdir:
         out = pathlib.Path(tdir) / f"{scene}.zip"
-        client.scene.save(scene, out)
+        client.scene.archive(scene, out)
         with zipfile.ZipFile(out) as z:
             with z.open("hello.txt") as f:
                 assert f.read().decode("utf-8") == "world"

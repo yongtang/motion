@@ -9,26 +9,19 @@ class SceneClient:
         self._base_ = base.rstrip("/")
         self._timeout_ = timeout
 
-    def create(self) -> str:
-        r = requests.post(f"{self._base_}/scene", json={}, timeout=self._timeout_)
-        r.raise_for_status()
-        return r.json()["uuid"]
-
-    def load(self, scene: str | uuid.UUID, file: str | pathlib.Path) -> dict:
+    def create(self, file: str | pathlib.Path) -> str:
         p = pathlib.Path(file)
         with p.open("rb") as f:
             files = {"file": (p.name, f, "application/zip")}
             r = requests.post(
-                f"{self._base_}/scene/{scene}/load",
-                files=files,
-                timeout=self._timeout_,
+                f"{self._base_}/scene", files=files, timeout=self._timeout_
             )
         r.raise_for_status()
-        return r.json()  # {"status":"ok","uuid":"..."}
+        return r.json()["uuid"]
 
-    def save(self, scene: str | uuid.UUID, file: str | pathlib.Path) -> pathlib.Path:
+    def archive(self, scene: str | uuid.UUID, file: str | pathlib.Path) -> pathlib.Path:
         r = requests.get(
-            f"{self._base_}/scene/{scene}/save",
+            f"{self._base_}/scene/{scene}/archive",
             stream=True,
             timeout=self._timeout_,
         )
@@ -69,6 +62,7 @@ class SessionClient:
         return r.json()["uuid"]
 
     def search(self, q: str) -> list[str]:
+        # simple existence check by id
         r = requests.get(f"{self._base_}/session/{q}", timeout=self._timeout_)
         if r.status_code == 404:
             return []

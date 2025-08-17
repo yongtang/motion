@@ -156,23 +156,20 @@ def browser_run(browser_container, react_container, server_container):
 
 @pytest.fixture(scope="session")
 def scene_on_server(server_container):
-    """Create a scene (POST /scene with empty JSON), then import a tiny zip."""
+    """Create a scene (POST /scene with a tiny zip)."""
     base = f"http://{server_container['addr']}:{server_container['port']}"
 
-    # 1) create empty scene
-    r = requests.post(f"{base}/scene", json={}, timeout=5.0)
-    assert r.status_code == 201, r.text
-    scene = r.json()["uuid"]
-    assert scene
-
-    # 2) import content
+    # prepare in-memory zip
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("hello.txt", "world")
     buf.seek(0)
+
     files = {"file": ("scene.zip", buf, "application/zip")}
-    r = requests.post(f"{base}/scene/{scene}/load", files=files, timeout=5.0)
-    assert r.status_code == 200, r.text
+    r = requests.post(f"{base}/scene", files=files, timeout=5.0)
+    assert r.status_code == 201, r.text
+    scene = r.json()["uuid"]
+    assert scene
 
     yield base, scene
 

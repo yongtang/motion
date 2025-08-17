@@ -17,21 +17,16 @@ def test_server_health(server_container):
 def test_server_scene(server_container):
     base = f"http://{server_container['addr']}:{server_container['port']}"
 
-    # create: empty JSON -> 201 + {"uuid": "..."}
-    r = requests.post(f"{base}/scene", json={}, timeout=5.0)
-    assert r.status_code == 201, r.text
-    scene = r.json()["uuid"]
-    assert scene
-
-    # LOAD (upload) -> POST /scene/{uuid}/load
+    # CREATE (+ upload) -> POST /scene with multipart zip -> 201 + {"uuid": "..."}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("hello.txt", "world")
     buf.seek(0)
     files = {"file": ("scene.zip", buf, "application/zip")}
-    r = requests.post(f"{base}/scene/{scene}/load", files=files, timeout=5.0)
-    assert r.status_code == 200, r.text
-    assert r.json() == {"status": "ok", "uuid": scene}
+    r = requests.post(f"{base}/scene", files=files, timeout=5.0)
+    assert r.status_code == 201, r.text
+    scene = r.json()["uuid"]
+    assert scene
 
     # search
     r = requests.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
@@ -43,8 +38,8 @@ def test_server_scene(server_container):
     assert r.status_code == 200
     assert r.json() == {"uuid": scene}
 
-    # SAVE (download) -> GET /scene/{uuid}/save
-    r = requests.get(f"{base}/scene/{scene}/save", timeout=5.0)
+    # ARCHIVE (download) -> GET /scene/{uuid}/archive
+    r = requests.get(f"{base}/scene/{scene}/archive", timeout=5.0)
     assert r.status_code == 200
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
         assert "hello.txt" in z.namelist()
@@ -62,21 +57,19 @@ def test_server_scene(server_container):
     assert r.status_code == 200
     assert r.json() == {"status": "deleted", "uuid": scene}
 
-    # after delete: search empty, lookup/save 404
+    # after delete: search empty, lookup/archive 404
     r = requests.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
     assert r.status_code == 200 and r.json() == []
 
     r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 404
 
-    r = requests.get(f"{base}/scene/{scene}/save", timeout=5.0)
+    r = requests.get(f"{base}/scene/{scene}/archive", timeout=5.0)
     assert r.status_code == 404
 
 
 def test_server_session(scene_on_server):
-    base, scene = (
-        scene_on_server  # fixture already: POST /scene + POST /scene/{uuid}/save
-    )
+    base, scene = scene_on_server  # fixture already: POST /scene with a tiny zip
 
     # create session
     r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)

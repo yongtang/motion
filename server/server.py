@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import tempfile
 import uuid
 
 from fastapi import (
@@ -30,33 +31,30 @@ async def health():
     return JSONResponse({"status": "ok"})
 
 
-class SceneCreateRequest(BaseModel):
-    pass
-
-
-class SessionCreateRequest(BaseModel):
+class SessionRequest(BaseModel):
     scene: UUID4
 
 
 @app.post("/scene", response_model=motion.scene.SceneBaseModel, status_code=201)
-async def scene_create(_: SceneCreateRequest) -> motion.scene.SceneBaseModel:
+async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseModel:
+    # require a zip upload in the same call (create + upload)
+    if file.content_type not in ("application/zip", "application/x-zip-compressed"):
+        raise HTTPException(status_code=415, detail="zip required")
+
     scene = uuid.uuid4()
     meta_path = os.path.join(storage_scene, f"{scene}.json")
+    final_zip = os.path.join(storage_scene, f"{scene}.zip")
+
+    # write to temp then atomically replace to avoid partial files
+    with tempfile.NamedTemporaryFile(dir=storage_scene, delete=False) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
+    os.replace(tmp_path, final_zip)
+
     with open(meta_path, "w") as f:
-        json.dump({"uuid": str(scene)}, f)
+        json.dump({"uuid": str(scene), "status": "uploaded"}, f)
+
     return motion.scene.SceneBaseModel(uuid=scene)
-
-
-@app.post("/scene/{scene:uuid}/load")
-async def scene_load(scene: UUID4, file: UploadFile = File(...)):
-    meta_path = os.path.join(storage_scene, f"{scene}.json")
-    if not os.path.exists(meta_path):
-        raise HTTPException(status_code=404, detail="scene not found")
-
-    zip_path = os.path.join(storage_scene, f"{scene}.zip")
-    with open(zip_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    return {"status": "ok", "uuid": str(scene)}
 
 
 @app.get("/scene/{scene:uuid}", response_model=motion.scene.SceneBaseModel)
@@ -67,8 +65,8 @@ async def scene_lookup(scene: UUID4) -> motion.scene.SceneBaseModel:
     return motion.scene.SceneBaseModel(uuid=scene)
 
 
-@app.get("/scene/{scene:uuid}/save")
-async def scene_save(scene: UUID4):
+@app.get("/scene/{scene:uuid}/archive")
+async def scene_archive(scene: UUID4):
     zip_path = os.path.join(storage_scene, f"{scene}.zip")
     if not os.path.exists(zip_path):
         raise HTTPException(status_code=404, detail="scene content not found")
@@ -97,7 +95,7 @@ async def scene_search(q: str = Query(..., description="search terms; exact uuid
 
 
 @app.post("/session", response_model=motion.session.SessionBaseModel, status_code=201)
-async def session_create(body: SessionCreateRequest) -> motion.session.SessionBaseModel:
+async def session_create(body: SessionRequest) -> motion.session.SessionBaseModel:
     # require scene meta to exist
     scene_meta_path = os.path.join(storage_scene, f"{body.scene}.json")
     if not os.path.exists(scene_meta_path):
