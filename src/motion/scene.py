@@ -2,13 +2,13 @@ import pydantic
 import requests
 
 
-class Scene(pydantic.BaseModel):
-    uuid: str
+class SceneBaseModel(pydantic.BaseModel):
+    uuid: pydantic.UUID4
 
-    def __init__(self, base: str, uuid: str, timeout: float = 5.0):
+
+class Scene(SceneBaseModel):
+    def __init__(self, base: str, uuid: pydantic.UUID4, timeout: float = 5.0):
         url = f"{base.rstrip('/')}/scene/{uuid}"
-        resp = requests.get(url, timeout=timeout)
-        resp.raise_for_status()
-        data = resp.json()
-
-        super().__init__(**data)
+        r = requests.get(url, timeout=timeout)
+        r.raise_for_status()
+        super().__init__(**r.json())

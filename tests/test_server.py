@@ -17,37 +17,41 @@ def test_server_health(server_container):
 def test_server_scene(server_container):
     base = f"http://{server_container['addr']}:{server_container['port']}"
 
-    # create: upload a tiny in-memory zip
+    # create: empty JSON -> 201 + {"uuid": "..."}
+    r = requests.post(f"{base}/scene", json={}, timeout=5.0)
+    assert r.status_code == 201, r.text
+    scene = r.json()["uuid"]
+    assert scene
+
+    # LOAD (upload) -> POST /scene/{uuid}/load
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("hello.txt", "world")
     buf.seek(0)
-
     files = {"file": ("scene.zip", buf, "application/zip")}
-    r = requests.post(f"{base}/scene", files=files, timeout=5.0)
-    assert r.status_code == 200
-    scene = r.json()["uuid"]
-    assert scene
+    r = requests.post(f"{base}/scene/{scene}/load", files=files, timeout=5.0)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"status": "ok", "uuid": scene}
 
-    # search: should find the scene by exact uuid
+    # search
     r = requests.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
     assert r.status_code == 200
     assert r.json() == [scene]
 
-    # lookup: returns minimal JSON
+    # lookup
     r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"uuid": scene}
 
-    # export: download the stored zip and check contents
-    r = requests.get(f"{base}/scene/{scene}/export", timeout=5.0)
+    # SAVE (download) -> GET /scene/{uuid}/save
+    r = requests.get(f"{base}/scene/{scene}/save", timeout=5.0)
     assert r.status_code == 200
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
         assert "hello.txt" in z.namelist()
         with z.open("hello.txt") as f:
             assert f.read().decode("utf-8") == "world"
 
-    # search for a random uuid should be empty
+    # negative search
     bogus = str(uuid.uuid4())
     r = requests.get(f"{base}/scene", params={"q": bogus}, timeout=5.0)
     assert r.status_code == 200
@@ -58,18 +62,48 @@ def test_server_scene(server_container):
     assert r.status_code == 200
     assert r.json() == {"status": "deleted", "uuid": scene}
 
-    # search after delete should be empty
+    # after delete: search empty, lookup/save 404
     r = requests.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
-    assert r.status_code == 200
-    assert r.json() == []
+    assert r.status_code == 200 and r.json() == []
 
-    # lookup after delete should 404
     r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 404
 
-    # export after delete should also 404
-    r = requests.get(f"{base}/scene/{scene}/export", timeout=5.0)
+    r = requests.get(f"{base}/scene/{scene}/save", timeout=5.0)
     assert r.status_code == 404
+
+
+def test_server_session(scene_on_server):
+    base, scene = (
+        scene_on_server  # fixture already: POST /scene + POST /scene/{uuid}/save
+    )
+
+    # create session
+    r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
+    assert r.status_code == 201, r.text
+    data = r.json()
+    session = data["uuid"]
+    assert data == {"uuid": session, "scene": scene}
+
+    # lookup
+    r = requests.get(f"{base}/session/{session}", timeout=5.0)
+    assert r.status_code == 200
+    assert r.json() == {"uuid": session, "scene": scene}
+
+    # delete
+    r = requests.delete(f"{base}/session/{session}", timeout=5.0)
+    assert r.status_code == 200
+    assert r.json() == {"status": "deleted", "uuid": session}
+
+    # lookup after delete → 404
+    r = requests.get(f"{base}/session/{session}", timeout=5.0)
+    assert r.status_code == 404
+
+    # create with bogus scene → 404
+    bogus_scene = str(uuid.uuid4())
+    r = requests.post(f"{base}/session", json={"scene": bogus_scene}, timeout=5.0)
+    assert r.status_code == 404
+    assert r.json().get("detail") == "scene not found"
 
 
 def test_server_websocket_echo(server_container):

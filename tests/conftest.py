@@ -156,23 +156,47 @@ def browser_run(browser_container, react_container, server_container):
 
 @pytest.fixture(scope="session")
 def scene_on_server(server_container):
+    """Create a scene (POST /scene with empty JSON), then import a tiny zip."""
     base = f"http://{server_container['addr']}:{server_container['port']}"
 
+    # 1) create empty scene
+    r = requests.post(f"{base}/scene", json={}, timeout=5.0)
+    assert r.status_code == 201, r.text
+    scene = r.json()["uuid"]
+    assert scene
+
+    # 2) import content
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("hello.txt", "world")
     buf.seek(0)
-
     files = {"file": ("scene.zip", buf, "application/zip")}
-    r = requests.post(f"{base}/scene", files=files, timeout=5.0)
-    assert r.status_code == 200
-    scene = r.json()["uuid"]
-    assert scene
+    r = requests.post(f"{base}/scene/{scene}/load", files=files, timeout=5.0)
+    assert r.status_code == 200, r.text
 
     yield base, scene
 
     # teardown once all tests are finished
     try:
         requests.delete(f"{base}/scene/{scene}", timeout=5.0)
+    except Exception:
+        pass
+
+
+@pytest.fixture(scope="session")
+def session_on_server(scene_on_server):
+    """Create a session bound to the scene created above."""
+    base, scene = scene_on_server
+    r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
+    assert r.status_code == 201, r.text
+    data = r.json()
+    session = data["uuid"]
+    assert data == {"uuid": session, "scene": scene}
+
+    yield base, session, scene
+
+    # teardown
+    try:
+        requests.delete(f"{base}/session/{session}", timeout=5.0)
     except Exception:
         pass
