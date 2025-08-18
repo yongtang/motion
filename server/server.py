@@ -1,8 +1,6 @@
+import contextlib
 import json
-import os
-import tempfile
 import uuid
-from contextlib import asynccontextmanager
 
 import nats
 from fastapi import (
@@ -22,11 +20,8 @@ import motion
 
 from .storage import storage_kv_del, storage_kv_get, storage_kv_set
 
-storage_session = "/storage/session"
-os.makedirs(storage_session, exist_ok=True)
 
-
-@asynccontextmanager
+@contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     # connect to NATS before serving
     app.state.nc = await nats.connect("nats://127.0.0.1:4222")
@@ -131,44 +126,36 @@ async def scene_search(q: str = Query(..., description="search terms; exact uuid
 
 @app.post("/session", response_model=motion.session.SessionBaseModel, status_code=201)
 async def session_create(body: SessionRequest) -> motion.session.SessionBaseModel:
-    # Validate scene existence via S3 meta
+    # Validate scene existence via storage meta
     try:
         storage_kv_get("scene", f"{body.scene}.json")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="scene not found")
 
-    session_id = uuid.uuid4()
-    payload = motion.session.SessionBaseModel(uuid=session_id, scene=body.scene)
+    session = uuid.uuid4()
+    payload = motion.session.SessionBaseModel(uuid=session, scene=body.scene)
 
-    sess_path = os.path.join(storage_session, f"{session_id}.json")
-    with tempfile.NamedTemporaryFile(
-        "w", dir=os.path.dirname(sess_path), delete=False
-    ) as tmp:
-        json.dump(
-            {
-                "uuid": str(payload.uuid),
-                "scene": str(payload.scene),
-                "status": "queued",
-            },
-            tmp,
-        )
-        tmp_path = tmp.name
-    os.replace(tmp_path, sess_path)
+    # Store session doc in KV (no state machine)
+    storage_kv_set(
+        "session",
+        f"{session}.json",
+        json.dumps({"uuid": str(payload.uuid), "scene": str(payload.scene)}).encode(
+            "utf-8"
+        ),
+    )
 
-    # publish spin command
-    msg = {"action": "spin", "session": str(session_id), "scene": str(body.scene)}
-    await app.state.nc.publish("motion.session.spin", json.dumps(msg).encode())
-
+    # No auto-start here; use /session/{id}/play to trigger work
     return payload
 
 
 @app.get("/session/{session:uuid}", response_model=motion.session.SessionBaseModel)
 async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
-    sess_path = os.path.join(storage_session, f"{session}.json")
-    if not os.path.exists(sess_path):
+    # Load session doc from KV
+    try:
+        raw = storage_kv_get("session", f"{session}.json")
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="session not found")
-    with open(sess_path) as f:
-        d = json.load(f)
+    d = json.loads(raw)
     return motion.session.SessionBaseModel(
         uuid=UUID4(d["uuid"]), scene=UUID4(d["scene"])
     )
@@ -176,29 +163,49 @@ async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
 
 @app.delete("/session/{session:uuid}")
 async def session_delete(session: UUID4):
-    sess_path = os.path.join(storage_session, f"{session}.json")
-    if not os.path.exists(sess_path):
+    # Delete session doc from KV
+    try:
+        storage_kv_del("session", f"{session}.json")
+    except FileNotFoundError:
         return Response(status_code=204)
 
-    with open(sess_path) as f:
-        d = json.load(f)
+    # Best-effort: also publish a stop (safe even if not running)
+    try:
+        await app.state.nc.publish(
+            "motion.session.stop",
+            json.dumps({"action": "stop", "session": str(session)}).encode(),
+        )
+    except Exception:
+        pass
 
-    if d.get("status") in {"deleting", "stopping", "deleted"}:
+    return {"status": "deleted", "uuid": str(session)}
+
+
+@app.post("/session/{session:uuid}/play")
+async def session_play(session: UUID4):
+    # Ensure session exists; include scene in message
+    try:
+        raw = storage_kv_get("session", f"{session}.json")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    d = json.loads(raw)
+    msg = {"action": "play", "session": str(session), "scene": d["scene"]}
+    await app.state.nc.publish("motion.session.play", json.dumps(msg).encode())
+    return {"status": "accepted", "uuid": str(session)}
+
+
+@app.post("/session/{session:uuid}/stop")
+async def session_stop(session: UUID4):
+    # Ensure session exists; publish stop only
+    try:
+        storage_kv_get("session", f"{session}.json")
+    except FileNotFoundError:
         return Response(status_code=204)
 
-    d["status"] = "deleting"
-    with tempfile.NamedTemporaryFile(
-        "w", dir=os.path.dirname(sess_path), delete=False
-    ) as tmp:
-        json.dump(d, tmp)
-        tmp_path = tmp.name
-    os.replace(tmp_path, sess_path)
-
-    # publish stop command
     msg = {"action": "stop", "session": str(session)}
     await app.state.nc.publish("motion.session.stop", json.dumps(msg).encode())
-
-    return {"status": "deleting", "uuid": str(session)}
+    return {"status": "accepted", "uuid": str(session)}
 
 
 @app.websocket("/ws")

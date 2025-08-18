@@ -87,9 +87,7 @@ def test_server_session(scene_on_server):
     # delete
     r = requests.delete(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"status": "deleting", "uuid": session}
-
-    time.sleep(20)
+    assert r.json() == {"status": "deleted", "uuid": session}
 
     # lookup after delete → 404
     r = requests.get(f"{base}/session/{session}", timeout=5.0)

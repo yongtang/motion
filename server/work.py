@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import nats
 
-from .task import session_spin, session_stop
+from .task import session_play, session_stop
 
 
 class Health(BaseHTTPRequestHandler):
@@ -27,10 +27,10 @@ class Health(BaseHTTPRequestHandler):
 async def run(stop_event: asyncio.Event):
     nc = await nats.connect("nats://127.0.0.1:4222")
 
-    async def on_spin(msg):
+    async def on_play(msg):
         try:
             data = json.loads(msg.data.decode())
-            await session_spin(data["session"])
+            await session_play(data["session"])
         except Exception:
             return
 
@@ -41,7 +41,7 @@ async def run(stop_event: asyncio.Event):
         except Exception:
             return
 
-    await nc.subscribe("motion.session.spin", cb=on_spin)
+    await nc.subscribe("motion.session.play", cb=on_play)
     await nc.subscribe("motion.session.stop", cb=on_stop)
 
     try:

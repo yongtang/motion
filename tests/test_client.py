@@ -68,10 +68,9 @@ def test_client_session(scene_on_server):
 
     # ---- DELETE: then REST lookup should 404
     assert client.session.delete(session) == {
-        "status": "deleting",
+        "status": "deleted",
         "uuid": session,
     }
-    time.sleep(20)
     r = requests.get(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 404
 
