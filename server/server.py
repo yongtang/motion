@@ -2,7 +2,6 @@ import contextlib
 import json
 import uuid
 
-import nats
 from fastapi import (
     FastAPI,
     File,
@@ -18,19 +17,16 @@ from pydantic import UUID4, BaseModel
 
 import motion
 
+from .message import message_pub
 from .storage import storage_kv_del, storage_kv_get, storage_kv_set
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    # connect to NATS before serving
-    app.state.nc = await nats.connect("nats://127.0.0.1:4222")
     try:
         yield
     finally:
-        # graceful shutdown
-        if app.state.nc and not app.state.nc.is_closed:
-            await app.state.nc.drain()
+        pass
 
 
 app = FastAPI(lifespan=lifespan)
@@ -171,10 +167,7 @@ async def session_delete(session: UUID4):
 
     # Best-effort: also publish a stop (safe even if not running)
     try:
-        await app.state.nc.publish(
-            "motion.session.stop",
-            json.dumps({"action": "stop", "session": str(session)}).encode(),
-        )
+        await message_pub("motion.session", f"stop {str(session)}")
     except Exception:
         pass
 
@@ -189,9 +182,7 @@ async def session_play(session: UUID4):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="session not found")
 
-    d = json.loads(raw)
-    msg = {"action": "play", "session": str(session), "scene": d["scene"]}
-    await app.state.nc.publish("motion.session.play", json.dumps(msg).encode())
+    await message_pub("motion.session", f"play {str(session)}")
     return {"status": "accepted", "uuid": str(session)}
 
 
@@ -203,8 +194,7 @@ async def session_stop(session: UUID4):
     except FileNotFoundError:
         return Response(status_code=204)
 
-    msg = {"action": "stop", "session": str(session)}
-    await app.state.nc.publish("motion.session.stop", json.dumps(msg).encode())
+    await message_pub("motion.session", f"stop {str(session)}")
     return {"status": "accepted", "uuid": str(session)}
 
 
