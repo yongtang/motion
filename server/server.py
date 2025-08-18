@@ -1,13 +1,12 @@
-import asyncio
 import json
 import os
 import shutil
-import subprocess
 import tempfile
 import uuid
+from contextlib import asynccontextmanager
 
+import nats
 from fastapi import (
-    BackgroundTasks,
     FastAPI,
     File,
     HTTPException,
@@ -22,12 +21,25 @@ from pydantic import UUID4, BaseModel
 
 import motion
 
-app = FastAPI()
-
 storage_scene = "/storage/scene"
 storage_session = "/storage/session"
 os.makedirs(storage_scene, exist_ok=True)
 os.makedirs(storage_session, exist_ok=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # connect to NATS before serving
+    app.state.nc = await nats.connect("nats://127.0.0.1:4222")
+    try:
+        yield
+    finally:
+        # graceful shutdown
+        if app.state.nc and not app.state.nc.is_closed:
+            await app.state.nc.drain()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/health")
@@ -98,131 +110,16 @@ async def scene_search(q: str = Query(..., description="search terms; exact uuid
     return [q] if os.path.exists(meta_path) else []
 
 
-async def session_spin(session_id: str):
-    session_gpu = os.environ.get("TASK_GPU")
-    session_image = os.environ.get("TASK_IMAGE", "nginx")
-    sp = os.path.join(storage_session, f"{session_id}.json")
-
-    if not os.path.exists(sp):
-        return
-
-    with open(sp) as f:
-        d = json.load(f)
-
-    scene_uuid = d.get("scene")
-    if not scene_uuid:
-        d["status"] = "failed"
-        d["error"] = "missing scene in session file"
-        with tempfile.NamedTemporaryFile(
-            "w", dir=os.path.dirname(sp), delete=False
-        ) as tmp:
-            json.dump(d, tmp)
-            tmp_path = tmp.name
-        os.replace(tmp_path, sp)
-        return
-
-    if d.get("status") in {"starting", "running"}:
-        return
-
-    d["status"] = "starting"
-    with tempfile.NamedTemporaryFile("w", dir=os.path.dirname(sp), delete=False) as tmp:
-        json.dump(d, tmp)
-        tmp_path = tmp.name
-    os.replace(tmp_path, sp)
-
-    name = f"session-{session_id[:12]}"
-    cmd = (
-        [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            name,
-            "--label",
-            f"motion.session={session_id}",
-            "--label",
-            f"motion.scene={scene_uuid}",
-            "-v",
-            "/storage:/storage:ro",
-        ]
-        + (["--gpus", "all"] if session_gpu else [])
-        + [
-            session_image,
-        ]
-    )
-    proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True)
-
-    # Re-check state
-    if not os.path.exists(sp):
-        if proc.returncode == 0:
-            await asyncio.to_thread(
-                subprocess.run,
-                ["docker", "rm", "-f", name],
-                capture_output=True,
-                text=True,
-            )
-        return
-    with open(sp) as f:
-        current = json.load(f)
-
-    if current.get("status") in {"deleting", "stopping", "deleted"}:
-        if proc.returncode == 0:
-            await asyncio.to_thread(
-                subprocess.run,
-                ["docker", "rm", "-f", name],
-                capture_output=True,
-                text=True,
-            )
-        return
-
-    if proc.returncode == 0:
-        current["status"] = "running"
-        current["container_name"] = name
-    else:
-        current["status"] = "failed"
-        current["error"] = proc.stderr.strip()
-
-    with tempfile.NamedTemporaryFile("w", dir=os.path.dirname(sp), delete=False) as tmp:
-        json.dump(current, tmp)
-        tmp_path = tmp.name
-    os.replace(tmp_path, sp)
-
-
-async def session_stop(session_id: str):
-    sp = os.path.join(storage_session, f"{session_id}.json")
-
-    if os.path.exists(sp):
-        with open(sp) as f:
-            d = json.load(f)
-        d["status"] = "stopping"
-        with tempfile.NamedTemporaryFile(
-            "w", dir=os.path.dirname(sp), delete=False
-        ) as tmp:
-            json.dump(d, tmp)
-            tmp_path = tmp.name
-        os.replace(tmp_path, sp)
-
-    name = f"session-{session_id[:12]}"
-    await asyncio.to_thread(
-        subprocess.run, ["docker", "rm", "-f", name], capture_output=True, text=True
-    )
-
-    if os.path.exists(sp):
-        os.remove(sp)
-
-
 @app.post("/session", response_model=motion.session.SessionBaseModel, status_code=201)
-async def session_create(
-    body: SessionRequest, background_tasks: BackgroundTasks
-) -> motion.session.SessionBaseModel:
+async def session_create(body: SessionRequest) -> motion.session.SessionBaseModel:
     scene_meta_path = os.path.join(storage_scene, f"{body.scene}.json")
     if not os.path.exists(scene_meta_path):
         raise HTTPException(status_code=404, detail="scene not found")
 
-    session = uuid.uuid4()
-    payload = motion.session.SessionBaseModel(uuid=session, scene=body.scene)
+    session_id = uuid.uuid4()
+    payload = motion.session.SessionBaseModel(uuid=session_id, scene=body.scene)
 
-    sess_path = os.path.join(storage_session, f"{session}.json")
+    sess_path = os.path.join(storage_session, f"{session_id}.json")
     with tempfile.NamedTemporaryFile(
         "w", dir=os.path.dirname(sess_path), delete=False
     ) as tmp:
@@ -237,7 +134,10 @@ async def session_create(
         tmp_path = tmp.name
     os.replace(tmp_path, sess_path)
 
-    background_tasks.add_task(session_spin, str(session))
+    # publish spin command
+    msg = {"action": "spin", "session": str(session_id), "scene": str(body.scene)}
+    await app.state.nc.publish("motion.session.spin", json.dumps(msg).encode())
+
     return payload
 
 
@@ -254,9 +154,8 @@ async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
 
 
 @app.delete("/session/{session:uuid}")
-async def session_delete(session: UUID4, background_tasks: BackgroundTasks):
+async def session_delete(session: UUID4):
     sess_path = os.path.join(storage_session, f"{session}.json")
-
     if not os.path.exists(sess_path):
         return Response(status_code=204)
 
@@ -274,7 +173,10 @@ async def session_delete(session: UUID4, background_tasks: BackgroundTasks):
         tmp_path = tmp.name
     os.replace(tmp_path, sess_path)
 
-    background_tasks.add_task(session_stop, str(session))
+    # publish stop command
+    msg = {"action": "stop", "session": str(session)}
+    await app.state.nc.publish("motion.session.stop", json.dumps(msg).encode())
+
     return {"status": "deleting", "uuid": str(session)}
 
 

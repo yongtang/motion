@@ -23,52 +23,62 @@ def scope(request):
 @pytest.fixture(scope="session")
 def docker_compose(scope, request):
     projects = {
-        f"{scope}-motion": "docker/docker-compose.yml",
-        f"{scope}-tests": "tests/docker-compose.yml",
+        "motion": "docker/docker-compose.yml",
+        "tests": "tests/docker-compose.yml",
     }
 
-    def ready(project, timeout=180, poll_every=1.0):
+    def ready(compose_project, timeout=600, poll_every=1.0):
         deadline = time.time() + timeout
         while True:
-            # NOTE: use a line-per-object JSON format
-            ps_out = subprocess.run(
-                ["docker", "compose", "-p", project, "ps", "--format", "{{json .}}"],
+            output = subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-p",
+                    compose_project,
+                    "ps",
+                    "--format",
+                    "{{json .}}",
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
             ).stdout
 
-            lines = [ln for ln in ps_out.splitlines() if ln.strip()]
+            lines = [ln for ln in output.splitlines() if ln.strip()]
             if not lines:
                 if time.time() > deadline:
-                    raise TimeoutError(f"No containers found for project '{project}'.")
+                    raise TimeoutError(
+                        f"No containers found for project '{compose_project}'."
+                    )
                 time.sleep(poll_every)
                 continue
 
             services = [json.loads(ln) for ln in lines]
-            all_ready = all(
+            if all(
                 (s.get("State", "").lower() == "running")
                 and (s.get("Health", "").lower() == "healthy")
                 for s in services
-            )
-            if all_ready:
-                return services
+            ):
+                return
 
             if time.time() > deadline:
-                raise TimeoutError(f"Project '{project}' not healthy before timeout.")
+                raise TimeoutError(
+                    f"Project '{compose_project}' not healthy before timeout."
+                )
             time.sleep(poll_every)
 
-    # Bring both up (no --build), remove orphans; pass SCOPE only
     env = {**os.environ, "SCOPE": scope}
-    for project, compose_file in projects.items():
+    for short, file in projects.items():
+        compose_project = f"{scope}-{short}"
         subprocess.run(
             [
                 "docker",
                 "compose",
                 "-f",
-                compose_file,
+                file,
                 "-p",
-                project,
+                compose_project,
                 "up",
                 "-d",
                 "--remove-orphans",
@@ -76,57 +86,68 @@ def docker_compose(scope, request):
             check=True,
             env=env,
         )
-        ready(project)
+        ready(compose_project)
 
     try:
-        # Collect {service_name: ip} for BOTH projects (service names must be unique across stacks)
-        merged = {}
-        for project in projects:
-            ps_out = subprocess.run(
-                ["docker", "compose", "-p", project, "ps", "--format", "{{json .}}"],
+        entries: dict[str, str] = {}
+
+        for short, file in projects.items():
+            compose_project = f"{scope}-{short}"
+            output = subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-p",
+                    compose_project,
+                    "ps",
+                    "--format",
+                    "{{json .}}",
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
             ).stdout
 
-            for ln in (ln for ln in ps_out.splitlines() if ln.strip()):
-                s = json.loads(ln)
-                cid = s["ID"]
-                ip = subprocess.run(
+            # build set of all non-empty container IPs
+            uniq = {
+                subprocess.run(
                     [
                         "docker",
                         "inspect",
                         "-f",
                         "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-                        cid,
+                        json.loads(ln)["ID"],
                     ],
                     check=True,
                     capture_output=True,
                     text=True,
                 ).stdout.strip()
+                for ln in output.splitlines()
+                if ln.strip()
+            }
+            uniq.discard("")  # drop empties
 
-                name = s["Service"]  # plain service name (you said no prefix)
-                if name in merged:
-                    # If you *truly* guarantee no collisions, this shouldn't happen.
-                    # Guard anyway to avoid silent overwrite.
-                    raise RuntimeError(
-                        f"Service name collision: '{name}' from project '{project}'"
-                    )
-                merged[name] = ip
+            if len(uniq) != 1:
+                raise AssertionError(
+                    f"Expected exactly one bridged IP in project '{compose_project}', got: {uniq}"
+                )
 
-        yield merged
+            entries[short] = uniq.pop()
+
+        yield entries
 
     finally:
         if not request.config.getoption("--keep"):
-            for project, compose_file in projects.items():
+            for short, file in projects.items():
+                compose_project = f"{scope}-{short}"
                 subprocess.run(
                     [
                         "docker",
                         "compose",
                         "-f",
-                        compose_file,
+                        file,
                         "-p",
-                        project,
+                        compose_project,
                         "down",
                         "-v",
                         "--remove-orphans",
@@ -139,7 +160,7 @@ def docker_compose(scope, request):
 @pytest.fixture(scope="session")
 def browser_run(docker_compose, scope):
     def f(target: str):
-        base = f"http://{docker_compose['server']}:5173"
+        base = f"http://{docker_compose['motion']}:5173"
 
         cmd = [
             "docker",
@@ -167,7 +188,7 @@ def browser_run(docker_compose, scope):
 @pytest.fixture(scope="session")
 def scene_on_server(docker_compose):
     """Create a scene (POST /scene with a tiny zip)."""
-    base = f"http://{docker_compose['server']}:8080"
+    base = f"http://{docker_compose['motion']}:8080"
 
     # prepare in-memory zip
     buf = io.BytesIO()

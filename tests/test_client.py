@@ -11,7 +11,7 @@ import motion
 
 
 def test_client_scene(docker_compose):
-    base = f"http://{docker_compose['server']}:8080"
+    base = f"http://{docker_compose['motion']}:8080"
     client = motion.client(base=base, timeout=5.0)
 
     # ---- create (+ upload) in one step: returns a uuid str

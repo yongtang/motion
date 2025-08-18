@@ -9,14 +9,14 @@ import websockets
 
 
 def test_server_health(docker_compose):
-    base = f"http://{docker_compose['server']}:8080"
+    base = f"http://{docker_compose['motion']}:8080"
     r = requests.get(f"{base}/health", timeout=2.0)
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
 
 
 def test_server_scene(docker_compose):
-    base = f"http://{docker_compose['server']}:8080"
+    base = f"http://{docker_compose['motion']}:8080"
 
     # CREATE (+ upload) -> POST /scene with multipart zip -> 201 + {"uuid": "..."}
     buf = io.BytesIO()
@@ -103,7 +103,7 @@ def test_server_session(scene_on_server):
 
 
 def test_server_websocket_echo(docker_compose):
-    url = f"ws://{docker_compose['server']}:8080/ws"
+    url = f"ws://{docker_compose['motion']}:8080/ws"
 
     async def _run():
         async with websockets.connect(url, ping_interval=20, ping_timeout=20) as ws:
