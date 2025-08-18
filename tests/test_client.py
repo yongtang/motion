@@ -10,8 +10,8 @@ import requests
 import motion
 
 
-def test_client_scene(server_container):
-    base = f"http://{server_container['addr']}:{server_container['port']}"
+def test_client_scene(docker_compose):
+    base = f"http://{docker_compose['server']}:8080"
     client = motion.client(base=base, timeout=5.0)
 
     # ---- create (+ upload) in one step: returns a uuid str
@@ -54,25 +54,25 @@ def test_client_scene(server_container):
 
 
 def test_client_session(scene_on_server):
-    base, scene_uuid = scene_on_server
+    base, scene = scene_on_server
     client = motion.client(base=base, timeout=5.0)
 
     # ---- CREATE: session from a real scene -> returns session uuid str
-    session_uuid = client.session.create(scene_uuid)
-    assert isinstance(session_uuid, str) and session_uuid
+    session = client.session.create(scene)
+    assert isinstance(session, str) and session
 
     # ---- verify mapping via REST
-    r = requests.get(f"{base}/session/{session_uuid}", timeout=5.0)
+    r = requests.get(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"uuid": session_uuid, "scene": scene_uuid}
+    assert r.json() == {"uuid": session, "scene": scene}
 
     # ---- DELETE: then REST lookup should 404
-    assert client.session.delete(session_uuid) == {
+    assert client.session.delete(session) == {
         "status": "deleting",
-        "uuid": session_uuid,
+        "uuid": session,
     }
     time.sleep(20)
-    r = requests.get(f"{base}/session/{session_uuid}", timeout=5.0)
+    r = requests.get(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 404
 
     # ---- NEGATIVE CREATE: nonexistent scene -> 404

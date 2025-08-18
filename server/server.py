@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import json
 import os
@@ -23,13 +22,7 @@ from pydantic import UUID4, BaseModel
 
 import motion
 
-from .lifespan import lifespan
-
-parser = argparse.ArgumentParser(add_help=False)
-parser.add_argument("--prefix", type=str, default="")
-args, other = parser.parse_known_args(sys.argv[1:])
-
-app = FastAPI(lifespan=functool.partial(lifespan, prefix=args.prefix))
+app = FastAPI()
 
 storage_scene = "/storage/scene"
 storage_session = "/storage/session"

@@ -1,6 +1,6 @@
 import io
-import pathlib
-import socket
+import json
+import os
 import subprocess
 import time
 import uuid
@@ -13,138 +13,146 @@ import requests
 def pytest_addoption(parser):
     g = parser.getgroup("pytest")
     g.addoption("--keep", action="store_true", default=False)
-    g.addoption("--react-image", action="store", default="node:20-alpine")
-    g.addoption("--server-image", action="store", default="python:3.12-slim")
-    g.addoption(
-        "--browser-image",
-        action="store",
-        default="mcr.microsoft.com/playwright:v1.47.0-jammy",
-    )
 
 
 @pytest.fixture(scope="session")
-def docker_container(request):
-    def container_run(image, name_prefix, mount_dir, port, run):
-        keep = request.config.getoption("--keep")
-        name = f"{name_prefix}-{uuid.uuid4().hex[:8]}"
+def scope(request):
+    return f"test-{uuid.uuid4().hex[:8]}"
 
-        subprocess.run(
-            ["docker", "rm", "-f", name],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
 
+@pytest.fixture(scope="session")
+def docker_compose(scope, request):
+    projects = {
+        f"{scope}-motion": "docker/docker-compose.yml",
+        f"{scope}-tests": "tests/docker-compose.yml",
+    }
+
+    def ready(project, timeout=180, poll_every=1.0):
+        deadline = time.time() + timeout
+        while True:
+            # NOTE: use a line-per-object JSON format
+            ps_out = subprocess.run(
+                ["docker", "compose", "-p", project, "ps", "--format", "{{json .}}"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+
+            lines = [ln for ln in ps_out.splitlines() if ln.strip()]
+            if not lines:
+                if time.time() > deadline:
+                    raise TimeoutError(f"No containers found for project '{project}'.")
+                time.sleep(poll_every)
+                continue
+
+            services = [json.loads(ln) for ln in lines]
+            all_ready = all(
+                (s.get("State", "").lower() == "running")
+                and (s.get("Health", "").lower() == "healthy")
+                for s in services
+            )
+            if all_ready:
+                return services
+
+            if time.time() > deadline:
+                raise TimeoutError(f"Project '{project}' not healthy before timeout.")
+            time.sleep(poll_every)
+
+    # Bring both up (no --build), remove orphans; pass SCOPE only
+    env = {**os.environ, "SCOPE": scope}
+    for project, compose_file in projects.items():
         subprocess.run(
             [
                 "docker",
-                "run",
+                "compose",
+                "-f",
+                compose_file,
+                "-p",
+                project,
+                "up",
                 "-d",
-                "--rm",
-                "--name",
-                name,
-                "-v",
-                f"{mount_dir}:/app",
-                "-v",
-                "/var/run/docker.sock:/var/run/docker.sock",
-                "-w",
-                "/app",
-                image,
-                "sh",
-                "-lc",
-                run,
+                "--remove-orphans",
             ],
             check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.STDOUT,
+            env=env,
         )
+        ready(project)
 
-        addr = subprocess.check_output(
-            [
-                "docker",
-                "inspect",
-                "-f",
-                "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-                name,
-            ],
-            text=True,
-        ).strip()
+    try:
+        # Collect {service_name: ip} for BOTH projects (service names must be unique across stacks)
+        merged = {}
+        for project in projects:
+            ps_out = subprocess.run(
+                ["docker", "compose", "-p", project, "ps", "--format", "{{json .}}"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
 
-        deadline = time.time() + 300
-        while True:
-            try:
-                with socket.create_connection((addr, int(port)), timeout=1.0):
-                    break
-            except OSError:
-                if time.time() >= deadline:
-                    raise RuntimeError(f"{name} not reachable at {addr}:{port}")
-                time.sleep(0.5)
+            for ln in (ln for ln in ps_out.splitlines() if ln.strip()):
+                s = json.loads(ln)
+                cid = s["ID"]
+                ip = subprocess.run(
+                    [
+                        "docker",
+                        "inspect",
+                        "-f",
+                        "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+                        cid,
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
 
-        print(f"[container] started name={name} image={image} addr={addr} port={port}")
+                name = s["Service"]  # plain service name (you said no prefix)
+                if name in merged:
+                    # If you *truly* guarantee no collisions, this shouldn't happen.
+                    # Guard anyway to avoid silent overwrite.
+                    raise RuntimeError(
+                        f"Service name collision: '{name}' from project '{project}'"
+                    )
+                merged[name] = ip
 
-        try:
-            yield {"name": name, "addr": addr, "port": port}
-        finally:
-            if not keep:
+        yield merged
+
+    finally:
+        if not request.config.getoption("--keep"):
+            for project, compose_file in projects.items():
                 subprocess.run(
-                    ["docker", "rm", "-f", name],
+                    [
+                        "docker",
+                        "compose",
+                        "-f",
+                        compose_file,
+                        "-p",
+                        project,
+                        "down",
+                        "-v",
+                        "--remove-orphans",
+                    ],
                     check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    env=env,
                 )
 
-    return container_run
-
 
 @pytest.fixture(scope="session")
-def react_container(docker_container, request):
-    image = request.config.getoption("--react-image")
-    mount = pathlib.Path.cwd() / "react"
-    run = "npm install && npm run dev -- --host"
-    yield from docker_container(
-        image=image, name_prefix="test-react", mount_dir=mount, port=5173, run=run
-    )
-
-
-@pytest.fixture(scope="session")
-def server_container(docker_container, request):
-    image = request.config.getoption("--server-image")
-    mount = pathlib.Path.cwd()
-    run = "apt -y -qq update && apt -y -qq install docker.io && pip install -r server/requirements.txt && pip install -e . && uvicorn server.server:app --host 0.0.0.0 --port 8080"
-    yield from docker_container(
-        image=image, name_prefix="test-server", mount_dir=mount, port=8080, run=run
-    )
-
-
-@pytest.fixture(scope="session")
-def browser_container(docker_container, request):
-    image = request.config.getoption("--browser-image")
-    mount = pathlib.Path.cwd() / "tests"
-    run = "npm install --no-audit --no-fund && npx playwright install --with-deps && python3 -m http.server 9999 --bind 0.0.0.0"
-    yield from docker_container(
-        image=image, name_prefix="test-browser", mount_dir=mount, port=9999, run=run
-    )
-
-
-@pytest.fixture(scope="session")
-def browser_run(browser_container, react_container, server_container):
+def browser_run(docker_compose, scope):
     def f(target: str):
-        base = f"http://{react_container['addr']}:{react_container['port']}"
+        base = f"http://{docker_compose['server']}:5173"
 
         cmd = [
             "docker",
             "exec",
             "-w",
-            "/app",
+            "/app/tests",
             "-e",
             f"BASE_URL={base}",
-            browser_container["name"],
+            f"{scope}-browser",
             "npx",
             "playwright",
             "test",
-            "-c",
-            "/app/playwright.config.ts",
-            f"/app/{target}",
+            f"{target}",
         ]
 
         proc = subprocess.run(cmd, text=True, capture_output=True)
@@ -157,9 +165,9 @@ def browser_run(browser_container, react_container, server_container):
 
 
 @pytest.fixture(scope="session")
-def scene_on_server(server_container):
+def scene_on_server(docker_compose):
     """Create a scene (POST /scene with a tiny zip)."""
-    base = f"http://{server_container['addr']}:{server_container['port']}"
+    base = f"http://{docker_compose['server']}:8080"
 
     # prepare in-memory zip
     buf = io.BytesIO()
