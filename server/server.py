@@ -1,6 +1,5 @@
 import json
 import os
-import shutil
 import tempfile
 import uuid
 from contextlib import asynccontextmanager
@@ -16,14 +15,14 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from pydantic import UUID4, BaseModel
 
 import motion
 
-storage_scene = "/storage/scene"
+from .storage import storage_kv_del, storage_kv_get, storage_kv_set
+
 storage_session = "/storage/session"
-os.makedirs(storage_scene, exist_ok=True)
 os.makedirs(storage_session, exist_ok=True)
 
 
@@ -57,63 +56,85 @@ async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseMo
         raise HTTPException(status_code=415, detail="zip required")
 
     scene = uuid.uuid4()
-    meta_path = os.path.join(storage_scene, f"{scene}.json")
-    final_zip = os.path.join(storage_scene, f"{scene}.zip")
+    meta_key = f"{scene}.json"
+    zip_key = f"{scene}.zip"
 
-    with tempfile.NamedTemporaryFile(dir=storage_scene, delete=False) as tmp:
-        shutil.copyfileobj(file.file, tmp)
-        tmp_path = tmp.name
-    os.replace(tmp_path, final_zip)
+    # Read upload into memory and store to S3
+    data = await file.read()
+    storage_kv_set(zip_key, data)
 
-    with tempfile.NamedTemporaryFile("w", dir=storage_scene, delete=False) as tmp:
-        json.dump({"uuid": str(scene), "status": "uploaded"}, tmp)
-        tmp_path = tmp.name
-    os.replace(tmp_path, meta_path)
+    # Write meta alongside
+    meta = {"uuid": str(scene), "status": "uploaded"}
+    storage_kv_set(meta_key, json.dumps(meta).encode("utf-8"))
 
     return motion.scene.SceneBaseModel(uuid=scene)
 
 
 @app.get("/scene/{scene:uuid}", response_model=motion.scene.SceneBaseModel)
 async def scene_lookup(scene: UUID4) -> motion.scene.SceneBaseModel:
-    meta_path = os.path.join(storage_scene, f"{scene}.json")
-    if not os.path.exists(meta_path):
+    meta_key = f"{scene}.json"
+    try:
+        storage_kv_get(meta_key)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="scene not found")
     return motion.scene.SceneBaseModel(uuid=scene)
 
 
 @app.get("/scene/{scene:uuid}/archive")
 async def scene_archive(scene: UUID4):
-    zip_path = os.path.join(storage_scene, f"{scene}.zip")
-    if not os.path.exists(zip_path):
+    zip_key = f"{scene}.zip"
+    try:
+        blob = storage_kv_get(zip_key)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="scene content not found")
-    return FileResponse(zip_path, media_type="application/zip", filename=f"{scene}.zip")
+
+    headers = {
+        "Content-Disposition": f'inline; filename="{scene}.zip"',
+        "Content-Type": "application/zip",
+    }
+    return Response(content=blob, media_type="application/zip", headers=headers)
 
 
 @app.delete("/scene/{scene:uuid}")
 async def scene_delete(scene: UUID4):
-    meta_path = os.path.join(storage_scene, f"{scene}.json")
-    zip_path = os.path.join(storage_scene, f"{scene}.zip")
+    meta_key = f"{scene}.json"
+    zip_key = f"{scene}.zip"
 
-    not_found = not os.path.exists(meta_path)
-    if os.path.exists(zip_path):
-        os.remove(zip_path)
-    if os.path.exists(meta_path):
-        os.remove(meta_path)
-    if not_found:
+    # Check existence of meta to decide 404 behavior
+    try:
+        storage_kv_get(meta_key)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="scene not found")
+
+    # Best-effort deletes
+    try:
+        storage_kv_del(zip_key)
+    except Exception:
+        pass
+    try:
+        storage_kv_del(meta_key)
+    except Exception:
+        pass
+
     return {"status": "deleted", "uuid": str(scene)}
 
 
 @app.get("/scene")
 async def scene_search(q: str = Query(..., description="search terms; exact uuid")):
-    meta_path = os.path.join(storage_scene, f"{q}.json")
-    return [q] if os.path.exists(meta_path) else []
+    meta_key = f"{q}.json"
+    try:
+        storage_kv_get(meta_key)
+        return [q]
+    except FileNotFoundError:
+        return []
 
 
 @app.post("/session", response_model=motion.session.SessionBaseModel, status_code=201)
 async def session_create(body: SessionRequest) -> motion.session.SessionBaseModel:
-    scene_meta_path = os.path.join(storage_scene, f"{body.scene}.json")
-    if not os.path.exists(scene_meta_path):
+    # Validate scene existence via S3 meta
+    try:
+        storage_kv_get(f"{body.scene}.json")
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="scene not found")
 
     session_id = uuid.uuid4()

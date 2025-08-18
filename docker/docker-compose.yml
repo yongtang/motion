@@ -11,12 +11,33 @@ services:
       timeout: 3s
       retries: 3
       start_period: 30s
+  minio:
+    image: minio/minio:latest
+    container_name: ${SCOPE:-motion}-minio
+    restart: unless-stopped
+    depends_on:
+      - nats
+    network_mode: "service:nats"
+    volumes:
+      - shared-storage:/storage
+    environment:
+      MINIO_ROOT_USER: username
+      MINIO_ROOT_PASSWORD: password
+      MINIO_REGION: us-east-1
+    command: ["server", "/storage/minio"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
   work:
     image: python:3.12-slim
     container_name: ${SCOPE:-motion}-work
     restart: unless-stopped
     depends_on:
       - nats
+      - minio
     network_mode: "service:nats"
     working_dir: /app
     volumes:
