@@ -12,16 +12,16 @@ storage = boto3.client(
 )
 
 
-def storage_kv_set(key: str, data: bytes) -> str | None:
+def storage_kv_set(bucket: str, key: str, data: bytes) -> str | None:
     try:
-        storage.create_bucket(Bucket="scenes")
+        storage.create_bucket(Bucket=bucket)
     except ClientError as e:
         code = (e.response.get("Error", {}) or {}).get("Code", "")
         if code not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
             raise
 
     resp = storage.put_object(
-        Bucket="scenes",
+        Bucket=bucket,
         Key=key,
         Body=data,
         ContentType="application/octet-stream",
@@ -29,9 +29,9 @@ def storage_kv_set(key: str, data: bytes) -> str | None:
     return resp.get("ETag")
 
 
-def storage_kv_get(key: str) -> bytes:
+def storage_kv_get(bucket: str, key: str) -> bytes:
     try:
-        obj = storage.get_object(Bucket="scenes", Key=key)
+        obj = storage.get_object(Bucket=bucket, Key=key)
         return obj["Body"].read()
     except ClientError as e:
         code = (e.response.get("Error", {}) or {}).get("Code", "")
@@ -40,9 +40,9 @@ def storage_kv_get(key: str) -> bytes:
         raise
 
 
-def storage_kv_del(key: str) -> None:
+def storage_kv_del(bucket: str, key: str) -> None:
     try:
-        storage.delete_object(Bucket="scenes", Key=key)
+        storage.delete_object(Bucket=bucket, Key=key)
     except ClientError as e:
         code = (e.response.get("Error", {}) or {}).get("Code", "")
         if code not in ("NoSuchKey", "NotFound", "404"):

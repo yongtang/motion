@@ -61,11 +61,11 @@ async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseMo
 
     # Read upload into memory and store to S3
     data = await file.read()
-    storage_kv_set(zip_key, data)
+    storage_kv_set("scene", zip_key, data)
 
     # Write meta alongside
     meta = {"uuid": str(scene), "status": "uploaded"}
-    storage_kv_set(meta_key, json.dumps(meta).encode("utf-8"))
+    storage_kv_set("scene", meta_key, json.dumps(meta).encode("utf-8"))
 
     return motion.scene.SceneBaseModel(uuid=scene)
 
@@ -74,7 +74,7 @@ async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseMo
 async def scene_lookup(scene: UUID4) -> motion.scene.SceneBaseModel:
     meta_key = f"{scene}.json"
     try:
-        storage_kv_get(meta_key)
+        storage_kv_get("scene", meta_key)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="scene not found")
     return motion.scene.SceneBaseModel(uuid=scene)
@@ -84,7 +84,7 @@ async def scene_lookup(scene: UUID4) -> motion.scene.SceneBaseModel:
 async def scene_archive(scene: UUID4):
     zip_key = f"{scene}.zip"
     try:
-        blob = storage_kv_get(zip_key)
+        blob = storage_kv_get("scene", zip_key)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="scene content not found")
 
@@ -102,17 +102,17 @@ async def scene_delete(scene: UUID4):
 
     # Check existence of meta to decide 404 behavior
     try:
-        storage_kv_get(meta_key)
+        storage_kv_get("scene", meta_key)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="scene not found")
 
     # Best-effort deletes
     try:
-        storage_kv_del(zip_key)
+        storage_kv_del("scene", zip_key)
     except Exception:
         pass
     try:
-        storage_kv_del(meta_key)
+        storage_kv_del("scene", meta_key)
     except Exception:
         pass
 
@@ -123,7 +123,7 @@ async def scene_delete(scene: UUID4):
 async def scene_search(q: str = Query(..., description="search terms; exact uuid")):
     meta_key = f"{q}.json"
     try:
-        storage_kv_get(meta_key)
+        storage_kv_get("scene", meta_key)
         return [q]
     except FileNotFoundError:
         return []
@@ -133,7 +133,7 @@ async def scene_search(q: str = Query(..., description="search terms; exact uuid
 async def session_create(body: SessionRequest) -> motion.session.SessionBaseModel:
     # Validate scene existence via S3 meta
     try:
-        storage_kv_get(f"{body.scene}.json")
+        storage_kv_get("scene", f"{body.scene}.json")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="scene not found")
 
