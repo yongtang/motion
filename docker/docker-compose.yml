@@ -33,9 +33,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-  work:
+  worker:
     image: python:3.12-slim
-    container_name: ${SCOPE:-motion}-work
+    container_name: ${SCOPE:-motion}-worker
     restart: unless-stopped
     depends_on:
       - nats
@@ -46,7 +46,7 @@ services:
       - ${PWD}:/app
       - shared-storage:/storage
       - /var/run/docker.sock:/var/run/docker.sock
-    command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install docker.io curl && pip install -r server/requirements.txt && pip install -e . && python -m server.work"]
+    command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install docker.io curl && pip install -r server/requirements.txt && pip install -e . && python -m server.worker"]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9999/health >/dev/null || exit 1"]
       interval: 10s
@@ -58,7 +58,7 @@ services:
     container_name: ${SCOPE:-motion}-server
     restart: unless-stopped
     depends_on:
-      - work
+      - worker
     network_mode: "service:nats"
     working_dir: /app
     volumes:

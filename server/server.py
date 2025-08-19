@@ -22,16 +22,21 @@ from .channel import Channel
 from .storage import storage_kv_del, storage_kv_get, storage_kv_set
 
 logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("server")
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.channel = Channel()
+    log.info("Initializing channel...")
     try:
         await app.state.channel.start()
+        log.info("Channel started")
         yield
     finally:
+        log.info("Closing channel...")
         await app.state.channel.close()
+        log.info("Channel closed")
 
 
 app = FastAPI(lifespan=lifespan)
@@ -39,6 +44,7 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 async def health():
+    log.debug("Health check requested")
     return JSONResponse({"status": "ok"})
 
 
@@ -49,6 +55,7 @@ class SessionRequest(BaseModel):
 @app.post("/scene", response_model=motion.scene.SceneBaseModel, status_code=201)
 async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseModel:
     if file.content_type not in ("application/zip", "application/x-zip-compressed"):
+        log.warning("Invalid scene upload type: %s", file.content_type)
         raise HTTPException(status_code=415, detail="zip required")
 
     scene = uuid.uuid4()
@@ -58,10 +65,12 @@ async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseMo
     # Read upload into memory and store to S3
     data = await file.read()
     storage_kv_set("scene", zip_key, data)
+    log.info("Stored scene %s archive (%d bytes)", scene, len(data))
 
     # Write meta alongside
     meta = {"uuid": str(scene), "status": "uploaded"}
     storage_kv_set("scene", meta_key, json.dumps(meta).encode("utf-8"))
+    log.info("Stored scene %s metadata", scene)
 
     return motion.scene.SceneBaseModel(uuid=scene)
 
@@ -71,7 +80,9 @@ async def scene_lookup(scene: UUID4) -> motion.scene.SceneBaseModel:
     meta_key = f"{scene}.json"
     try:
         storage_kv_get("scene", meta_key)
+        log.info("Scene %s found", scene)
     except FileNotFoundError:
+        log.warning("Scene %s not found", scene)
         raise HTTPException(status_code=404, detail="scene not found")
     return motion.scene.SceneBaseModel(uuid=scene)
 
@@ -81,7 +92,9 @@ async def scene_archive(scene: UUID4):
     zip_key = f"{scene}.zip"
     try:
         blob = storage_kv_get("scene", zip_key)
+        log.info("Scene %s archive retrieved (%d bytes)", scene, len(blob))
     except FileNotFoundError:
+        log.warning("Scene %s archive not found", scene)
         raise HTTPException(status_code=404, detail="scene content not found")
 
     headers = {
@@ -99,18 +112,22 @@ async def scene_delete(scene: UUID4):
     # Check existence of meta to decide 404 behavior
     try:
         storage_kv_get("scene", meta_key)
+        log.info("Deleting scene %s", scene)
     except FileNotFoundError:
+        log.warning("Scene %s not found", scene)
         raise HTTPException(status_code=404, detail="scene not found")
 
     # Best-effort deletes
     try:
         storage_kv_del("scene", zip_key)
-    except Exception:
-        pass
+        log.debug("Deleted scene %s archive", scene)
+    except Exception as e:
+        log.error("Error deleting archive for scene %s: %s", scene, e)
     try:
         storage_kv_del("scene", meta_key)
-    except Exception:
-        pass
+        log.debug("Deleted scene %s metadata", scene)
+    except Exception as e:
+        log.error("Error deleting metadata for scene %s: %s", scene, e)
 
     return {"status": "deleted", "uuid": str(scene)}
 
@@ -120,8 +137,10 @@ async def scene_search(q: str = Query(..., description="search terms; exact uuid
     meta_key = f"{q}.json"
     try:
         storage_kv_get("scene", meta_key)
+        log.info("Search found scene %s", q)
         return [q]
     except FileNotFoundError:
+        log.debug("Search did not find scene %s", q)
         return []
 
 
@@ -130,7 +149,9 @@ async def session_create(body: SessionRequest) -> motion.session.SessionBaseMode
     # Validate scene existence via storage meta
     try:
         storage_kv_get("scene", f"{body.scene}.json")
+        log.info("Creating session for scene %s", body.scene)
     except FileNotFoundError:
+        log.warning("Scene %s not found for session create", body.scene)
         raise HTTPException(status_code=404, detail="scene not found")
 
     session = uuid.uuid4()
@@ -144,6 +165,7 @@ async def session_create(body: SessionRequest) -> motion.session.SessionBaseMode
             "utf-8"
         ),
     )
+    log.info("Session %s created for scene %s", session, body.scene)
 
     # No auto-start here; use /session/{id}/play to trigger work
     return payload
@@ -154,7 +176,9 @@ async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
     # Load session doc from KV
     try:
         raw = storage_kv_get("session", f"{session}.json")
+        log.info("Session %s found", session)
     except FileNotFoundError:
+        log.warning("Session %s not found", session)
         raise HTTPException(status_code=404, detail="session not found")
     d = json.loads(raw)
     return motion.session.SessionBaseModel(
@@ -167,14 +191,18 @@ async def session_delete(session: UUID4):
     # Delete session doc from KV
     try:
         storage_kv_del("session", f"{session}.json")
+        log.info("Deleted session %s metadata", session)
     except FileNotFoundError:
+        log.warning("Session %s not found during delete", session)
         return Response(status_code=204)
 
     # Best-effort: also publish a stop (safe even if not running)
     try:
-        await app.state.channel.publish(f"stop {str(session)}")
-    except Exception:
-        pass
+        await app.state.channel.publish_stop(session, "data")
+        await app.state.channel.subscribe_done(session)
+        log.info("Published stop for session %s", session)
+    except Exception as e:
+        log.error("Error stopping session %s: %s", session, e)
 
     return {"status": "deleted", "uuid": str(session)}
 
@@ -184,10 +212,13 @@ async def session_play(session: UUID4):
     # Ensure session exists; include scene in message
     try:
         raw = storage_kv_get("session", f"{session}.json")
+        log.info("Play requested for session %s", session)
     except FileNotFoundError:
+        log.warning("Session %s not found for play", session)
         raise HTTPException(status_code=404, detail="session not found")
 
-    app.state.channel.publish(f"play {str(session)}")
+    await app.state.channel.publish_play(session, "data")
+    log.info("Published play for session %s", session)
     return {"status": "accepted", "uuid": str(session)}
 
 
@@ -196,20 +227,25 @@ async def session_stop(session: UUID4):
     # Ensure session exists; publish stop only
     try:
         storage_kv_get("session", f"{session}.json")
+        log.info("Stop requested for session %s", session)
     except FileNotFoundError:
+        log.warning("Stop requested for nonexistent session %s", session)
         return Response(status_code=204)
 
-    app.state.channel.publish(f"stop {str(session)}")
+    await app.state.channel.publish_stop(session, "data")
+    log.info("Published stop for session %s", session)
     return {"status": "accepted", "uuid": str(session)}
 
 
 @app.websocket("/ws")
 async def ws(ws: WebSocket):
     await ws.accept()
+    log.info("WebSocket client connected")
     try:
         await ws.send_text("hello from server")
         while True:
             msg = await ws.receive_text()
+            log.debug("Received WS message: %s", msg)
             await ws.send_text(f"echo: {msg}")
     except WebSocketDisconnect:
-        pass
+        log.info("WebSocket client disconnected")

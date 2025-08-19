@@ -84,6 +84,17 @@ def test_server_session(scene_on_server):
     assert r.status_code == 200
     assert r.json() == {"uuid": session, "scene": scene}
 
+    # invoke play, then stop, and wait
+    r = requests.post(f"{base}/session/{session}/play", timeout=5.0)
+    assert r.status_code == 200
+    assert r.json() == {"status": "accepted", "uuid": session}
+    time.sleep(5)  # allow time to observe publish logs
+
+    r = requests.post(f"{base}/session/{session}/stop", timeout=5.0)
+    assert r.status_code == 200
+    assert r.json() == {"status": "accepted", "uuid": session}
+    time.sleep(5)  # allow time to observe publish logs
+
     # delete
     r = requests.delete(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 200
