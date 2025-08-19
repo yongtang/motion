@@ -1,7 +1,19 @@
-import websockets
+import logging
+
+import nats
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+log = logging.getLogger("message")
 
 
 async def message_pub(sub, data):
-    async with websockets.connect("ws://127.0.0.1:8081") as websocket:
-        message = f"PUB {sub} {len(data)}\r\n{data}\r\n"
-        await websocket.send(message)
+    log.info("Connect")
+    nc = await nats.connect("nats://127.0.0.1:4222")
+    log.info(f"Publish {sub} {data}")
+    await nc.publish(sub, data.encode())
+    log.info("Dain")
+    await nc.drain()
+    log.info("Close")

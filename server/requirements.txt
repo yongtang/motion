@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
 python-multipart
-websockets
+aiohttp
 nats-py
 boto3

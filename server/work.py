@@ -1,92 +1,91 @@
 import asyncio
 import logging
-import signal
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import socket
 
+import aiohttp.web
 import nats
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    format="%(asctime)s [%(levelname)s] %(message)s",
 )
-logger = logging.getLogger("work")
+log = logging.getLogger("work")
 
 
 async def session_play(session: str):
-    logger.info(f"Received play session: {session}")
+    log.info(f"Received play session: {session}")
 
 
 async def session_stop(session: str):
-    logger.info(f"Received stop session: {session}")
+    log.info(f"Received stop session: {session}")
 
 
-class Health(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == "/health":
-            logger.debug("Health check request")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
-        else:
-            logger.warning("Invalid health path requested: %s", self.path)
-            self.send_response(404)
-            self.end_headers()
-
-    def log_message(self, *_):
-        # silence default HTTP server logs, use logger instead
-        return
-
-
-async def run(stop_event: asyncio.Event):
-    logger.info("Connecting to NATS at nats://127.0.0.1:4222")
-    nc = await nats.connect("nats://127.0.0.1:4222")
-
-    async def cb(msg):
-        try:
-            call, session = msg.data.decode().split(" ", 1)
-            if call == "play":
-                await session_play(session)
-            elif call == "stop":
-                await session_stop(session)
-            else:
-                assert False, f"{call} {session}"
-        except Exception as e:
-            logger.exception(f"Error handling message {msg}: {e}")
-
-    await nc.subscribe("motion.session", cb=cb)
-    logger.info("Subscribed to NATS topics: motion.session")
+async def task_http():
+    app = aiohttp.web.Application()
+    app.add_routes(
+        [
+            aiohttp.web.get(
+                "/health", lambda _: aiohttp.web.json_response({"status": "ok"})
+            )
+        ]
+    )
+    runner = aiohttp.web.AppRunner(app)
+    await runner.setup()
+    site = aiohttp.web.TCPSite(runner, "0.0.0.0", 9999)
+    await site.start()
+    log.info("HTTP health at http://0.0.0.0:9999/health")
 
     try:
-        await stop_event.wait()
+        await asyncio.Future()
     finally:
-        logger.info("Shutting down NATS connection...")
-        await nc.drain()
-        logger.info("NATS connection closed")
+        await runner.cleanup()
+        log.info("HTTP server stopped")
+
+
+async def task_nats():
+    async def cb(msg):
+        log.info(f"Received {msg}")
+        call, session = msg.data.decode().split(" ", 1)
+        if call == "play":
+            await session_play(session)
+        elif call == "stop":
+            await session_stop(session)
+        else:
+            raise ValueError(f"{msg}")
+
+    while True:
+        try:
+            log.info("Connect")
+            nc = await nats.connect("nats://127.0.0.1:4222")
+            log.info("Subscribe")
+            await nc.subscribe("motion.session", cb=cb)
+            log.info("Future")
+            await asyncio.Future()
+
+        except (
+            OSError,
+            asyncio.TimeoutError,
+            socket.gaierror,
+            nats.errors.NoServersError,
+            nats.errors.ConnectionClosedError,
+            nats.errors.TimeoutError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as e:
+            log.warning(f"Exception {e} (retrying in 1s)")
+            try:
+                await nc.drain()
+                await nc.close()
+            except Exception:
+                pass
+            log.info("Closed; will reconnect")
+            await asyncio.sleep(1)
 
 
 async def main():
-    httpd = HTTPServer(("0.0.0.0", 9999), Health)
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-    thread.start()
-    logger.info("HTTP health server started on port 9999")
-
-    stop_event = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, stop_event.set)
-        except NotImplementedError:
-            logger.debug("Signal handlers not implemented on this platform")
-
-    try:
-        await run(stop_event)
-    finally:
-        logger.info("Shutting down HTTP server...")
-        httpd.shutdown()
-        httpd.server_close()
-        logger.info("HTTP server stopped")
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(task_http(), name="http")
+        tg.create_task(task_nats(), name="nats")
 
 
 if __name__ == "__main__":
