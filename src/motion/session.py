@@ -1,6 +1,7 @@
 import pydantic
 import requests
 
+from .motionclass import motionclass
 from .scene import Scene
 
 
@@ -9,6 +10,7 @@ class SessionBaseModel(pydantic.BaseModel):
     scene: pydantic.UUID4
 
 
+@motionclass
 class Session(SessionBaseModel):
     scene: Scene
 
@@ -19,9 +21,16 @@ class Session(SessionBaseModel):
         wire = r.json()
         scene = Scene(base, wire["scene"], timeout=timeout)
         super().__init__(uuid=wire["uuid"], scene=scene)
-
-    def step(self):
-        print(f"Step scene uuid='{self.scene.uuid}'")
+        # bypass Pydantic field validation for decorator-added private attrs
+        object.__setattr__(self, "_base_", base.rstrip("/"))
+        object.__setattr__(self, "_timeout_", timeout)
 
     def play(self):
-        print(f"Play scene uuid='{self.scene.uuid}'")
+        r = requests.post(f"{self.base}/session/{self.uuid}/play", timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
+
+    def stop(self):
+        r = requests.post(f"{self.base}/session/{self.uuid}/stop", timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()

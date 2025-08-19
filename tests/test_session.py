@@ -1,3 +1,4 @@
+import time
 import uuid
 
 import pytest
@@ -11,18 +12,16 @@ def test_session(capsys, session_on_server):
     base, session, scene = session_on_server
 
     # construct client model (fetch-on-init)
-    sess = motion.Session(base, session)
+    session = motion.Session(base, session)
 
     # optional sanity on ids
-    assert str(sess.uuid) == session
+    assert str(session.uuid) == session_on_server[1]
 
     # drive behavior that prints
-    sess.step()
-    sess.play()
-
-    out = capsys.readouterr().out
-    assert f"Step scene uuid='{scene}'" in out
-    assert f"Play scene uuid='{scene}'" in out
+    # (updated: invoke play, wait, then stop)
+    session.play()
+    time.sleep(5)
+    session.stop()
 
     # negative: constructing with a bogus session should raise
     bogus = str(uuid.uuid4())
