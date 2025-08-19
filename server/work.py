@@ -5,10 +5,7 @@ import socket
 import aiohttp.web
 import nats
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("work")
 
 
