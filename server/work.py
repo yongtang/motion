@@ -53,12 +53,27 @@ async def task_nats():
         else:
             raise ValueError(f"{msg}")
 
+        # Ack only after successful handling
+        await msg.ack()
+        log.info(f"Ack'ed {msg}")
+
     while True:
         try:
             log.info("Connect")
             nc = await nats.connect("nats://127.0.0.1:4222")
-            log.info("Subscribe")
-            await nc.subscribe("motion.session", cb=cb)
+            js = nc.jetstream()
+
+            try:
+                # Ensure the stream exists (idempotent if already created)
+                await js.add_stream(name="motion", subjects=["motion.session"])
+                log.info("Created stream")
+            except nats.js.errors.APIError:
+                pass
+
+            log.info("Subscribe (JetStream)")
+            # manual_ack=True (done in cb after success)
+            await js.subscribe("motion.session", cb=cb, manual_ack=True)
+
             log.info("Future")
             await asyncio.Future()
 

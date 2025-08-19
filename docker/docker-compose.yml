@@ -4,7 +4,9 @@ services:
     container_name: ${SCOPE:-motion}-nats
     restart: unless-stopped
     network_mode: bridge
-    command: ["-a", "127.0.0.1", "-m", "8222"]
+    command: ["-a", "127.0.0.1", "-m", "8222", "-js", "-sd", "/storage/nats"]
+    volumes:
+      - shared-storage:/storage
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null 2>&1 || exit 1"]
       interval: 10s
