@@ -1,6 +1,5 @@
 import pathlib
 import tempfile
-import time
 import uuid
 import zipfile
 
@@ -14,7 +13,7 @@ def test_client_scene(docker_compose):
     base = f"http://{docker_compose['motion']}:8080"
     client = motion.client(base=base, timeout=5.0)
 
-    # ---- create (+ upload) in one step: returns a uuid str
+    # ---- create (+ upload) in one step: returns a Scene
     with tempfile.TemporaryDirectory() as tdir:
         zip_path = pathlib.Path(tdir) / "scene.zip"
         with zipfile.ZipFile(zip_path, "w") as z:
@@ -23,16 +22,16 @@ def test_client_scene(docker_compose):
     assert scene
 
     # ---- search: should find the scene
-    assert client.scene.search(scene) == [scene]
+    assert client.scene.search(str(scene.uuid)) == [scene]
 
     # ---- direct REST check for minimal metadata
-    r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
+    r = requests.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"uuid": scene}
+    assert r.json() == {"uuid": str(scene.uuid)}
 
     # ---- archive (download) and check contents
     with tempfile.TemporaryDirectory() as tdir:
-        out = pathlib.Path(tdir) / f"{scene}.zip"
+        out = pathlib.Path(tdir) / f"{scene.uuid}.zip"
         client.scene.archive(scene, out)
         with zipfile.ZipFile(out) as z:
             with z.open("hello.txt") as f:
@@ -43,13 +42,13 @@ def test_client_scene(docker_compose):
     assert client.scene.search(bogus) == []
 
     # ---- delete
-    assert client.scene.delete(scene) == {"status": "deleted", "uuid": scene}
+    assert client.scene.delete(scene) == {"status": "deleted", "uuid": str(scene.uuid)}
 
     # ---- search after delete should be empty
-    assert client.scene.search(scene) == []
+    assert client.scene.search(str(scene.uuid)) == []
 
     # ---- after delete, REST lookup should 404
-    r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
+    r = requests.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
     assert r.status_code == 404
 
 
@@ -57,27 +56,34 @@ def test_client_session(scene_on_server):
     base, scene = scene_on_server
     client = motion.client(base=base, timeout=5.0)
 
-    # ---- CREATE: session from a real scene -> returns session uuid str
-    session = client.session.create(scene)
-    assert isinstance(session, str) and session
+    # Build a Scene object for the existing scene id from the fixture
+    scene_obj = motion.Scene(base, scene, timeout=5.0)
+
+    # ---- CREATE: session from a real scene -> returns Session
+    session = client.session.create(scene_obj)
+    assert isinstance(session, motion.Session) and session
 
     # ---- verify mapping via REST
-    r = requests.get(f"{base}/session/{session}", timeout=5.0)
+    r = requests.get(f"{base}/session/{session.uuid}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"uuid": session, "scene": scene}
+    assert r.json() == {"uuid": str(session.uuid), "scene": scene}
 
     # ---- DELETE: then REST lookup should 404
     assert client.session.delete(session) == {
         "status": "deleted",
-        "uuid": session,
+        "uuid": str(session.uuid),
     }
-    r = requests.get(f"{base}/session/{session}", timeout=5.0)
+    r = requests.get(f"{base}/session/{session.uuid}", timeout=5.0)
     assert r.status_code == 404
 
     # ---- NEGATIVE CREATE: nonexistent scene -> 404
     bogus_scene = str(uuid.uuid4())
+    # Create a lightweight dummy with a .uuid attribute to avoid fetching via Scene(...)
+    DummyScene = type("DummyScene", (), {})
+    dummy = DummyScene()
+    dummy.uuid = bogus_scene
     with pytest.raises(requests.HTTPError) as ei2:
-        client.session.create(bogus_scene)
+        client.session.create(dummy)
     assert ei2.value.response is not None
     assert ei2.value.response.status_code == 404
     assert ei2.value.response.json().get("detail") == "scene not found"

@@ -3,13 +3,16 @@ import uuid
 
 import requests
 
+from .scene import Scene
+from .session import Session
+
 
 class SceneClient:
     def __init__(self, base: str, *, timeout: float):
         self._base_ = base.rstrip("/")
         self._timeout_ = timeout
 
-    def create(self, file: str | pathlib.Path) -> str:
+    def create(self, file: str | pathlib.Path) -> Scene:
         p = pathlib.Path(file)
         with p.open("rb") as f:
             files = {"file": (p.name, f, "application/zip")}
@@ -17,11 +20,11 @@ class SceneClient:
                 f"{self._base_}/scene", files=files, timeout=self._timeout_
             )
         r.raise_for_status()
-        return r.json()["uuid"]
+        return Scene(self._base_, r.json()["uuid"], timeout=self._timeout_)
 
-    def archive(self, scene: str | uuid.UUID, file: str | pathlib.Path) -> pathlib.Path:
+    def archive(self, scene: Scene, file: str | pathlib.Path) -> pathlib.Path:
         r = requests.get(
-            f"{self._base_}/scene/{scene}/archive",
+            f"{self._base_}/scene/{scene.uuid}/archive",
             stream=True,
             timeout=self._timeout_,
         )
@@ -34,15 +37,15 @@ class SceneClient:
                     f.write(chunk)
         return out
 
-    def search(self, q: str) -> list[str]:
+    def search(self, q: str) -> list[Scene]:
         r = requests.get(
             f"{self._base_}/scene", params={"q": q}, timeout=self._timeout_
         )
         r.raise_for_status()
-        return r.json()
+        return [Scene(self._base_, sid, timeout=self._timeout_) for sid in r.json()]
 
-    def delete(self, scene: str | uuid.UUID) -> dict:
-        r = requests.delete(f"{self._base_}/scene/{scene}", timeout=self._timeout_)
+    def delete(self, scene: Scene) -> dict:
+        r = requests.delete(f"{self._base_}/scene/{scene.uuid}", timeout=self._timeout_)
         r.raise_for_status()
         return r.json()
 
@@ -52,25 +55,27 @@ class SessionClient:
         self._base_ = base.rstrip("/")
         self._timeout_ = timeout
 
-    def create(self, scene: str | uuid.UUID) -> str:
+    def create(self, scene: Scene) -> Session:
         r = requests.post(
             f"{self._base_}/session",
-            json={"scene": str(scene)},
+            json={"scene": str(scene.uuid)},
             timeout=self._timeout_,
         )
         r.raise_for_status()
-        return r.json()["uuid"]
+        return Session(self._base_, r.json()["uuid"], timeout=self._timeout_)
 
-    def search(self, q: str) -> list[str]:
+    def search(self, q: str) -> list[Session]:
         # simple existence check by id
         r = requests.get(f"{self._base_}/session/{q}", timeout=self._timeout_)
         if r.status_code == 404:
             return []
         r.raise_for_status()
-        return [q]
+        return [Session(self._base_, q, timeout=self._timeout_)]
 
-    def delete(self, session: str | uuid.UUID) -> dict:
-        r = requests.delete(f"{self._base_}/session/{session}", timeout=self._timeout_)
+    def delete(self, session: Session) -> dict:
+        r = requests.delete(
+            f"{self._base_}/session/{session.uuid}", timeout=self._timeout_
+        )
         r.raise_for_status()
         return r.json()
 
