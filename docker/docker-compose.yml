@@ -40,6 +40,9 @@ services:
     depends_on:
       - nats
       - minio
+    environment:
+      - MOTION=${PWD}
+      - SCOPE=${SCOPE}
     network_mode: "service:nats"
     working_dir: /app
     volumes:

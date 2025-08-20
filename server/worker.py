@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import os
 import uuid
 
 import aiohttp.web
@@ -15,8 +16,56 @@ log = logging.getLogger("worker")
 
 async def session_play(session: str):
     log.info(f"Received play session: {session}")
-    # Simple demo: run ~100 seconds of "work"
-    await asyncio.sleep(15)
+
+    image = "python:3.12-slim"
+    container = f"{os.environ['SCOPE']}-node" if os.environ["SCOPE"] else "motion-node"
+
+    run = [
+        "docker",
+        "run",
+        "-i",
+        "--name",
+        container,
+        "--rm",
+        "--network",
+        "host",
+        "-w",
+        "/app",
+        "-v",
+        f"{os.environ['MOTION']}:/app",
+        "-v",
+        "shared-storage:/storage",
+        "--health-cmd",
+        "curl -sf http://127.0.0.1:8888/health >/dev/null || exit 1",
+        "--health-interval",
+        "10s",
+        "--health-timeout",
+        "3s",
+        "--health-retries",
+        "3",
+        "--health-start-period",
+        "15s",
+        image,
+        "/bin/sh",
+        "-lc",
+        "apt -y -qq update && apt -y -qq install curl && pip install aiohttp && python -m server.node",
+    ]
+    log.info(f"Proc: {run}")
+    proc = await asyncio.create_subprocess_exec(*run, env={**os.environ})
+
+    try:
+        return await proc.wait()
+    finally:
+        run = [
+            "docker",
+            "rm",
+            "-f",
+            container,
+        ]
+        log.info(f"Done: {run}")
+        done = await asyncio.create_subprocess_exec(*run, env={**os.environ})
+        await done.wait()
+
     log.info(f"Session {session} done")
 
 
