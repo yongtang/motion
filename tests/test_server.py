@@ -110,6 +110,27 @@ def test_server_session(scene_on_server):
     assert r.status_code == 404
     assert r.json().get("detail") == "scene not found"
 
+    # natural-completion path (no stop)
+    # create another session (reuse the same scene_on_server 'scene')
+    r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
+    assert r.status_code == 201, r.text
+    session2 = r.json()["uuid"]
+    assert session2
+
+    # play but DO NOT stop; worker should finish on its own (15s play + ~1s poll)
+    r = requests.post(f"{base}/session/{session2}/play", timeout=5.0)
+    assert r.status_code == 200
+    assert r.json() == {"status": "accepted", "uuid": session2}
+
+    # Give enough time for natural completion to occur.
+    # (If your worker uses 15s sleep + 1s poll, 30s is a safe margin.)
+    time.sleep(30)
+
+    # clean up the session
+    r = requests.delete(f"{base}/session/{session2}", timeout=5.0)
+    assert r.status_code == 200
+    assert r.json() == {"status": "deleted", "uuid": session2}
+
 
 def test_server_websocket_echo(docker_compose):
     url = f"ws://{docker_compose['motion']}:8080/ws"

@@ -47,3 +47,10 @@ def storage_kv_del(bucket: str, key: str) -> None:
         code = (e.response.get("Error", {}) or {}).get("Code", "")
         if code not in ("NoSuchKey", "NotFound", "404"):
             raise
+
+
+def storage_kv_scan(bucket: str, prefix: str):
+    paginator = storage.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            yield obj["Key"]

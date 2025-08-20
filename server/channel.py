@@ -28,9 +28,10 @@ class Channel:
         self.js = self.nc.jetstream()
         await self.nc.flush()
 
+        # Single stream for node-scoped commands (play/stop on separate subjects)
         config = nats.js.api.StreamConfig(
             name="motion",
-            subjects=["motion.session", "motion.session.*.stop"],
+            subjects=["motion.node.*.play", "motion.node.*.stop"],
         )
         try:
             await self.js.add_stream(config=config)
@@ -49,29 +50,20 @@ class Channel:
         self.nc = None
         self.js = None
 
-    # play: subject "motion.session", payload "<session>.play <data>"
-    async def publish_play(self, session: str, data: str) -> None:
+    async def publish(self, node: str, session: str, op: str) -> None:
         assert self.js is not None, "Channel not started"
-        subject = f"motion.session"
-        payload = f"{session}.play {data}"
+        assert op in ("play", "stop"), f"Unsupported op: {op}"
+        subject = f"motion.node.{node}.{op}"
+        payload = f"{session}"
         self.log.info(f"Publish {subject}: {payload}")
         ack = await self.js.publish(subject, payload.encode())
         self.log.info(f"Ack {ack.stream} {ack.seq}")
 
-    # stop: subject "motion.session.<session>.stop", payload "<data>"
-    async def publish_stop(self, session: str, data: str) -> None:
+    async def subscribe(self, node: str, op: str):
         assert self.js is not None, "Channel not started"
-        subject = f"motion.session.{session}.stop"
-        payload = f"{data}"
-        self.log.info(f"Publish {subject}: {payload}")
-        ack = await self.js.publish(subject, payload.encode())
-        self.log.info(f"Ack {ack.stream} {ack.seq}")
-
-    # Subscribe to plays (shared durable, pull).
-    async def subscribe_play(self):
-        assert self.js is not None, "Channel not started"
-        subject = "motion.session"
-        durable = "motion-session"
+        assert op in ("play", "stop"), f"Unsupported op: {op}"
+        subject = f"motion.node.{node}.{op}"
+        durable = f"motion-node-{node}-{op}"
         config = nats.js.api.ConsumerConfig(
             durable_name=durable,
             filter_subject=subject,
@@ -81,6 +73,7 @@ class Channel:
         try:
             await self.js.add_consumer(stream="motion", config=config)
         except nats.js.errors.APIError:
+            # Consumer already exists; continue
             pass
         sub = await self.js.pull_subscribe(
             subject,
@@ -90,49 +83,14 @@ class Channel:
         self.log.info(f"Subscribed to {subject} with durable {durable}")
         return sub
 
-    # Subscribe to stops for a session (per-session durable, DeliverPolicy.All).
-    async def subscribe_stop(self, session: str):
-        assert self.js is not None, "Channel not started"
-        subject = f"motion.session.{session}.stop"
-        durable = f"motion-session-{session}"
-        config = nats.js.api.ConsumerConfig(
-            durable_name=durable,
-            filter_subject=subject,
-            deliver_policy=nats.js.api.DeliverPolicy.ALL,
-            ack_policy=nats.js.api.AckPolicy.EXPLICIT,
-            max_ack_pending=1,
-        )
-        try:
-            await self.js.add_consumer(stream="motion", config=config)
-        except nats.js.errors.APIError:
-            pass
-        sub = await self.js.pull_subscribe(
-            subject,
-            durable=durable,
-            stream="motion",
-        )
-        self.log.info(f"Subscribed to {subject} with durable {durable}")
-        return sub
+    async def publish_play(self, node: str, session: str) -> None:
+        await self.publish(node=node, session=session, op="play")
 
-    # Cleanup per-session stop consumer and purge lingering stop messages.
-    async def subscribe_done(self, session: str) -> None:
-        assert self.js is not None, "Channel not started"
-        subject = f"motion.session.{session}.stop"
-        durable = f"motion-session-{session}"
+    async def publish_stop(self, node: str, session: str) -> None:
+        await self.publish(node=node, session=session, op="stop")
 
-        # Delete the per-session consumer
-        try:
-            await self.js.delete_consumer("motion", durable)
-            self.log.info(f"Deleted consumer {durable}")
-        except nats.js.errors.APIError:
-            pass
+    async def subscribe_play(self, node: str):
+        return await self.subscribe(node=node, op="play")
 
-        # Purge any remaining stop messages for this session
-        try:
-            try:
-                await self.js.purge_stream("motion", filter_subject=subject)
-            except TypeError:
-                await self.js.purge_stream("motion", subject=subject)
-            self.log.info(f"Purged stream 'motion' for subject {subject}")
-        except Exception:
-            pass
+    async def subscribe_stop(self, node: str):
+        return await self.subscribe(node=node, op="stop")

@@ -1,6 +1,8 @@
+import asyncio
 import contextlib
 import json
 import logging
+import random
 import uuid
 
 from fastapi import (
@@ -19,7 +21,7 @@ from pydantic import UUID4, BaseModel
 import motion
 
 from .channel import Channel
-from .storage import storage_kv_del, storage_kv_get, storage_kv_set
+from .storage import storage_kv_del, storage_kv_get, storage_kv_scan, storage_kv_set
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("server")
@@ -188,43 +190,82 @@ async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
 
 @app.delete("/session/{session:uuid}")
 async def session_delete(session: UUID4):
-    # Delete session doc from KV
+    # Helper: fan-out stop to all nodes (safe even if session doesn't exist or isn't running)
+    async def broadcast_stop():
+        try:
+            nodes = [
+                k.removesuffix(".json")
+                for k in storage_kv_scan("node", "")
+                if k.endswith(".json")
+            ]
+            if nodes:
+                await asyncio.gather(
+                    *(
+                        app.state.channel.publish_stop(node, str(session))
+                        for node in nodes
+                    ),
+                    return_exceptions=True,  # don't let one failure break the rest
+                )
+                log.info(
+                    "Published stop for session %s to %d nodes", session, len(nodes)
+                )
+            else:
+                log.warning("No nodes available to stop for session %s", session)
+        except Exception as e:
+            log.error("Error broadcasting stop for session %s: %s", session, e)
+
+    # If session metadata isn't found: broadcast stop, then return 204
     try:
-        storage_kv_del("session", f"{session}.json")
-        log.info("Deleted session %s metadata", session)
+        storage_kv_get("session", f"{session}.json")
     except FileNotFoundError:
-        log.warning("Session %s not found during delete", session)
+        log.warning(
+            "Session %s not found during delete; broadcasting stop anyway", session
+        )
+        await broadcast_stop()
         return Response(status_code=204)
 
-    # Best-effort: also publish a stop (safe even if not running)
+    # Session exists: broadcast stop, then delete metadata
+    log.info("Deleting session %s", session)
+    await broadcast_stop()
+
     try:
-        await app.state.channel.publish_stop(session, "data")
-        await app.state.channel.subscribe_done(session)
-        log.info("Published stop for session %s", session)
+        storage_kv_del("session", f"{session}.json")
+        log.debug("Deleted session %s metadata", session)
     except Exception as e:
-        log.error("Error stopping session %s: %s", session, e)
+        # Do not fail the request if delete races/errs
+        log.error("Error deleting metadata for session %s: %s", session, e)
 
     return {"status": "deleted", "uuid": str(session)}
 
 
 @app.post("/session/{session:uuid}/play")
 async def session_play(session: UUID4):
-    # Ensure session exists; include scene in message
+    # Ensure session exists
     try:
-        raw = storage_kv_get("session", f"{session}.json")
+        storage_kv_get("session", f"{session}.json")
         log.info("Play requested for session %s", session)
     except FileNotFoundError:
         log.warning("Session %s not found for play", session)
         raise HTTPException(status_code=404, detail="session not found")
 
-    await app.state.channel.publish_play(session, "data")
-    log.info("Published play for session %s", session)
+    nodes = list(
+        k.removesuffix(".json")
+        for k in storage_kv_scan("node", "")
+        if k.endswith(".json")
+    )
+    if not nodes:
+        log.error("No nodes available for play")
+        raise HTTPException(status_code=503, detail="no nodes available")
+
+    node = random.choice(nodes)
+    await app.state.channel.publish_play(node, str(session))
+    log.info("Published play for session %s to node %s", session, node)
     return {"status": "accepted", "uuid": str(session)}
 
 
 @app.post("/session/{session:uuid}/stop")
 async def session_stop(session: UUID4):
-    # Ensure session exists; publish stop only
+    # Ensure session exists
     try:
         storage_kv_get("session", f"{session}.json")
         log.info("Stop requested for session %s", session)
@@ -232,8 +273,15 @@ async def session_stop(session: UUID4):
         log.warning("Stop requested for nonexistent session %s", session)
         return Response(status_code=204)
 
-    await app.state.channel.publish_stop(session, "data")
-    log.info("Published stop for session %s", session)
+    nodes = list(
+        k.removesuffix(".json")
+        for k in storage_kv_scan("node", "")
+        if k.endswith(".json")
+    )
+    await asyncio.gather(
+        *(app.state.channel.publish_stop(node, str(session)) for node in nodes)
+    )
+    log.info("Published stop for session %s to %d nodes", session, len(nodes))
     return {"status": "accepted", "uuid": str(session)}
 
 
