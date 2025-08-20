@@ -1,3 +1,4 @@
+import json
 import pathlib
 import tempfile
 import uuid
@@ -13,12 +14,15 @@ def test_client_scene(docker_compose):
     base = f"http://{docker_compose['motion']}:8080"
     client = motion.client(base=base, timeout=5.0)
 
-    # ---- create (+ upload) in one step: returns a Scene
+    # ---- create from USD + runtime (client zips internally and uploads)
     with tempfile.TemporaryDirectory() as tdir:
-        zip_path = pathlib.Path(tdir) / "scene.zip"
-        with zipfile.ZipFile(zip_path, "w") as z:
-            z.writestr("hello.txt", "world")
-        scene = client.scene.create(zip_path)
+        tdir = pathlib.Path(tdir)
+        usd_path = tdir / "scene.usd"
+        usd_contents = "#usda 1.0\ndef X {\n}\n"
+        usd_path.write_text(usd_contents, encoding="utf-8")
+
+        runtime = "isaac"
+        scene = client.scene.create(usd_path, runtime)
     assert scene
 
     # ---- search: should find the scene
@@ -29,13 +33,23 @@ def test_client_scene(docker_compose):
     assert r.status_code == 200
     assert r.json() == {"uuid": str(scene.uuid)}
 
-    # ---- archive (download) and check contents
+    # ---- archive (download) and check contents: expect USD + meta.json
     with tempfile.TemporaryDirectory() as tdir:
         out = pathlib.Path(tdir) / f"{scene.uuid}.zip"
         client.scene.archive(scene, out)
         with zipfile.ZipFile(out) as z:
-            with z.open("hello.txt") as f:
-                assert f.read().decode("utf-8") == "world"
+            names = set(z.namelist())
+            assert "scene.usd" in names
+            assert "meta.json" in names
+
+            # meta.json should contain the chosen runtime
+            with z.open("meta.json") as f:
+                meta = json.loads(f.read().decode("utf-8"))
+                assert meta.get("runtime") == runtime
+
+            # USD file should match what we uploaded
+            with z.open("scene.usd") as f:
+                assert f.read().decode("utf-8") == usd_contents
 
     # ---- search for a random uuid should be empty
     bogus = str(uuid.uuid4())

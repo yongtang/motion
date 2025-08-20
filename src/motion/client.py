@@ -1,4 +1,7 @@
+import json
 import pathlib
+import tempfile
+import zipfile
 
 import requests
 
@@ -11,13 +14,36 @@ class SceneClient:
         self._base_ = base.rstrip("/")
         self._timeout_ = timeout
 
-    def create(self, file: str | pathlib.Path) -> Scene:
-        p = pathlib.Path(file)
-        with p.open("rb") as f:
-            files = {"file": (p.name, f, "application/zip")}
-            r = requests.post(
-                f"{self._base_}/scene", files=files, timeout=self._timeout_
-            )
+    def create(self, file: str | pathlib.Path, runtime: str) -> Scene:
+
+        file = pathlib.Path(file)
+        if not file.is_file():
+            raise FileNotFoundError(f"Input file not found: {file}")
+
+        # Create a temp directory that will be auto-deleted on exit
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            zip_path = directory / f"{file.stem}.zip"
+            meta = directory / "meta.json"
+
+            # Serialize runtime into meta.json
+            with meta.open("w", encoding="utf-8") as mf:
+                json.dump({"runtime": runtime}, mf, ensure_ascii=False)
+
+            # Zip USD file + meta.json
+            with zipfile.ZipFile(
+                zip_path, mode="w", compression=zipfile.ZIP_DEFLATED
+            ) as zf:
+                zf.write(file, arcname=file.name)
+                zf.write(meta, arcname="meta.json")
+
+            # Upload the zip
+            with zip_path.open("rb") as f:
+                files = {"file": (zip_path.name, f, "application/zip")}
+                r = requests.post(
+                    f"{self._base_}/scene", files=files, timeout=self._timeout_
+                )
+
         r.raise_for_status()
         return Scene(self._base_, r.json()["uuid"], timeout=self._timeout_)
 
