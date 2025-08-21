@@ -55,39 +55,80 @@ async def session_play(session: str):
         log.warning("Scene %s not found", scene)
         return
 
-    image = "python:3.12-slim"
+    network = (
+        f"container:{os.environ['SCOPE']}-server"
+        if os.environ["SCOPE"]
+        else "container:motion-server"
+    )
+    storage = (
+        f"{os.environ['SCOPE']}-motion_storage"
+        if os.environ["SCOPE"]
+        else "motion_storage"
+    )
     container = f"{os.environ['SCOPE']}-node" if os.environ["SCOPE"] else "motion-node"
 
-    run = [
-        "docker",
-        "run",
-        "-i",
-        "--name",
-        container,
-        "--rm",
-        "--network",
-        "host",
-        "-w",
-        "/app",
-        "-v",
-        f"{os.environ['MOTION']}:/app",
-        "-v",
-        "shared-storage:/storage",
-        "--health-cmd",
-        "curl -sf http://127.0.0.1:8888/health >/dev/null || exit 1",
-        "--health-interval",
-        "10s",
-        "--health-timeout",
-        "3s",
-        "--health-retries",
-        "3",
-        "--health-start-period",
-        "15s",
-        image,
-        "/bin/sh",
-        "-lc",
-        "apt -y -qq update && apt -y -qq install curl && pip install aiohttp && python -m server.node",
-    ]
+    run = (
+        [
+            "docker",
+            "run",
+            "-i",
+            "--rm",
+            "--name",
+            container,
+            "--network",
+            network,
+            "-w",
+            "/app",
+            "-v",
+            f"{os.environ['MOTION']}:/app",
+            "-v",
+            f"{storage}:/storage",
+            "--entrypoint",
+            "/bin/sh",
+            "--runtime",
+            "nvidia",
+            "--gpus",
+            "all",
+            "-e",
+            "ACCEPT_EULA=Y",
+            "-e",
+            "PRIVACY_CONSENT=Y",
+            "nvcr.io/nvidia/isaac-sim:5.0.0",
+            "-lc",
+            "sleep infinity",
+        ]
+        if (meta["runtime"] == "isaac")
+        else [
+            "docker",
+            "run",
+            "-i",
+            "--rm",
+            "--name",
+            container,
+            "--network",
+            network,
+            "-w",
+            "/app",
+            "-v",
+            f"{os.environ['MOTION']}:/app",
+            "-v",
+            f"{storage}:/storage",
+            "--health-cmd",
+            "curl -sf http://127.0.0.1:8888/health >/dev/null || exit 1",
+            "--health-interval",
+            "10s",
+            "--health-timeout",
+            "3s",
+            "--health-retries",
+            "3",
+            "--health-start-period",
+            "15s",
+            "python:3.12-slim",
+            "/bin/sh",
+            "-lc",
+            "apt -y -qq update && apt -y -qq install curl && pip install aiohttp && python -m server.node",
+        ]
+    )
     log.info(f"Proc: {run}")
     proc = await asyncio.create_subprocess_exec(*run, env={**os.environ})
 
