@@ -1,12 +1,47 @@
 services:
+  server:
+    image: python:3.12-slim
+    container_name: ${SCOPE:-motion}-server
+    restart: unless-stopped
+    network_mode: bridge
+    working_dir: /app
+    volumes:
+      - ${PWD}:/app
+      - storage:/storage
+    command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install curl && pip install -r server/requirements.txt && pip install -e . && uvicorn server.server:app --host 0.0.0.0 --port 8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
+  react:
+    image: node:alpine
+    container_name: ${SCOPE:-motion}-react
+    restart: unless-stopped
+    depends_on:
+      - server
+    network_mode: "service:server"
+    working_dir: /app/react
+    volumes:
+      - ${PWD}:/app
+    command: ["/bin/sh", "-lc", "npm ci --no-audit --no-fund && npm run dev -- --host"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173 > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
   nats:
     image: nats:alpine
     container_name: ${SCOPE:-motion}-nats
     restart: unless-stopped
-    network_mode: bridge
+    depends_on:
+      - server
+    network_mode: "service:server"
     command: ["-a", "127.0.0.1", "-m", "8222", "-js", "-sd", "/storage/nats"]
     volumes:
-      - shared-storage:/storage
+      - storage:/storage
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -18,10 +53,10 @@ services:
     container_name: ${SCOPE:-motion}-minio
     restart: unless-stopped
     depends_on:
-      - nats
-    network_mode: "service:nats"
+      - server
+    network_mode: "service:server"
     volumes:
-      - shared-storage:/storage
+      - storage:/storage
     environment:
       MINIO_ROOT_USER: username
       MINIO_ROOT_PASSWORD: password
@@ -38,18 +73,17 @@ services:
     container_name: ${SCOPE:-motion}-worker
     restart: unless-stopped
     depends_on:
-      - nats
-      - minio
-    environment:
-      - MOTION=${PWD}
-      - SCOPE=${SCOPE}
-    network_mode: "service:nats"
+      - server
+    network_mode: "service:server"
     working_dir: /app
     volumes:
       - ${PWD}:/app
-      - shared-storage:/storage
+      - storage:/storage
       - /etc/machine-id:/etc/machine-id:ro
       - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - MOTION=${PWD}
+      - SCOPE=${SCOPE}
     command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install docker.io curl && pip install -r server/requirements.txt && pip install -e . && python -m server.worker"]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9999/health >/dev/null || exit 1"]
@@ -57,40 +91,5 @@ services:
       timeout: 3s
       retries: 3
       start_period: 120s
-  server:
-    image: python:3.12-slim
-    container_name: ${SCOPE:-motion}-server
-    restart: unless-stopped
-    depends_on:
-      - worker
-    network_mode: "service:nats"
-    working_dir: /app
-    volumes:
-      - ${PWD}:/app
-      - shared-storage:/storage
-    command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install curl && pip install -r server/requirements.txt && pip install -e . && uvicorn server.server:app --host 0.0.0.0 --port 8080"]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health > /dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 120s
-  react:
-    image: node:alpine
-    container_name: ${SCOPE:-motion}-react
-    restart: unless-stopped
-    depends_on:
-      - server
-    network_mode: "service:nats"
-    working_dir: /app/react
-    volumes:
-      - ${PWD}:/app
-    command: ["/bin/sh", "-lc", "npm ci --no-audit --no-fund && npm run dev -- --host"]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173 > /dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 120s
 volumes:
-  shared-storage: {}
+  storage: {}
