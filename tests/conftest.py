@@ -187,13 +187,15 @@ def browser_run(docker_compose, scope):
 
 @pytest.fixture(scope="session")
 def scene_on_server(docker_compose):
-    """Create a scene (POST /scene with a tiny zip)."""
+    """Create a scene (POST /scene) with a zip that includes scene.usd + meta.json."""
     base = f"http://{docker_compose['motion']}:8080"
 
-    # prepare in-memory zip
+    # build in-memory zip with USD + meta.json
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
-        z.writestr("hello.txt", "world")
+        usd_contents = "#usda 1.0\ndef X {\n}\n"
+        z.writestr("scene.usd", usd_contents)
+        z.writestr("meta.json", json.dumps({"runtime": "ros2"}))
     buf.seek(0)
 
     files = {"file": ("scene.zip", buf, "application/zip")}

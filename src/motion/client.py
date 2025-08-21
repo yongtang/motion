@@ -34,7 +34,7 @@ class SceneClient:
             with zipfile.ZipFile(
                 zip_path, mode="w", compression=zipfile.ZIP_DEFLATED
             ) as zf:
-                zf.write(file, arcname=file.name)
+                zf.write(file, arcname="scene.usd")
                 zf.write(meta, arcname="meta.json")
 
             # Upload the zip

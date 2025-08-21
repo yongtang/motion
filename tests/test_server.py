@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import time
 import uuid
 import zipfile
@@ -18,10 +19,12 @@ def test_server_health(docker_compose):
 def test_server_scene(docker_compose):
     base = f"http://{docker_compose['motion']}:8080"
 
-    # CREATE (+ upload) -> POST /scene with multipart zip -> 201 + {"uuid": "..."}
+    # CREATE (+ upload) -> POST /scene with multipart zip: scene.usd + meta.json
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
-        z.writestr("hello.txt", "world")
+        usd_contents = "#usda 1.0\ndef X {\n}\n"
+        z.writestr("scene.usd", usd_contents)
+        z.writestr("meta.json", json.dumps({"runtime": "ros2"}))
     buf.seek(0)
     files = {"file": ("scene.zip", buf, "application/zip")}
     r = requests.post(f"{base}/scene", files=files, timeout=5.0)
@@ -43,9 +46,16 @@ def test_server_scene(docker_compose):
     r = requests.get(f"{base}/scene/{scene}/archive", timeout=5.0)
     assert r.status_code == 200
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-        assert "hello.txt" in z.namelist()
-        with z.open("hello.txt") as f:
-            assert f.read().decode("utf-8") == "world"
+        names = set(z.namelist())
+        assert "scene.usd" in names
+        assert "meta.json" in names
+
+        with z.open("meta.json") as f:
+            meta = json.loads(f.read().decode("utf-8"))
+            assert meta.get("runtime") in ("isaac", "ros2")  # accept either
+
+        with z.open("scene.usd") as f:
+            assert f.read().decode("utf-8") == usd_contents
 
     # negative search
     bogus = str(uuid.uuid4())

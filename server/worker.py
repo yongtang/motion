@@ -1,14 +1,18 @@
 import argparse
 import asyncio
+import io
+import json
 import logging
 import os
+import shutil
 import uuid
+import zipfile
 
 import aiohttp.web
 import nats
 
 from .channel import Channel
-from .storage import storage_kv_set
+from .storage import storage_kv_get, storage_kv_set
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("worker")
@@ -16,6 +20,40 @@ log = logging.getLogger("worker")
 
 async def session_play(session: str):
     log.info(f"Received play session: {session}")
+
+    directory = "/storage/node"
+
+    try:
+        data = storage_kv_get("session", f"{session}.json")
+        log.info(f"Session {session}: {data}")
+        data = json.loads(data)
+        log.info(f"Session {session}: {data}")
+
+        scene = data["scene"]
+    except FileNotFoundError:
+        log.warning(f"Session {session} not valid")
+        return
+
+    try:
+        data = storage_kv_get("scene", f"{scene}.json")
+        log.info(f"Scene {scene}: {data}")
+
+        data = storage_kv_get("scene", f"{scene}.zip")
+
+        shutil.rmtree(directory, ignore_errors=True)
+        log.info(f"Directory {directory} removed")
+
+        os.makedirs(directory, exist_ok=True)
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            zf.extractall(directory)
+        log.info(f"Directory {directory}: {os.listdir(directory)}")
+
+        with open(os.path.join(directory, "meta.json"), "rb") as f:
+            meta = json.loads(f.read())
+        log.info(f"Scene meta: {meta}")
+    except FileNotFoundError:
+        log.warning("Scene %s not found", scene)
+        return
 
     image = "python:3.12-slim"
     container = f"{os.environ['SCOPE']}-node" if os.environ["SCOPE"] else "motion-node"
