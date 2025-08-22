@@ -104,7 +104,8 @@ services:
       - storage:/storage:ro
     environment:
       - SCOPE=${SCOPE}
-    command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install curl && pip install aiohttp && python -m server.node"]
+    entrypoint: ["/bin/bash"]
+    command: ["-lc", "apt -y -qq update && apt -y -qq install curl && pip install aiohttp nats-py && python -m server.node"]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8888/health >/dev/null || exit 1"]
       interval: 10s

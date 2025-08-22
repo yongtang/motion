@@ -4,7 +4,7 @@ import logging
 import nats
 
 
-class Channel:
+class NodeChannel:
     def __init__(self, servers: str = "nats://127.0.0.1:4222"):
         self.servers = servers
         self.nc: nats.NATS | None = None
@@ -12,7 +12,7 @@ class Channel:
         self.log = logging.getLogger("channel")
 
     async def start(self) -> None:
-        assert self.nc is None and self.js is None, "Channel already started"
+        assert self.nc is None and self.js is None, "NodeChannel already started"
         self.log.info(f"Connecting to NATS at {self.servers} ...")
 
         async def cb(event: str, *args, **kwargs):
@@ -51,7 +51,7 @@ class Channel:
         self.js = None
 
     async def publish(self, node: str, session: str, op: str) -> None:
-        assert self.js is not None, "Channel not started"
+        assert self.js is not None, "NodeChannel not started"
         assert op in ("play", "stop"), f"Unsupported op: {op}"
         subject = f"motion.node.{node}.{op}"
         payload = f"{session}"
@@ -60,7 +60,7 @@ class Channel:
         self.log.info(f"Ack {ack.stream} {ack.seq}")
 
     async def subscribe(self, node: str, op: str):
-        assert self.js is not None, "Channel not started"
+        assert self.js is not None, "NodeChannel not started"
         assert op in ("play", "stop"), f"Unsupported op: {op}"
         subject = f"motion.node.{node}.{op}"
         durable = f"motion-node-{node}-{op}"

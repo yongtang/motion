@@ -11,7 +11,7 @@ import zipfile
 import aiohttp.web
 import nats
 
-from .channel import Channel
+from .channel import NodeChannel
 from .storage import storage_kv_get, storage_kv_set
 
 logging.basicConfig(level=logging.INFO)
@@ -133,7 +133,7 @@ async def task_nats(node: str):
       - Loop checks once per second if the play task finished naturally.
       - If completed, we clear 'running' and return to idle without needing a stop.
     """
-    channel = Channel(servers="nats://127.0.0.1:4222")
+    channel = NodeChannel(servers="nats://127.0.0.1:4222")
     await channel.start()
 
     sub_play = await channel.subscribe_play(node)
