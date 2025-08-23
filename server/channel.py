@@ -4,7 +4,7 @@ import logging
 import nats
 
 
-class NodeChannel:
+class Channel:
     def __init__(self, servers: str = "nats://127.0.0.1:4222"):
         self.servers = servers
         self.nc: nats.NATS | None = None
@@ -12,7 +12,7 @@ class NodeChannel:
         self.log = logging.getLogger("channel")
 
     async def start(self) -> None:
-        assert self.nc is None and self.js is None, "NodeChannel already started"
+        assert self.nc is None and self.js is None, "Channel already started"
         self.log.info(f"Connecting to NATS at {self.servers} ...")
 
         async def cb(event: str, *args, **kwargs):
@@ -28,10 +28,10 @@ class NodeChannel:
         self.js = self.nc.jetstream()
         await self.nc.flush()
 
-        # Single stream for node-scoped commands (play/stop on separate subjects)
+        # Single stream for node commands and data
         config = nats.js.api.StreamConfig(
             name="motion",
-            subjects=["motion.node.*.play", "motion.node.*.stop"],
+            subjects=["motion.node.*.play", "motion.node.*.stop", "motion.data.>"],
         )
         try:
             await self.js.add_stream(config=config)
@@ -50,8 +50,10 @@ class NodeChannel:
         self.nc = None
         self.js = None
 
-    async def publish(self, node: str, session: str, op: str) -> None:
-        assert self.js is not None, "NodeChannel not started"
+    # ----- Node (play/stop) -----
+
+    async def publish_node(self, node: str, session: str, op: str) -> None:
+        assert self.js is not None, "Channel not started"
         assert op in ("play", "stop"), f"Unsupported op: {op}"
         subject = f"motion.node.{node}.{op}"
         payload = f"{session}"
@@ -59,8 +61,8 @@ class NodeChannel:
         ack = await self.js.publish(subject, payload.encode())
         self.log.info(f"Ack {ack.stream} {ack.seq}")
 
-    async def subscribe(self, node: str, op: str):
-        assert self.js is not None, "NodeChannel not started"
+    async def subscribe_node(self, node: str, op: str):
+        assert self.js is not None, "Channel not started"
         assert op in ("play", "stop"), f"Unsupported op: {op}"
         subject = f"motion.node.{node}.{op}"
         durable = f"motion-node-{node}-{op}"
@@ -73,7 +75,6 @@ class NodeChannel:
         try:
             await self.js.add_consumer(stream="motion", config=config)
         except nats.js.errors.APIError:
-            # Consumer already exists; continue
             pass
         sub = await self.js.pull_subscribe(
             subject,
@@ -84,73 +85,29 @@ class NodeChannel:
         return sub
 
     async def publish_play(self, node: str, session: str) -> None:
-        await self.publish(node=node, session=session, op="play")
+        await self.publish_node(node=node, session=session, op="play")
 
     async def publish_stop(self, node: str, session: str) -> None:
-        await self.publish(node=node, session=session, op="stop")
+        await self.publish_node(node=node, session=session, op="stop")
 
     async def subscribe_play(self, node: str):
-        return await self.subscribe(node=node, op="play")
+        return await self.subscribe_node(node=node, op="play")
 
     async def subscribe_stop(self, node: str):
-        return await self.subscribe(node=node, op="stop")
+        return await self.subscribe_node(node=node, op="stop")
 
+    # ----- Data (motion.data.<session>) -----
 
-class DataChannel:
-    def __init__(self, servers: str = "nats://127.0.0.1:4222"):
-        self.servers = servers
-        self.nc: nats.NATS | None = None
-        self.js: nats.js.JetStreamContext | None = None
-        self.log = logging.getLogger("channel.data")
-
-    async def start(self) -> None:
-        # connect and ensure stream exists
-        assert self.nc is None and self.js is None, "DataChannel already started"
-        self.log.info(f"Connecting to NATS at {self.servers} ...")
-
-        async def cb(event: str, *args, **kwargs):
-            self.log.info(f"NATS {event}: args={args} kwargs={kwargs}")
-
-        self.nc = await nats.connect(
-            servers=[self.servers],
-            error_cb=functools.partial(cb, "error"),
-            reconnected_cb=functools.partial(cb, "reconnected"),
-            disconnected_cb=functools.partial(cb, "disconnected"),
-            closed_cb=functools.partial(cb, "closed"),
-        )
-        self.js = self.nc.jetstream()
-        await self.nc.flush()
-
-        config = nats.js.api.StreamConfig(name="motion", subjects=["motion.data.>"])
-        try:
-            await self.js.add_stream(config=config)
-            self.log.info(f"Created stream 'motion' with subjects {config.subjects}")
-        except nats.js.errors.APIError:
-            await self.js.update_stream(config=config)
-            self.log.info(f"Updated stream 'motion' with subjects {config.subjects}")
-
-        self.log.info("Connected.")
-
-    async def close(self) -> None:
-        # drain and close
-        if self.nc and not self.nc.is_closed:
-            self.log.info("Draining NATS connection...")
-            await self.nc.drain()
-            self.log.info("NATS connection closed")
-        self.nc = None
-        self.js = None
-
-    async def publish(self, session: str, payload: bytes) -> None:
-        # publish to motion.data.{session}
-        assert self.js is not None, "DataChannel not started"
+    async def publish_data(self, session: str, payload: str) -> None:
+        assert self.js is not None, "Channel not started"
         subject = f"motion.data.{session}"
         self.log.info(f"Publish {subject}: {payload[:80]!r}")
-        ack = await self.js.publish(subject, payload)
+        ack = await self.js.publish(subject, payload.encode())
         self.log.info(f"Ack {ack.stream} {ack.seq}")
 
     async def subscribe_archive(self, session: str):
         # durable pull (ALL) on motion.data.{session}
-        assert self.js is not None, "DataChannel not started"
+        assert self.js is not None, "Channel not started"
         subject = f"motion.data.{session}"
         durable = f"motion-data-{session}"
         config = nats.js.api.ConsumerConfig(
@@ -163,14 +120,14 @@ class DataChannel:
         try:
             await self.js.add_consumer(stream="motion", config=config)
         except nats.js.errors.APIError:
-            pass  # already exists
+            pass
         sub = await self.js.pull_subscribe(subject, durable=durable, stream="motion")
         self.log.info(f"[archive] pull_subscribed {subject} durable={durable}")
         return sub
 
     async def subscribe_stream(self, session: str):
         # ephemeral push (NEW) on motion.data.{session}
-        assert self.js is not None, "DataChannel not started"
+        assert self.js is not None, "Channel not started"
         subject = f"motion.data.{session}"
         config = nats.js.api.ConsumerConfig(
             filter_subject=subject,

@@ -1,10 +1,14 @@
 import asyncio
+import json
 import logging
+import os
 
 import aiohttp.web
 
+from .channel import Channel
+
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("worker")
+log = logging.getLogger("node")
 
 
 async def node_http():
@@ -29,18 +33,29 @@ async def node_http():
         log.info("HTTP server stopped")
 
 
-async def node_main():
+async def node_main(channel: Channel, session: str):
     async with asyncio.timeout(15):
-        while True:
-            print("Main process working...")
+        for i in range(30):
+            data = json.dumps({"session": session, "count": i})
+            log.info(f"Publish {data}...")
+            await channel.publish_data(session, data)
             await asyncio.sleep(1)
 
 
 async def main():
-    await asyncio.gather(
-        node_http(),
-        node_main(),
-    )
+    with open(os.path.join("/storage/node", "session.json"), "rb") as f:
+        data = json.loads(f.read())
+    session = data["session"]
+
+    channel = Channel()
+    await channel.start()
+    try:
+        await asyncio.gather(
+            node_http(),
+            node_main(channel, session),
+        )
+    finally:
+        await channel.close()
 
 
 if __name__ == "__main__":

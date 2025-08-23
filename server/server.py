@@ -20,7 +20,7 @@ from pydantic import UUID4, BaseModel
 
 import motion
 
-from .channel import NodeChannel
+from .channel import Channel
 from .storage import storage_kv_del, storage_kv_get, storage_kv_scan, storage_kv_set
 
 logging.basicConfig(level=logging.INFO)
@@ -29,16 +29,16 @@ log = logging.getLogger("server")
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.channel = NodeChannel()
+    app.state.channel = Channel()
     log.info("Initializing channel...")
     try:
         await app.state.channel.start()
-        log.info("NodeChannel started")
+        log.info("Channel started")
         yield
     finally:
-        log.info("NodeChannel closing")
+        log.info("Channel closing")
         await app.state.channel.close()
-        log.info("NodeChannel closed")
+        log.info("Channel closed")
 
 
 app = FastAPI(lifespan=lifespan)

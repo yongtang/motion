@@ -11,7 +11,7 @@ import zipfile
 import aiohttp.web
 import nats
 
-from .channel import NodeChannel
+from .channel import Channel
 from .storage import storage_kv_get, storage_kv_set
 
 logging.basicConfig(level=logging.INFO)
@@ -51,6 +51,10 @@ async def session_play(session: str):
         with open(os.path.join(directory, "meta.json"), "rb") as f:
             meta = json.loads(f.read())
         log.info(f"Scene meta: {meta}")
+
+        with open(os.path.join(directory, "session.json"), "wb") as f:
+            f.write(json.dumps({"session": f"{session}"}).encode())
+
     except FileNotFoundError:
         log.warning("Scene %s not found", scene)
         return
@@ -133,7 +137,7 @@ async def task_nats(node: str):
       - Loop checks once per second if the play task finished naturally.
       - If completed, we clear 'running' and return to idle without needing a stop.
     """
-    channel = NodeChannel(servers="nats://127.0.0.1:4222")
+    channel = Channel(servers="nats://127.0.0.1:4222")
     await channel.start()
 
     sub_play = await channel.subscribe_play(node)
