@@ -36,8 +36,8 @@ async def node_http():
 
 
 async def node_main(channel: Channel, session: str):
-    async with asyncio.timeout(15):
-        for i in range(30):
+    async with asyncio.timeout(30):
+        for i in range(60):
             data = json.dumps({"session": session, "count": i})
             log.info(f"Publish {data}...")
             await channel.publish_data(session, data)

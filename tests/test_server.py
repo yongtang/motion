@@ -98,12 +98,12 @@ def test_server_session(scene_on_server):
     r = requests.post(f"{base}/session/{session}/play", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"status": "accepted", "uuid": session}
-    time.sleep(5)  # allow time to observe publish logs
+    time.sleep(60)  # allow time to observe publish logs
 
     r = requests.post(f"{base}/session/{session}/stop", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"status": "accepted", "uuid": session}
-    time.sleep(5)  # allow time to observe publish logs
+    time.sleep(30)  # allow time to observe publish logs
 
     # delete
     r = requests.delete(f"{base}/session/{session}", timeout=5.0)
@@ -134,7 +134,7 @@ def test_server_session(scene_on_server):
 
     # Give enough time for natural completion to occur.
     # (If your worker uses 15s sleep + 1s poll, 30s is a safe margin.)
-    time.sleep(30)
+    time.sleep(60)
 
     # clean up the session
     r = requests.delete(f"{base}/session/{session2}", timeout=5.0)
