@@ -349,3 +349,6 @@ vite.config.ts.timestamp-*
 
 
 tests/test-results/
+
+
+*.swp

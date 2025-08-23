@@ -35,8 +35,9 @@ def storage_kv_get(bucket: str, key: str) -> bytes:
         return obj["Body"].read()
     except ClientError as e:
         code = (e.response.get("Error", {}) or {}).get("Code", "")
-        if code in ("NoSuchKey", "NotFound", "404"):
-            raise FileNotFoundError(key) from e
+        # Normalize "not found" cases: object missing OR bucket missing
+        if code in ("NoSuchKey", "NotFound", "404", "NoSuchBucket"):
+            raise FileNotFoundError(f"{bucket}/{key}") from e
         raise
 
 
