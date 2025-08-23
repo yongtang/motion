@@ -89,6 +89,26 @@ class SessionClient:
         r.raise_for_status()
         return Session(self._base_, r.json()["uuid"], timeout=self._timeout_)
 
+    def archive(self, session: Session, file: str | pathlib.Path) -> pathlib.Path:
+        """Download /session/{uuid}/archive to a local zip file.
+
+        Raises:
+            requests.HTTPError on non-2xx (e.g., 404 if session not found).
+        """
+        r = requests.get(
+            f"{self._base_}/session/{session.uuid}/archive",
+            stream=True,
+            timeout=self._timeout_,
+        )
+        r.raise_for_status()
+        out = pathlib.Path(file)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with out.open("wb") as f:
+            for chunk in r.iter_content(8192):
+                if chunk:
+                    f.write(chunk)
+        return out
+
     def search(self, q: str) -> list[Session]:
         # simple existence check by id
         r = requests.get(f"{self._base_}/session/{q}", timeout=self._timeout_)

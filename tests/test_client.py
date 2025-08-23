@@ -1,6 +1,7 @@
 import json
 import pathlib
 import tempfile
+import time
 import uuid
 import zipfile
 
@@ -70,10 +71,10 @@ def test_client_session(scene_on_server):
     base, scene = scene_on_server
     client = motion.client(base=base, timeout=5.0)
 
-    # Build a Scene object for the existing scene id from the fixture
+    # Build a Scene object from the fixture's scene id
     scene_obj = motion.Scene(base, scene, timeout=5.0)
 
-    # ---- CREATE: session from a real scene -> returns Session
+    # ---- CREATE: session from a real scene
     session = client.session.create(scene_obj)
     assert isinstance(session, motion.Session) and session
 
@@ -82,17 +83,70 @@ def test_client_session(scene_on_server):
     assert r.status_code == 200
     assert r.json() == {"uuid": str(session.uuid), "scene": scene}
 
-    # ---- DELETE: then REST lookup should 404
+    # ---- ARCHIVE immediately after create -> 200, empty zip (no data.json)
+    with tempfile.TemporaryDirectory() as tdir:
+        out = pathlib.Path(tdir) / f"{session.uuid}.zip"
+        client.session.archive(session, out)
+        with zipfile.ZipFile(out) as z:
+            names = set(z.namelist())
+            assert "data.json" not in names
+            assert len(names) == 0
+
+    # ---- PLAY (via REST), then STOP, then wait a little (10s)
+    r = requests.post(f"{base}/session/{session.uuid}/play", timeout=5.0)
+    assert r.status_code == 200 and r.json() == {
+        "status": "accepted",
+        "uuid": str(session.uuid),
+    }
+    time.sleep(60)
+
+    r = requests.post(f"{base}/session/{session.uuid}/stop", timeout=5.0)
+    assert r.status_code == 200 and r.json() == {
+        "status": "accepted",
+        "uuid": str(session.uuid),
+    }
+
+    # Allow worker a bit of time to flush data
+    time.sleep(30)
+
+    # ---- ARCHIVE after stop -> zip should contain data.json with NDJSON lines
+    with tempfile.TemporaryDirectory() as tdir:
+        out = pathlib.Path(tdir) / f"{session.uuid}.zip"
+        client.session.archive(session, out)
+        with zipfile.ZipFile(out) as z:
+            names = set(z.namelist())
+            assert "data.json" in names
+            with z.open("data.json") as f:
+                content = f.read().decode("utf-8", errors="ignore")
+                lines = [ln for ln in content.splitlines() if ln.strip()]
+                assert len(lines) >= 1, "Expected at least one JSON line"
+                # Validate each line is JSON without interpreting schema
+                for i, ln in enumerate(lines, 1):
+                    try:
+                        json.loads(ln)
+                    except Exception as e:
+                        pytest.fail(f"Invalid JSON on line {i}: {e}")
+
+    # ---- DELETE session
     assert client.session.delete(session) == {
         "status": "deleted",
         "uuid": str(session.uuid),
     }
+
+    # After delete, REST lookup should 404
     r = requests.get(f"{base}/session/{session.uuid}", timeout=5.0)
     assert r.status_code == 404
 
+    # ARCHIVE after delete -> 404 (client raises)
+    with tempfile.TemporaryDirectory() as tdir:
+        out = pathlib.Path(tdir) / f"{session.uuid}.zip"
+        with pytest.raises(requests.HTTPError) as ei:
+            client.session.archive(session, out)
+        assert ei.value.response is not None
+        assert ei.value.response.status_code == 404
+
     # ---- NEGATIVE CREATE: nonexistent scene -> 404
     bogus_scene = str(uuid.uuid4())
-    # Create a lightweight dummy with a .uuid attribute to avoid fetching via Scene(...)
     DummyScene = type("DummyScene", (), {})
     dummy = DummyScene()
     dummy.uuid = bogus_scene
