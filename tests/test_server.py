@@ -170,7 +170,7 @@ def test_server_session(scene_on_server):
     assert r.json() == {"status": "accepted", "uuid": session2}
 
     # Wait longer for natural completion (worker play duration + margin)
-    time.sleep(60)
+    time.sleep(30)
 
     r = requests.delete(f"{base}/session/{session2}", timeout=5.0)
     assert r.status_code == 200

@@ -20,7 +20,7 @@ def test_session(capsys, session_on_server):
     # drive behavior that prints
     # (updated: invoke play, wait, then stop)
     session.play()
-    time.sleep(60)
+    time.sleep(30)
     session.stop()
 
     # negative: constructing with a bogus session should raise

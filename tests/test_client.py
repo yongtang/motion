@@ -98,7 +98,7 @@ def test_client_session(scene_on_server):
         "status": "accepted",
         "uuid": str(session.uuid),
     }
-    time.sleep(60)
+    time.sleep(30)
 
     r = requests.post(f"{base}/session/{session.uuid}/stop", timeout=5.0)
     assert r.status_code == 200 and r.json() == {
@@ -107,7 +107,7 @@ def test_client_session(scene_on_server):
     }
 
     # Allow worker a bit of time to flush data
-    time.sleep(30)
+    time.sleep(10)
 
     # ---- ARCHIVE after stop -> zip should contain data.json with NDJSON lines
     with tempfile.TemporaryDirectory() as tdir:
