@@ -1,9 +1,11 @@
 import asyncio
 import contextlib
+import io
 import json
 import logging
 import random
 import uuid
+import zipfile
 
 from fastapi import (
     FastAPI,
@@ -185,6 +187,57 @@ async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
     d = json.loads(raw)
     return motion.session.SessionBaseModel(
         uuid=UUID4(d["uuid"]), scene=UUID4(d["scene"])
+    )
+
+
+@app.get("/session/{session:uuid}/archive")
+async def session_archive(session: UUID4):
+
+    # Ensure session exists
+    try:
+        storage_kv_get("session", f"{session}.json")
+    except FileNotFoundError:
+        log.warning("Session %s not found for archive", session)
+        raise HTTPException(status_code=404, detail="session not found")
+
+    # Collect and sort matching objects
+    items = sorted(
+        key for key in storage_kv_scan("data", f"{session}-") if key.endswith(".json")
+    )
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        if items:
+            combined = io.StringIO()
+            for key in items:
+                try:
+                    blob = storage_kv_get("data", key)
+                    text = blob.decode("utf-8", errors="ignore")
+                    combined.write(text)
+                    if not text.endswith("\n"):
+                        combined.write("\n")
+                except FileNotFoundError:
+                    log.warning("Missing data object during archive build: %s", key)
+                except Exception as e:
+                    log.error("Error retrieving %s: %s", key, e)
+
+            if combined.tell() > 0:
+                z.writestr("data.json", combined.getvalue().encode("utf-8"))
+
+    buffer.seek(0)
+    log.info(
+        "Built session archive for %s: %d objects, %d bytes",
+        session,
+        len(items),
+        buffer.getbuffer().nbytes,
+    )
+
+    headers = {
+        "Content-Disposition": f'inline; filename="{session}.zip"',
+        "Content-Type": "application/zip",
+    }
+    return Response(
+        content=buffer.read(), media_type="application/zip", headers=headers
     )
 
 

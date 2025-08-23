@@ -51,6 +51,13 @@ def storage_kv_del(bucket: str, key: str) -> None:
 
 def storage_kv_scan(bucket: str, prefix: str):
     paginator = storage.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            yield obj["Key"]
+    try:
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                yield obj["Key"]
+    except ClientError as e:
+        code = (e.response.get("Error", {}) or {}).get("Code", "")
+        # If bucket doesn't exist, just yield nothing (treat as empty).
+        if code in ("NoSuchBucket", "NotFound", "404"):
+            return
+        raise

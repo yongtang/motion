@@ -72,7 +72,7 @@ async def node_data(channel: Channel, session: str):
         if not batch:
             continue
 
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
         key = f"{session}-{ts}.json"
 
         payload = b"\n".join(m.data for m in batch) + b"\n"

@@ -82,7 +82,12 @@ def test_server_scene(docker_compose):
 def test_server_session(scene_on_server):
     base, scene = scene_on_server  # fixture already: POST /scene with a tiny zip
 
-    # create session
+    # 1) ARCHIVE before session exists -> 404 (use a random UUID)
+    bogus_session = str(uuid.uuid4())
+    r = requests.get(f"{base}/session/{bogus_session}/archive", timeout=5.0)
+    assert r.status_code == 404
+
+    # 2) create session
     r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
     assert r.status_code == 201, r.text
     data = r.json()
@@ -94,18 +99,48 @@ def test_server_session(scene_on_server):
     assert r.status_code == 200
     assert r.json() == {"uuid": session, "scene": scene}
 
-    # invoke play, then stop, and wait
+    # 3) ARCHIVE immediately after create -> 200, empty zip (no data.json)
+    r = requests.get(f"{base}/session/{session}/archive", timeout=10.0)
+    assert r.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        names = set(z.namelist())
+        assert "data.json" not in names
+        assert len(names) == 0
+
+    # 4) invoke play, wait long enough, then stop
     r = requests.post(f"{base}/session/{session}/play", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"status": "accepted", "uuid": session}
-    time.sleep(60)  # allow time to observe publish logs
+
+    # let the worker run for a while
+    time.sleep(30)
 
     r = requests.post(f"{base}/session/{session}/stop", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"status": "accepted", "uuid": session}
-    time.sleep(30)  # allow time to observe publish logs
 
-    # delete
+    # 5) ARCHIVE after play+stop -> 200, zip contains data.json with NDJSON lines
+    deadline = time.time() + 60.0
+    found = False
+    while time.time() < deadline:
+        r = requests.get(f"{base}/session/{session}/archive", timeout=10.0)
+        if r.status_code != 200:
+            time.sleep(2.0)
+            continue
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            names = set(z.namelist())
+            if "data.json" in names:
+                with z.open("data.json") as f:
+                    content = f.read().decode("utf-8", errors="ignore")
+                    lines = [ln for ln in content.splitlines() if ln.strip()]
+                    if lines:  # at least one non-empty line
+                        found = True
+                        break
+        time.sleep(2.0)
+
+    assert found, "Expected data.json with at least one NDJSON line after play+stop"
+
+    # 6) delete session
     r = requests.delete(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"status": "deleted", "uuid": session}
@@ -114,29 +149,29 @@ def test_server_session(scene_on_server):
     r = requests.get(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 404
 
-    # create with bogus scene → 404
+    # ARCHIVE after delete -> 404 again
+    r = requests.get(f"{base}/session/{session}/archive", timeout=5.0)
+    assert r.status_code == 404
+
+    # 7) create with bogus scene → 404
     bogus_scene = str(uuid.uuid4())
     r = requests.post(f"{base}/session", json={"scene": bogus_scene}, timeout=5.0)
     assert r.status_code == 404
     assert r.json().get("detail") == "scene not found"
 
-    # natural-completion path (no stop)
-    # create another session (reuse the same scene_on_server 'scene')
+    # 8) natural-completion path (no stop)
     r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
     assert r.status_code == 201, r.text
     session2 = r.json()["uuid"]
     assert session2
 
-    # play but DO NOT stop; worker should finish on its own (15s play + ~1s poll)
     r = requests.post(f"{base}/session/{session2}/play", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"status": "accepted", "uuid": session2}
 
-    # Give enough time for natural completion to occur.
-    # (If your worker uses 15s sleep + 1s poll, 30s is a safe margin.)
+    # Wait longer for natural completion (worker play duration + margin)
     time.sleep(60)
 
-    # clean up the session
     r = requests.delete(f"{base}/session/{session2}", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"status": "deleted", "uuid": session2}
