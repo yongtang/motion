@@ -105,7 +105,7 @@ services:
     environment:
       - SCOPE=${SCOPE}
     entrypoint: ["/bin/bash"]
-    command: ["-lc", "apt -y -qq update && apt -y -qq install curl && pip install aiohttp nats-py && python -m server.node"]
+    command: ["-lc", "apt -y -qq update && apt -y -qq install curl && pip install aiohttp nats-py boto3 && python -m server.node"]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8888/health >/dev/null || exit 1"]
       interval: 10s
