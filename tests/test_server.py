@@ -24,7 +24,7 @@ def test_server_scene(docker_compose):
     with zipfile.ZipFile(buf, "w") as z:
         usd_contents = "#usda 1.0\ndef X {\n}\n"
         z.writestr("scene.usd", usd_contents)
-        z.writestr("meta.json", json.dumps({"runtime": "ros2"}))
+        z.writestr("meta.json", json.dumps({"runtime": "echo"}))
     buf.seek(0)
     files = {"file": ("scene.zip", buf, "application/zip")}
     r = requests.post(f"{base}/scene", files=files, timeout=5.0)
@@ -52,7 +52,7 @@ def test_server_scene(docker_compose):
 
         with z.open("meta.json") as f:
             meta = json.loads(f.read().decode("utf-8"))
-            assert meta.get("runtime") in ("isaac", "ros2")  # accept either
+            assert meta.get("runtime") in ("isaac", "echo")  # accept either
 
         with z.open("scene.usd") as f:
             assert f.read().decode("utf-8") == usd_contents

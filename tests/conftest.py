@@ -200,7 +200,7 @@ def scene_on_server(docker_compose):
     with zipfile.ZipFile(buf, "w") as z:
         usd_contents = "#usda 1.0\ndef X {\n}\n"
         z.writestr("scene.usd", usd_contents)
-        z.writestr("meta.json", json.dumps({"runtime": "ros2"}))
+        z.writestr("meta.json", json.dumps({"runtime": "echo"}))
     buf.seek(0)
 
     files = {"file": ("scene.zip", buf, "application/zip")}

@@ -19,7 +19,7 @@ def test_client_scene(docker_compose):
         usd_contents = "#usda 1.0\ndef X {\n}\n"
         usd_path.write_text(usd_contents, encoding="utf-8")
 
-        runtime = "ros2"
+        runtime = "echo"
         scene = client.scene.create(usd_path, runtime)
     assert scene
 

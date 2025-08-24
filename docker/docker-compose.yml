@@ -91,9 +91,9 @@ services:
       timeout: 3s
       retries: 3
       start_period: 120s
-  node-ros2:
+  node-echo:
     image: python:3.12-slim
-    container_name: ${SCOPE:-motion}-node-ros2
+    container_name: ${SCOPE:-motion}-node-echo
     restart: no
     depends_on:
       - server
