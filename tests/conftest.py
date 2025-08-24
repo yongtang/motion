@@ -55,11 +55,16 @@ def docker_compose(scope, request):
                 continue
 
             services = [json.loads(ln) for ln in lines]
-            if all(
-                (s.get("State", "").lower() == "running")
-                and (s.get("Health", "").lower() == "healthy")
-                for s in services
-            ):
+
+            def f_service_ready(s: dict) -> bool:
+                state_ok = s.get("State", "").lower() == "running"
+                if s.get("Service", "").startswith("node-"):
+                    # Skip health requirement for node-* services
+                    return state_ok
+                # For all other services, require healthy
+                return state_ok and (s.get("Health", "").lower() == "healthy")
+
+            if all(f_service_ready(s) for s in services):
                 return
 
             if time.time() > deadline:

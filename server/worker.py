@@ -54,6 +54,7 @@ async def run_done(session: str):
         proc = await asyncio.create_subprocess_exec(*done, env={**os.environ})
 
         await proc.wait()
+        shutil.rmtree("/storage/node", ignore_errors=True)
         log.info(f"[run_done]: done")
 
 
@@ -71,6 +72,7 @@ async def run_node(runtime: str):
         "/app/docker/docker-compose.yml",
         "up",
         "--no-deps",
+        "--force-recreate",
         service,
     ]
     log.info(f"[run_node]: node={node}")
@@ -243,6 +245,7 @@ async def main():
 
     async with run_http():
         await run_nats(str(node))
+
 
 if __name__ == "__main__":
     asyncio.run(main())

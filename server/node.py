@@ -57,7 +57,7 @@ async def run_node(session: str, channel: Channel):
 
 
 async def main():
-    with open("/storage/node/session.json", "r", encoding="utf-8") as f:
+    with open("/storage/node/session.json", "r") as f:
         session = json.loads(f.read())["session"]
 
     async with run_http():

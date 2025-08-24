@@ -39,9 +39,9 @@ services:
     depends_on:
       - server
     network_mode: "service:server"
-    command: ["-a", "127.0.0.1", "-m", "8222", "-js", "-sd", "/storage/nats"]
     volumes:
       - storage:/storage
+    command: ["-a", "127.0.0.1", "-m", "8222", "-js", "-sd", "/storage/nats"]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -103,16 +103,26 @@ services:
       - ${MOTION:-$PWD}:/app:ro
       - storage:/storage:ro
     environment:
+      - MOTION=${MOTION}
       - SCOPE=${SCOPE}
     entrypoint: ["/bin/bash"]
-    command: ["-lc", "apt -y -qq update && apt -y -qq install curl && pip install aiohttp nats-py boto3 && python -m server.node"]
+    command:
+      - -lc
+      - |
+        if [ -z "${MOTION}" ]; then
+          echo "MOTION not set, exiting";
+          exit 0;
+        fi
+        apt -y -qq update &&
+        apt -y -qq install curl &&
+        pip install aiohttp nats-py boto3 &&
+        python -m server.node
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8888/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
       start_period: 120s
-    profiles: ["node"]
   node-isaac:
     image: nvcr.io/nvidia/isaac-sim:5.0.0
     container_name: ${SCOPE:-motion}-node-isaac
@@ -126,12 +136,20 @@ services:
       - ${MOTION:-$PWD}:/app:ro
       - storage:/storage:ro
     environment:
+      - MOTION=${MOTION}
       - SCOPE=${SCOPE}
       - ACCEPT_EULA=Y
       - PRIVACY_CONSENT=Y
     entrypoint: ["/bin/bash"]
-    command: ["-lc", "sleep infinity"]
-    profiles: ["node"]
+    command:
+      - -lc
+      - |
+        if [ -z "${MOTION}" ]; then
+          echo "MOTION not set, exiting";
+          exit 0;
+        fi
+        sleep infinity
+    profiles: ["gpu"]
     deploy:
       resources:
         reservations:
