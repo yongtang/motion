@@ -31,7 +31,13 @@ class Channel:
         # Single stream for node commands and data
         config = nats.js.api.StreamConfig(
             name="motion",
-            subjects=["motion.node.*.play", "motion.node.*.stop", "motion.data.>"],
+            subjects=[
+                "motion.node.*.play",
+                "motion.node.*.stop",
+                "motion.data.*",
+                "motion.step.*",
+            ],
+            allow_rollup_hdrs=True,
         )
         try:
             await self.js.add_stream(config=config)
@@ -137,4 +143,34 @@ class Channel:
         )
         sub = await self.js.subscribe(subject, stream="motion", config=config)
         self.log.info(f"[stream] subscribed {subject} (ephemeral, NEW)")
+        return sub
+
+    async def publish_step(self, session: str, payload: str) -> None:
+        assert self.js is not None, "Channel not started"
+        subject = f"motion.step.{session}"
+        self.log.info(f"Publish {subject}: {payload[:80]!r}")
+        ack = await self.js.publish(
+            subject,
+            payload.encode(),
+            headers={"Nats-Rollup": "sub"},  # <-- keep only the latest for this subject
+        )
+        self.log.info(f"Ack {ack.stream} {ack.seq}")
+
+    async def subscribe_step(self, session: str):
+        assert self.js is not None, "Channel not started"
+        subject = f"motion.step.{session}"
+        durable = f"motion-step-{session}"
+        config = nats.js.api.ConsumerConfig(
+            durable_name=durable,
+            filter_subject=subject,
+            deliver_policy=nats.js.api.DeliverPolicy.LAST,  # <-- start at the current last
+            ack_policy=nats.js.api.AckPolicy.EXPLICIT,
+            max_ack_pending=1,
+        )
+        try:
+            await self.js.add_consumer(stream="motion", config=config)
+        except nats.js.errors.APIError:
+            pass
+        sub = await self.js.pull_subscribe(subject, durable=durable, stream="motion")
+        self.log.info(f"[step] pull_subscribed {subject} durable={durable}")
         return sub

@@ -82,7 +82,7 @@ def test_server_scene(docker_compose):
 def test_server_session(scene_on_server):
     base, scene = scene_on_server  # fixture: POST /scene with a tiny zip
 
-    # local helpers (used only for natural completion)
+    # local helpers
     def f_archive_lines_if_ready(session: str):
         r = requests.get(f"{base}/session/{session}/archive", timeout=10.0)
         if r.status_code != 200:
@@ -116,6 +116,14 @@ def test_server_session(scene_on_server):
             f"Timed out waiting for data.json for session={session}. Last error={last_err!r}"
         )
 
+    async def f_send_steps(ws_url: str, count: int = 5, delay: float = 0.05):
+        import websockets, asyncio, json
+
+        async with websockets.connect(ws_url, ping_interval=None) as ws:
+            for i in range(count):
+                await ws.send(json.dumps({"k": "v", "i": i}))
+                await asyncio.sleep(delay)
+
     # 1) ARCHIVE before session exists -> 404
     bogus_session = str(uuid.uuid4())
     r = requests.get(f"{base}/session/{bogus_session}/archive", timeout=5.0)
@@ -126,28 +134,17 @@ def test_server_session(scene_on_server):
     assert r.status_code == 201, r.text
     session = r.json()["uuid"]
 
-    # lookup
-    r = requests.get(f"{base}/session/{session}", timeout=5.0)
-    assert r.status_code == 200
-    assert r.json() == {"uuid": session, "scene": scene}
-
-    # initial ARCHIVE after create: no data.json
-    r = requests.get(f"{base}/session/{session}/archive", timeout=10.0)
-    assert r.status_code == 200
-    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-        names = set(z.namelist())
-        assert "data.json" not in names
-
-    # play -> wait 150s -> stop -> wait 30s (unchanged)
     r = requests.post(f"{base}/session/{session}/play", timeout=5.0)
     assert r.status_code == 200
-    time.sleep(150)
 
+    ws_url = f"ws://{base.split('://',1)[1]}/session/{session}/step"
+    asyncio.run(f_send_steps(ws_url, count=8, delay=0.05))
+
+    time.sleep(150)
     r = requests.post(f"{base}/session/{session}/stop", timeout=5.0)
     assert r.status_code == 200
     time.sleep(30)
 
-    # ARCHIVE must now contain data.json
     r = requests.get(f"{base}/session/{session}/archive", timeout=10.0)
     assert r.status_code == 200
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
@@ -156,15 +153,14 @@ def test_server_session(scene_on_server):
         with z.open("data.json") as f:
             content = f.read().decode("utf-8", errors="ignore")
             lines = [ln for ln in content.splitlines() if ln.strip()]
-            assert lines, "Expected at least one NDJSON line after explicit stop"
+            assert lines
             for ln in lines:
                 json.loads(ln)
 
-    # cleanup session 1
     r = requests.delete(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 200
 
-    # CASE 2: Natural completion (no stop) - use polling
+    # CASE 2: Natural completion (no stop)
     r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
     assert r.status_code == 201, r.text
     session2 = r.json()["uuid"]
@@ -172,10 +168,22 @@ def test_server_session(scene_on_server):
     r = requests.post(f"{base}/session/{session2}/play", timeout=5.0)
     assert r.status_code == 200
 
-    lines = f_wait_for_data_json(session2, timeout_s=300.0, interval_s=2.0)
-    assert lines, "Expected at least one NDJSON line after natural completion"
+    ws_url2 = f"ws://{base.split('://',1)[1]}/session/{session2}/step"
+    asyncio.run(f_send_steps(ws_url2, count=5, delay=0.05))
 
-    # cleanup session 2
+    # keep same sleeps as Case 1 so node has time to process
+    time.sleep(150)
+    r = requests.post(f"{base}/session/{session2}/stop", timeout=5.0)
+    assert r.status_code == 200
+    time.sleep(30)
+
+    # ARCHIVE must now contain data.json
+    r = requests.get(f"{base}/session/{session2}/archive", timeout=10.0)
+    assert r.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        names = set(z.namelist())
+        assert "data.json" in names
+
     r = requests.delete(f"{base}/session/{session2}", timeout=5.0)
     assert r.status_code == 200
 

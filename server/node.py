@@ -48,12 +48,32 @@ async def run_data():
 
 
 async def run_node(session: str, channel: Channel):
-    async with asyncio.timeout(150):
-        for i in range(300):
-            data = json.dumps({"session": session, "count": i})
-            log.info(f"Publish {data}...")
-            await channel.publish_data(session, data)
-            await asyncio.sleep(1)
+    """
+    Subscribe to motion.step.{session} and republish each message to motion.data.{session}.
+    """
+    sub = await channel.subscribe_step(session)
+    log.info(f"[node] subscribed step for session={session}")
+
+    try:
+        while True:
+            try:
+                msgs = await sub.fetch(batch=1, timeout=5)
+            except asyncio.TimeoutError:
+                continue  # no message, just loop again
+
+            if not msgs:
+                continue
+
+            msg = msgs[0]
+            payload = msg.data.decode("utf-8", errors="ignore")
+            log.info(f"[node] step→data session={session}: {payload[:120]!r}")
+
+            await channel.publish_data(session, payload)
+            await msg.ack()
+    finally:
+        with contextlib.suppress(Exception):
+            await sub.unsubscribe()
+        log.info(f"[node] unsubscribed step for session={session}")
 
 
 async def main():

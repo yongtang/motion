@@ -324,6 +324,34 @@ async def session_stop(session: UUID4):
     return {"status": "accepted", "uuid": str(session)}
 
 
+@app.websocket("/session/{session:uuid}/step")
+async def session_step(ws: WebSocket, session: UUID4):
+    try:
+        storage_kv_get("session", f"{session}.json")
+        log.info(f"WS step requested for session={session}")
+    except FileNotFoundError:
+        log.warning(f"WS step for nonexistent session={session}")
+        await ws.close(code=1008)  # standards-only close for invalid session
+        return
+
+    await ws.accept()
+    log.info(f"WS step connected: session={session}")
+
+    try:
+        while True:
+            try:
+                data = await ws.receive_text()
+
+                await app.state.channel.publish_step(f"{session}", data)
+            except WebSocketDisconnect:
+                log.info(f"WS step disconnected: session={session}")
+                break
+    except Exception as e:
+        log.exception(f"WS step loop error for session={session}")
+        with contextlib.suppress(Exception):
+            await ws.close(code=1011)  # internal error
+
+
 @app.websocket("/ws")
 async def ws(ws: WebSocket):
     await ws.accept()
