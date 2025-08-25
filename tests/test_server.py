@@ -143,7 +143,9 @@ def test_server_session(scene_on_server):
     time.sleep(150)
     r = requests.post(f"{base}/session/{session}/stop", timeout=5.0)
     assert r.status_code == 200
-    time.sleep(30)
+
+    # after stop wait at least 60s as archiver has 30s timeout.
+    time.sleep(60)
 
     r = requests.get(f"{base}/session/{session}/archive", timeout=10.0)
     assert r.status_code == 200
@@ -175,7 +177,9 @@ def test_server_session(scene_on_server):
     time.sleep(150)
     r = requests.post(f"{base}/session/{session2}/stop", timeout=5.0)
     assert r.status_code == 200
-    time.sleep(30)
+
+    # after stop wait at least 60s as archiver has 30s timeout.
+    time.sleep(60)
 
     # ARCHIVE must now contain data.json
     r = requests.get(f"{base}/session/{session2}/archive", timeout=10.0)

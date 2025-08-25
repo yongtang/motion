@@ -111,39 +111,34 @@ class Channel:
         ack = await self.js.publish(subject, payload.encode())
         self.log.info(f"Ack {ack.stream} {ack.seq}")
 
-    async def subscribe_archive(self, session: str):
-        # durable pull (ALL) on motion.data.{session}
+    async def subscribe_data(self, session: str, start: int | None = None):
         assert self.js is not None, "Channel not started"
         subject = f"motion.data.{session}"
-        durable = f"motion-data-{session}"
-        config = nats.js.api.ConsumerConfig(
-            durable_name=durable,
-            filter_subject=subject,
-            deliver_policy=nats.js.api.DeliverPolicy.ALL,
-            ack_policy=nats.js.api.AckPolicy.EXPLICIT,
-            max_ack_pending=10_000,
-        )
-        try:
-            await self.js.add_consumer(stream="motion", config=config)
-        except nats.js.errors.APIError:
-            pass
-        sub = await self.js.pull_subscribe(subject, durable=durable, stream="motion")
-        self.log.info(f"[archive] pull_subscribed {subject} durable={durable}")
+
+        if start is None:
+            config = nats.js.api.ConsumerConfig(
+                filter_subject=subject,
+                deliver_policy=nats.js.api.DeliverPolicy.NEW,
+                replay_policy=nats.js.api.ReplayPolicy.INSTANT,
+                ack_policy=nats.js.api.AckPolicy.NONE,
+            )
+            note = "NEW"
+        else:
+            config = nats.js.api.ConsumerConfig(
+                filter_subject=subject,
+                deliver_policy=nats.js.api.DeliverPolicy.BY_START_SEQUENCE,
+                opt_start_seq=start,
+                replay_policy=nats.js.api.ReplayPolicy.INSTANT,
+                ack_policy=nats.js.api.AckPolicy.EXPLICIT,
+                max_ack_pending=10_000,
+            )
+            note = f"START_SEQUENCE {start}"
+
+        sub = await self.js.subscribe(subject, stream="motion", config=config)
+        self.log.info(f"[data] subscribed {subject} (ephemeral, {note})")
         return sub
 
-    async def subscribe_stream(self, session: str):
-        # ephemeral push (NEW) on motion.data.{session}
-        assert self.js is not None, "Channel not started"
-        subject = f"motion.data.{session}"
-        config = nats.js.api.ConsumerConfig(
-            filter_subject=subject,
-            deliver_policy=nats.js.api.DeliverPolicy.NEW,
-            replay_policy=nats.js.api.ReplayPolicy.INSTANT,
-            ack_policy=nats.js.api.AckPolicy.NONE,
-        )
-        sub = await self.js.subscribe(subject, stream="motion", config=config)
-        self.log.info(f"[stream] subscribed {subject} (ephemeral, NEW)")
-        return sub
+    # ----- Step (motion.step.<session>) -----
 
     async def publish_step(self, session: str, payload: str) -> None:
         assert self.js is not None, "Channel not started"

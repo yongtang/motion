@@ -90,7 +90,7 @@ async def run_data(session: str):
         log.info(f"[run_data] temp={f.name}")
         channel = Channel()
         await channel.start()
-        sub = await channel.subscribe_archive(session)
+        sub = await channel.subscribe_data(session, start=1)
         log.info(f"[run_data] session={session} channel start")
 
         try:
@@ -98,12 +98,14 @@ async def run_data(session: str):
         finally:
             while True:
                 try:
-                    msgs = await sub.fetch(1000, timeout=2.0)
-                    for m in msgs:
-                        f.write(m.data + b"\n")
-                        await m.ack()
-                except asyncio.TimeoutError:
+                    m = await asyncio.wait_for(sub.messages.__anext__(), timeout=30.0)
+                except (asyncio.TimeoutError, StopAsyncIteration):
                     break
+
+                f.write(m.data + b"\n")
+                await m.ack()
+
+            await sub.unsubscribe()
 
             f.seek(0)
             storage_kv_set("data", f"{session}.json", f.read())
