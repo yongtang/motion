@@ -326,12 +326,13 @@ async def session_stop(session: UUID4):
 
 @app.websocket("/session/{session:uuid}/step")
 async def session_step(ws: WebSocket, session: UUID4):
+    # Validate session exists
     try:
         storage_kv_get("session", f"{session}.json")
         log.info(f"WS step requested for session={session}")
     except FileNotFoundError:
         log.warning(f"WS step for nonexistent session={session}")
-        await ws.close(code=1008)  # standards-only close for invalid session
+        await ws.close(code=1008)
         return
 
     await ws.accept()
@@ -339,28 +340,53 @@ async def session_step(ws: WebSocket, session: UUID4):
 
     try:
         while True:
-            try:
-                data = await ws.receive_text()
-
-                await app.state.channel.publish_step(f"{session}", data)
-            except WebSocketDisconnect:
-                log.info(f"WS step disconnected: session={session}")
-                break
-    except Exception as e:
-        log.exception(f"WS step loop error for session={session}")
-        with contextlib.suppress(Exception):
-            await ws.close(code=1011)  # internal error
-
-
-@app.websocket("/ws")
-async def ws(ws: WebSocket):
-    await ws.accept()
-    log.info("WebSocket client connected")
-    try:
-        await ws.send_text("hello from server")
-        while True:
-            msg = await ws.receive_text()
-            log.debug("Received WS message: %s", msg)
-            await ws.send_text(f"echo: {msg}")
+            data = await ws.receive_text()
+            await app.state.channel.publish_step(str(session), data)
     except WebSocketDisconnect:
-        log.info("WebSocket client disconnected")
+        log.info(f"WS step disconnected: session={session}")
+    finally:
+        with contextlib.suppress(Exception):
+            await ws.close()
+        log.info(f"WS step closed: session={session}")
+
+
+@app.websocket("/session/{session:uuid}/data")
+async def session_data(ws: WebSocket, session: UUID4):
+    # Validate session exists
+    try:
+        storage_kv_get("session", f"{session}.json")
+        log.info(f"WS data requested for session={session}")
+    except FileNotFoundError:
+        log.warning(f"WS data for nonexistent session={session}")
+        await ws.close(code=1008)
+        return
+
+    # Optional ?start= query parameter
+    start = ws.query_params.get("start")
+    if start:
+        if not (start.isdigit() and int(start) > 0):
+            log.warning(f"WS data invalid start={start!r} for session={session}")
+            await ws.close(code=1008)
+            return
+        start = int(start)
+
+    await ws.accept()
+    log.info(f"WS data connected: session={session}, start={start}")
+
+    sub = await app.state.channel.subscribe_data(str(session), start=start)
+
+    try:
+        while True:
+            msg = await sub.next_msg()
+            await ws.send_text(msg.data.decode(errors="ignore"))
+            if start:
+                with contextlib.suppress(Exception):
+                    await msg.ack()
+    except WebSocketDisconnect:
+        log.info(f"WS data disconnected: session={session}")
+    finally:
+        with contextlib.suppress(Exception):
+            await sub.unsubscribe()
+        with contextlib.suppress(Exception):
+            await ws.close()
+        log.info(f"WS data closed: session={session}, start={start}")

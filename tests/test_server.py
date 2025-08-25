@@ -82,7 +82,8 @@ def test_server_scene(docker_compose):
 def test_server_session(scene_on_server):
     base, scene = scene_on_server  # fixture: POST /scene with a tiny zip
 
-    # local helpers
+    # ---- helpers ----
+
     def f_archive_lines_if_ready(session: str):
         r = requests.get(f"{base}/session/{session}/archive", timeout=10.0)
         if r.status_code != 200:
@@ -116,20 +117,68 @@ def test_server_session(scene_on_server):
             f"Timed out waiting for data.json for session={session}. Last error={last_err!r}"
         )
 
-    async def f_send_steps(ws_url: str, count: int = 5, delay: float = 0.05):
-        import websockets, asyncio, json
+    async def f_stream_steps_entire_run(
+        ws_url: str,
+        duration: float,
+        period: float = 0.2,
+        retry_backoff: float = 1.0,
+    ):
+        """
+        Send a step every `period` seconds for the full `duration`.
+        If the WS drops, reconnect after `retry_backoff` and continue until time is up.
+        """
+        loop = asyncio.get_running_loop()
+        end = loop.time() + duration
+        i = 0
 
-        async with websockets.connect(ws_url, ping_interval=None) as ws:
-            for i in range(count):
-                await ws.send(json.dumps({"k": "v", "i": i}))
-                await asyncio.sleep(delay)
+        while loop.time() < end:
+            try:
+                async with websockets.connect(ws_url, ping_interval=None) as ws:
+                    while loop.time() < end:
+                        await ws.send(json.dumps({"k": "v", "i": i}))
+                        i += 1
+                        remaining = end - loop.time()
+                        if remaining <= 0:
+                            break
+                        await asyncio.sleep(min(period, remaining))
+            except Exception:
+                remaining = end - loop.time()
+                if remaining <= 0:
+                    break
+                await asyncio.sleep(min(retry_backoff, remaining))
+
+    async def f_subscribe_data_for(ws_url: str, duration: float):
+        """
+        Subscribe for exactly `duration` seconds; collect any messages without ending early.
+        Tolerate clean early close (1000 OK) and still honor the wall-clock duration.
+        Used for post-stop checks (NEW vs start=1).
+        """
+        results = []
+        loop = asyncio.get_running_loop()
+        end = loop.time() + duration
+        try:
+            async with websockets.connect(ws_url, ping_interval=None) as ws:
+                while loop.time() < end:
+                    try:
+                        msg = await asyncio.wait_for(ws.recv(), timeout=1.0)
+                        try:
+                            results.append(json.loads(msg))
+                        except Exception:
+                            results.append(msg)
+                    except asyncio.TimeoutError:
+                        continue
+        except websockets.exceptions.ConnectionClosedOK:
+            remaining = end - loop.time()
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+        return results
 
     # 1) ARCHIVE before session exists -> 404
     bogus_session = str(uuid.uuid4())
     r = requests.get(f"{base}/session/{bogus_session}/archive", timeout=5.0)
     assert r.status_code == 404
 
-    # CASE 1: Explicit stop flow
+    # ---- CASE 1: Explicit stop flow ----
     r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
     assert r.status_code == 201, r.text
     session = r.json()["uuid"]
@@ -137,16 +186,19 @@ def test_server_session(scene_on_server):
     r = requests.post(f"{base}/session/{session}/play", timeout=5.0)
     assert r.status_code == 200
 
-    ws_url = f"ws://{base.split('://',1)[1]}/session/{session}/step"
-    asyncio.run(f_send_steps(ws_url, count=8, delay=0.05))
+    ws_url_step = f"ws://{base.split('://',1)[1]}/session/{session}/step"
+    ws_url_data = f"ws://{base.split('://',1)[1]}/session/{session}/data"
 
-    time.sleep(150)
+    # Stream steps during the entire play window instead of sleeping 150s
+    RUN_WINDOW = 150.0
+    asyncio.run(f_stream_steps_entire_run(ws_url_step, duration=RUN_WINDOW, period=0.2))
+
+    # Stop and allow archiver to flush
     r = requests.post(f"{base}/session/{session}/stop", timeout=5.0)
     assert r.status_code == 200
+    time.sleep(60)  # archiver safety window
 
-    # after stop wait at least 60s as archiver has 30s timeout.
-    time.sleep(60)
-
+    # archive must contain data.json with valid JSONL
     r = requests.get(f"{base}/session/{session}/archive", timeout=10.0)
     assert r.status_code == 200
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
@@ -159,10 +211,22 @@ def test_server_session(scene_on_server):
             for ln in lines:
                 json.loads(ln)
 
+    # After stop: NEW subscription should see nothing within the flush window (60s)
+    ws_url_data_new_after = f"ws://{base.split('://',1)[1]}/session/{session}/data"
+    got_new_after = asyncio.run(
+        f_subscribe_data_for(ws_url_data_new_after, duration=60.0)
+    )
+    assert not got_new_after, "did not expect NEW data after stop within 60s"
+
+    # After stop: replay from beginning should work (start=1)
+    ws_url_data_replay = f"ws://{base.split('://',1)[1]}/session/{session}/data?start=1"
+    got_replay = asyncio.run(f_subscribe_data_for(ws_url_data_replay, duration=60.0))
+    assert got_replay, "expected to receive replayed data with start=1"
+
     r = requests.delete(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 200
 
-    # CASE 2: Natural completion (no stop)
+    # ---- CASE 2: Natural completion (no stop) ----
     r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
     assert r.status_code == 201, r.text
     session2 = r.json()["uuid"]
@@ -170,37 +234,24 @@ def test_server_session(scene_on_server):
     r = requests.post(f"{base}/session/{session2}/play", timeout=5.0)
     assert r.status_code == 200
 
-    ws_url2 = f"ws://{base.split('://',1)[1]}/session/{session2}/step"
-    asyncio.run(f_send_steps(ws_url2, count=5, delay=0.05))
+    ws_url2_step = f"ws://{base.split('://',1)[1]}/session/{session2}/step"
+    ws_url2_data = f"ws://{base.split('://',1)[1]}/session/{session2}/data"
 
-    # keep same sleeps as Case 1 so node has time to process
-    time.sleep(150)
+    # Stream steps during the entire play window instead of sleeping 150s
+    asyncio.run(
+        f_stream_steps_entire_run(ws_url2_step, duration=RUN_WINDOW, period=0.2)
+    )
+
+    # For consistency we still issue an explicit stop (even if node would finish naturally)
     r = requests.post(f"{base}/session/{session2}/stop", timeout=5.0)
     assert r.status_code == 200
 
-    # after stop wait at least 60s as archiver has 30s timeout.
     time.sleep(60)
 
-    # ARCHIVE must now contain data.json
     r = requests.get(f"{base}/session/{session2}/archive", timeout=10.0)
     assert r.status_code == 200
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-        names = set(z.namelist())
-        assert "data.json" in names
+        assert "data.json" in set(z.namelist())
 
     r = requests.delete(f"{base}/session/{session2}", timeout=5.0)
     assert r.status_code == 200
-
-
-def test_server_websocket_echo(docker_compose):
-    url = f"ws://{docker_compose['motion']}:8080/ws"
-
-    async def _run():
-        async with websockets.connect(url, ping_interval=20, ping_timeout=20) as ws:
-            greeting = await asyncio.wait_for(ws.recv(), timeout=2.0)
-            assert greeting == "hello from server"
-            await ws.send("hello")
-            echoed = await asyncio.wait_for(ws.recv(), timeout=2.0)
-            assert echoed == "echo: hello"
-
-    asyncio.run(_run())
