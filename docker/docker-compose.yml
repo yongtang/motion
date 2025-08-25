@@ -100,6 +100,10 @@ services:
     network_mode: "service:server"
     working_dir: /app
     volumes:
+      - ${MOTION:-$PWD}/server/node.py:/isaac-sim/exts/motion.extension/motion/node.py:ro
+      - ${MOTION:-$PWD}/server/channel.py:/isaac-sim/exts/motion.extension/motion/channel.py:ro
+      - ${MOTION:-$PWD}/server/extension/motion/extension.py:/isaac-sim/exts/motion.extension/motion/extension.py:ro
+      - ${MOTION:-$PWD}/server/extension/config/extension.toml:/isaac-sim/exts/motion.extension/config/extension.toml:ro
       - ${MOTION:-$PWD}:/app:ro
       - storage:/storage:ro
     environment:
@@ -113,10 +117,10 @@ services:
           echo "MOTION not set, exiting";
           exit 0;
         fi
-        apt -y -qq update &&
-        apt -y -qq install curl &&
-        pip install aiohttp nats-py boto3 &&
-        python -m server.node
+        apt -y -qq update
+        apt -y -qq install curl
+        pip install aiohttp nats-py boto3
+        python -m server.echo
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8888/health >/dev/null || exit 1"]
       interval: 10s
@@ -132,7 +136,10 @@ services:
     network_mode: "service:server"
     working_dir: /app
     volumes:
-      - ${MOTION:-$PWD}/server/extension:/isaac-sim/exts/motion.extension:ro
+      - ${MOTION:-$PWD}/server/node.py:/isaac-sim/exts/motion.extension/motion/node.py:ro
+      - ${MOTION:-$PWD}/server/channel.py:/isaac-sim/exts/motion.extension/motion/channel.py:ro
+      - ${MOTION:-$PWD}/server/extension/motion/extension.py:/isaac-sim/exts/motion.extension/motion/extension.py:ro
+      - ${MOTION:-$PWD}/server/extension/config/extension.toml:/isaac-sim/exts/motion.extension/config/extension.toml:ro
       - ${MOTION:-$PWD}:/app:ro
       - storage:/storage:ro
     environment:
@@ -148,6 +155,7 @@ services:
           echo "MOTION not set, exiting";
           exit 0;
         fi
+        /isaac-sim/python.sh -m pip install aiohttp nats-py boto3
         sleep infinity
     profiles: ["gpu"]
     deploy:
