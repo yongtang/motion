@@ -3,6 +3,7 @@ import asyncio
 import carb
 import omni.ext
 import omni.usd
+import omni.timeline
 
 
 class MotionExtension(omni.ext.IExt):
