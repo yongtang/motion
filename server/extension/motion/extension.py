@@ -13,6 +13,13 @@ class MotionExtension(omni.ext.IExt):
         self.e_stage_subscription = None
 
     def on_startup(self, ext_id):
+        log.info("[my.timeline.logger] startup")
+
+        self.timeline = omni.timeline.get_timeline_interface()
+        self.timeline.subscribe_to_play(self.on_play)
+        self.timeline.subscribe_to_stop(self.on_stop)
+
+
         self.e_stage_event = asyncio.Event()
 
         ctx = omni.usd.get_context()
@@ -54,6 +61,10 @@ class MotionExtension(omni.ext.IExt):
         self.e_stage_task.add_done_callback(f_done)
 
     def on_shutdown(self):
+
+        log.info("[my.timeline.logger] shutdown")
+
+
         # Cancel stage-open task first
         if self.e_stage_task:
             try:
@@ -71,6 +82,12 @@ class MotionExtension(omni.ext.IExt):
             self.e_stage_subscription = None
 
         self.e_stage_event = None
+
+    def on_play(self):
+        log.info("[my.timeline.logger] timeline started")
+
+    def on_stop(self):
+        log.info("[my.timeline.logger] timeline stopped")
 
     # ---------- Stage events ----------
 
