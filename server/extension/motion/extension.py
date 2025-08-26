@@ -42,7 +42,7 @@ class MotionExtension(omni.ext.IExt):
 
         # Schedule the task (exceptions bubble up; we just log them)
         self.e_stage_task = asyncio.create_task(
-            f_stage("file:///storage/node/scene.usd")
+            f_stage("file:///storage/node/scene/scene.usd")
         )
 
         # Done-callback to surface any unhandled exceptions prominently
