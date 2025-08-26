@@ -14,7 +14,7 @@ class MotionExtension(omni.ext.IExt):
         self.e_stage_subscription = None
 
     def on_startup(self, ext_id):
-        log.info("[my.timeline.logger] startup")
+        carb.log_info("[my.timeline.logger] startup")
 
         self.timeline = omni.timeline.get_timeline_interface()
         self.timeline.subscribe_to_play(self.on_play)
@@ -63,7 +63,7 @@ class MotionExtension(omni.ext.IExt):
 
     def on_shutdown(self):
 
-        log.info("[my.timeline.logger] shutdown")
+        carb.log_info("[my.timeline.logger] shutdown")
 
 
         # Cancel stage-open task first
@@ -85,10 +85,10 @@ class MotionExtension(omni.ext.IExt):
         self.e_stage_event = None
 
     def on_play(self):
-        log.info("[my.timeline.logger] timeline started")
+        carb.log_info("[my.timeline.logger] timeline started")
 
     def on_stop(self):
-        log.info("[my.timeline.logger] timeline stopped")
+        carb.log_info("[my.timeline.logger] timeline stopped")
 
     # ---------- Stage events ----------
 
