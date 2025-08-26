@@ -17,8 +17,10 @@ class MotionExtension(omni.ext.IExt):
         carb.log_info("[my.timeline.logger] startup")
 
         self.timeline = omni.timeline.get_timeline_interface()
-        self.timeline.subscribe_to_play(self.on_play)
-        self.timeline.subscribe_to_stop(self.on_stop)
+        self.timeline_event_stream = self.timeline.get_timeline_event_stream()
+        self.timeline_event_stream_subscription = self._stream.create_subscription_to_pop(
+            self.on_timeline_event, name="my.timeline.control"
+        )
 
 
         self.e_stage_event = asyncio.Event()
@@ -83,6 +85,20 @@ class MotionExtension(omni.ext.IExt):
             self.e_stage_subscription = None
 
         self.e_stage_event = None
+
+    def on_timeline_event(self, e):
+        carb.log_info(f"[my.timeline.control] timeline {e}")
+        et = e.type
+        # PLAY: set up control loop and subscribe to per-tick
+        if et == omni.timeline.TimelineEventType.PLAY.value:
+            carb.log_info("[my.timeline.control] timeline PLAY")
+            #self._on_play()
+
+        # STOP: tear down per-tick subscription and world refs
+        elif et == omni.timeline.TimelineEventType.STOP.value:
+            carb.log_info("[my.timeline.control] timeline STOP")
+            #self._on_stop()
+
 
     def on_play(self):
         carb.log_info("[my.timeline.logger] timeline started")
