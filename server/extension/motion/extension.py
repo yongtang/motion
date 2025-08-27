@@ -3,6 +3,7 @@ import contextlib
 import json
 
 import omni.ext
+import omni.kit
 import omni.timeline
 import omni.usd
 
@@ -69,8 +70,9 @@ class MotionExtension(omni.ext.IExt):
 
             self.stage = stage
 
-        loop = omni.kit.app.get_app().get_async_event_loop()
-        loop.create_task(f_stage(self, "file:///storage/node/scene/scene.usd"))
+        omni.kit.async_engine.run_coroutine(
+            f_stage(self, "file:///storage/node/scene/scene.usd")
+        )
 
     def on_shutdown(self):
         print("[motion.extension] shutdown")
