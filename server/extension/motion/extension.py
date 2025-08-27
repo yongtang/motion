@@ -63,10 +63,10 @@ class MotionExtension(omni.ext.IExt):
             )
 
             self.run_http = run_http()
-            await self.run_http().__aenter__()
+            await self.run_http.__aenter__()
 
             self.run_data = run_data()
-            self.channel = await self.run_data().__aenter__()
+            self.channel = await self.run_data.__aenter__()
 
             self.stage = stage
 
