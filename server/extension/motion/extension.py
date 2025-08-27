@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import logging
 
 import omni.ext
 import omni.timeline
@@ -7,6 +8,7 @@ import omni.usd
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
+
 
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
