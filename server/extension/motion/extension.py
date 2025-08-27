@@ -30,8 +30,8 @@ class MotionExtension(omni.ext.IExt):
 
     def on_timeline_event(self, e):
         name = omni.timeline.TimelineEventType(e.type).name
-        carb.log_info(f"[my.timeline.control] timeline {name}")
+        carb.log_info(f"[motion.extension] timeline {name}")
         if e.type == omni.timeline.TimelineEventType.PLAY.value:
-            carb.log_info("[my.timeline.control] timeline PLAY")
+            carb.log_info("[motion.extension] timeline PLAY")
         elif e.type == omni.timeline.TimelineEventType.STOP.value:
-            carb.log_info("[my.timeline.control] timeline STOP")
+            carb.log_info("[motion.extension] timeline STOP")
