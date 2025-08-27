@@ -1,13 +1,9 @@
 import asyncio
 import contextlib
-import logging
 
 import omni.ext
 import omni.timeline
 import omni.usd
-
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger(__name__)
 
 
 class MotionExtension(omni.ext.IExt):
@@ -20,7 +16,7 @@ class MotionExtension(omni.ext.IExt):
         self.timeline_subscription = None
 
     def on_startup(self, ext_id):
-        log.info("[motion.extension] startup")
+        print("[motion.extension] startup")
 
         ctx = omni.usd.get_context()
 
@@ -51,7 +47,7 @@ class MotionExtension(omni.ext.IExt):
         )
 
     def on_shutdown(self):
-        log.info("[motion.extension] shutdown")
+        print("[motion.extension] shutdown")
         with contextlib.suppress(Exception):
             if self.timeline_subscription:
                 self.timeline_subscription.unsubscribe()
@@ -68,12 +64,12 @@ class MotionExtension(omni.ext.IExt):
 
     def on_stage_event(self, e):
         name = omni.usd.StageEventType(e.type).name
-        log.info(f"[motion.extension] stage {name}")
+        print(f"[motion.extension] stage {name}")
 
     def on_timeline_event(self, e):
         name = omni.timeline.TimelineEventType(e.type).name
-        log.info(f"[motion.extension] timeline {name}")
+        print(f"[motion.extension] timeline {name}")
         if e.type == omni.timeline.TimelineEventType.PLAY.value:
-            log.info("[motion.extension] timeline PLAY")
+            print("[motion.extension] timeline PLAY")
         elif e.type == omni.timeline.TimelineEventType.STOP.value:
-            log.info("[motion.extension] timeline STOP")
+            print("[motion.extension] timeline STOP")
