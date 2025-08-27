@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 
 import omni.ext
 import omni.timeline
@@ -33,6 +34,20 @@ class MotionExtension(omni.ext.IExt):
                 self.on_timeline_event, name="motion.extension.timeline"
             )
         )
+
+        async def run_isaac(session: str, channel: Channel):
+            sub = await channel.subscribe_step(session)
+            print(f"[node] subscribed step for session={session}")
+
+            try:
+                while True:
+                    payload = json.dumps({"session": session})
+                    await channel.publish_data(session, payload)
+                    await asyncio.sleep(1.0)
+            finally:
+                with contextlib.suppress(Exception):
+                    await sub.unsubscribe()
+                print(f"[node] unsubscribed step for session={session}")
 
         async def f_stage(self, e):
             ctx = omni.usd.get_context()
