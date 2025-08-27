@@ -1,6 +1,7 @@
 import asyncio
 
 import carb
+import carb.events
 import omni.ext
 import omni.usd
 import omni.timeline
