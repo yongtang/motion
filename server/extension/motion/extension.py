@@ -88,7 +88,7 @@ class MotionExtension(omni.ext.IExt):
         self.e_stage_event = None
 
     def on_timeline_event(self, e):
-        print(f"[my.timeline.control] timeline {e}")
+        print(f"[my.timeline.control] timeline {e.type}")
         et = e.type
         # PLAY: set up control loop and subscribe to per-tick
         if et == omni.timeline.TimelineEventType.PLAY.value:
