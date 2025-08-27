@@ -56,7 +56,7 @@ class MotionExtension(omni.ext.IExt):
             if ctx.get_stage():
                 await ctx.close_stage_async()
             stage = await asyncio.wait_for(
-                usd_ctx.open_stage_async(
+                ctx.open_stage_async(
                     e, load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL
                 ),
                 timeout=120.0,
