@@ -5,16 +5,27 @@ import omni.ext
 import omni.timeline
 import omni.usd
 
+from .node import run_data, run_http
+
 
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
         super().__init__()
-        self.stage = None
         self.timeline = None
         self.timeline_subscription = None
 
+        self.session = None
+        self.run_http = None
+        self.run_data = None
+        self.channel = None
+
+        self.stage = None
+
     def on_startup(self, ext_id):
         print("[motion.extension] startup")
+
+        with open("/storage/node/session.json", "r") as f:
+            self.session = json.loads(f.read())["session"]
 
         self.timeline = omni.timeline.get_timeline_interface()
         self.timeline_subscription = (
@@ -27,18 +38,31 @@ class MotionExtension(omni.ext.IExt):
             ctx = omni.usd.get_context()
             if ctx.get_stage():
                 await ctx.close_stage_async()
-            self.stage = await asyncio.wait_for(
+            stage = await asyncio.wait_for(
                 usd_ctx.open_stage_async(
                     e, load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL
                 ),
                 timeout=120.0,
             )
 
+            self.run_http = run_http()
+            await self.run_http().__aenter__()
+
+            self.run_data = run_data()
+            self.channel = await self.run_data().__aenter__()
+
+            self.stage = stage
+
         loop = omni.kit.app.get_app().get_async_event_loop()
         loop.create_task(f_stage(self, "file:///storage/node/scene/scene.usd"))
 
     def on_shutdown(self):
         print("[motion.extension] shutdown")
+        with contextlib.suppress(Exception):
+            if self.run_data:
+                self.run_data.__aexit__(None, None, None)
+            if self.run_http:
+                self.run_http.__aexit__(None, None, None)
 
         with contextlib.suppress(Exception):
             if self.timeline_subscription:
