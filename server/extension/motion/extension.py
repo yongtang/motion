@@ -52,6 +52,7 @@ class MotionExtension(omni.ext.IExt):
                 print(f"[node] unsubscribed step for session={session}")
 
         async def f_stage(self, e):
+            print("[motion.extension] stage")
             ctx = omni.usd.get_context()
             if ctx.get_stage():
                 await ctx.close_stage_async()
@@ -61,14 +62,22 @@ class MotionExtension(omni.ext.IExt):
                 ),
                 timeout=120.0,
             )
+            print("[motion.extension] loaded")
 
             self.run_http = run_http()
             await self.run_http.__aenter__()
 
+            print("[motion.extension] http up")
             self.run_data = run_data()
             self.channel = await self.run_data.__aenter__()
 
+            print("[motion.extension] data up")
+
             self.stage = stage
+
+            print("[motion.extension] stage up")
+
+            await run_isaac(self.session, self.channel)
 
         omni.kit.async_engine.run_coroutine(
             f_stage(self, "file:///storage/node/scene/scene.usd")
@@ -92,6 +101,6 @@ class MotionExtension(omni.ext.IExt):
         name = omni.timeline.TimelineEventType(e.type).name
         print(f"[motion.extension] timeline {name}")
         if e.type == omni.timeline.TimelineEventType.PLAY.value:
-            print("[motion.extension] timeline PLAY")
+            print("[motion.extension] timeline play")
         elif e.type == omni.timeline.TimelineEventType.STOP.value:
-            print("[motion.extension] timeline STOP")
+            print("[motion.extension] timeline stop")
