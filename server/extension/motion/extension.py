@@ -9,35 +9,12 @@ import omni.usd
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
         super().__init__()
-        self.stage_subscription = None
-        self.stage_task = None
-
+        self.stage = None
         self.timeline = None
         self.timeline_subscription = None
 
     def on_startup(self, ext_id):
         print("[motion.extension] startup")
-
-        ctx = omni.usd.get_context()
-
-        async def f_stage(url: str):
-            # Close any existing stage, then open with full load
-            if ctx.get_stage():
-                await ctx.close_stage_async()
-
-            await ctx.open_stage_async(
-                url,
-                load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,  # ensure full load
-            )
-
-        self.stage_subscription = (
-            ctx.get_stage_event_stream().create_subscription_to_pop(
-                self.on_stage_event, name="motion.extension.stage"
-            )
-        )
-        self.stage_task = asyncio.create_task(
-            f_stage("file:///storage/node/scene/scene.usd")
-        )
 
         self.timeline = omni.timeline.get_timeline_interface()
         self.timeline_subscription = (
@@ -46,25 +23,28 @@ class MotionExtension(omni.ext.IExt):
             )
         )
 
+        async def f_stage(self, e):
+            ctx = omni.usd.get_context()
+            if ctx.get_stage():
+                await ctx.close_stage_async()
+            self.stage = await asyncio.wait_for(
+                usd_ctx.open_stage_async(
+                    e, load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL
+                ),
+                timeout=120.0,
+            )
+
+        loop = omni.kit.app.get_app().get_async_event_loop()
+        loop.create_task(f_stage(self, "file:///storage/node/scene/scene.usd"))
+
     def on_shutdown(self):
         print("[motion.extension] shutdown")
+
         with contextlib.suppress(Exception):
             if self.timeline_subscription:
                 self.timeline_subscription.unsubscribe()
-        with contextlib.suppress(Exception):
-            if self.stage_subscription:
-                self.stage_subscription.unsubscribe()
-        with contextlib.suppress(Exception):
-            if self.stage_task:
-                self.stage_task.cancel()
         self.timeline_subscription = None
         self.timeline = None
-        self.stage_task = None
-        self.stage_subscription = None
-
-    def on_stage_event(self, e):
-        name = omni.usd.StageEventType(e.type).name
-        print(f"[motion.extension] stage {name}")
 
     def on_timeline_event(self, e):
         name = omni.timeline.TimelineEventType(e.type).name
