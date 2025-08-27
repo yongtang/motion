@@ -1,10 +1,11 @@
 import asyncio
+import contextlib
 
 import carb
 import carb.events
 import omni.ext
-import omni.usd
 import omni.timeline
+import omni.usd
 
 
 class MotionExtension(omni.ext.IExt):
@@ -27,6 +28,12 @@ class MotionExtension(omni.ext.IExt):
 
     def on_shutdown(self):
         carb.log_info("[motion.extension] shutdown")
+        with contextlib.suppress(Exception):
+            if self.timeline_event_stream_subscription:
+                self.timeline_event_stream_subscription.unsubscribe()
+        self.timeline_event_stream_subscription = None
+        self.timeline_event_stream = None
+        self.timeline = None
 
     def on_timeline_event(self, e):
         name = omni.timeline.TimelineEventType(e.type).name
