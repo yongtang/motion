@@ -92,12 +92,12 @@ class MotionExtension(omni.ext.IExt):
         et = e.type
         # PLAY: set up control loop and subscribe to per-tick
         if et == omni.timeline.TimelineEventType.PLAY.value:
-            carb.log_info("[my.timeline.control] timeline PLAY")
+            print("[my.timeline.control] timeline PLAY")
             #self._on_play()
 
         # STOP: tear down per-tick subscription and world refs
         elif et == omni.timeline.TimelineEventType.STOP.value:
-            carb.log_info("[my.timeline.control] timeline STOP")
+            print("[my.timeline.control] timeline STOP")
             #self._on_stop()
 
 
