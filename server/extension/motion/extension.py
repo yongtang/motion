@@ -39,7 +39,7 @@ class MotionExtension(omni.ext.IExt):
 
         async def run_isaac(session: str, channel: Channel):
             sub = await channel.subscribe_step(session)
-            print(f"[node] subscribed step for session={session}")
+            print(f"[motion.extension] subscribed step for session={session}")
 
             try:
                 while True:
@@ -49,7 +49,7 @@ class MotionExtension(omni.ext.IExt):
             finally:
                 with contextlib.suppress(Exception):
                     await sub.unsubscribe()
-                print(f"[node] unsubscribed step for session={session}")
+                print(f"[motion.extension] unsubscribed step for session={session}")
 
         async def f_stage(self, e):
             print("[motion.extension] stage")
