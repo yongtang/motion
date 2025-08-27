@@ -18,7 +18,7 @@ class MotionExtension(omni.ext.IExt):
 
         self.timeline = omni.timeline.get_timeline_interface()
         self.timeline_event_stream = self.timeline.get_timeline_event_stream()
-        self.timeline_event_stream_subscription = self._stream.create_subscription_to_pop(
+        self.timeline_event_stream_subscription = self.timeline_event_stream.create_subscription_to_pop(
             self.on_timeline_event, name="my.timeline.control"
         )
 
