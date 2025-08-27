@@ -33,7 +33,9 @@ class MotionExtension(omni.ext.IExt):
             )
 
         self.stage_subscription = (
-            ctx.get_stage_event_stream().create_subscription_to_pop(self.on_stage_event)
+            ctx.get_stage_event_stream().create_subscription_to_pop(
+                self.on_stage_event, name="motion.extension.stage"
+            )
         )
         self.stage_task = asyncio.create_task(
             f_stage("file:///storage/node/scene/scene.usd")
