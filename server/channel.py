@@ -64,7 +64,7 @@ class Channel:
         subject = f"motion.node.{node}.{op}"
         payload = f"{session}"
         self.log.info(f"Publish {subject}: {payload}")
-        ack = await self.js.publish(subject, payload.encode())
+        ack = await self.js.publish(subject, payload.encode(), timeout=5.0)
         self.log.info(f"Ack {ack.stream} {ack.seq}")
 
     async def subscribe_node(self, node: str, op: str):
@@ -108,7 +108,7 @@ class Channel:
         assert self.js is not None, "Channel not started"
         subject = f"motion.data.{session}"
         self.log.info(f"Publish {subject}: {payload[:80]!r}")
-        ack = await self.js.publish(subject, payload.encode())
+        ack = await self.js.publish(subject, payload.encode(), timeout=5.0)
         self.log.info(f"Ack {ack.stream} {ack.seq}")
 
     async def subscribe_data(self, session: str, start: int | None = None):
@@ -148,6 +148,7 @@ class Channel:
             subject,
             payload.encode(),
             headers={"Nats-Rollup": "sub"},  # <-- keep only the latest for this subject
+            timeout=5.0,
         )
         self.log.info(f"Ack {ack.stream} {ack.seq}")
 
