@@ -63,7 +63,7 @@ class MotionExtension(omni.ext.IExt):
         self.stage_subscription = None
 
     def on_stage_event(self, e):
-        name = omni.timeline.StageEventType(e.type).name
+        name = omni.usd.StageEventType(e.type).name
         carb.log_info(f"[motion.extension] stage {name}")
 
     def on_timeline_event(self, e):
