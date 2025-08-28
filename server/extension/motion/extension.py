@@ -44,6 +44,9 @@ class MotionExtension(omni.ext.IExt):
                     # Kit loop only when needed
                     info = self.call(self.get_stage_info)
                     payload = json.dumps({"session": session, "info": info})
+
+                    print(f"[motion.extension] data={payload} session={session}")
+
                     await channel.publish_data(session, payload)
                     await asyncio.sleep(0.1)
 
