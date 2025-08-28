@@ -88,13 +88,17 @@ class MotionExtension(omni.ext.IExt):
         )
 
     async def get_stage_info(self):
-        """Runs on Kit loop. Read whatever you need from the stage."""
+        # ensure this is a real coroutine that yields on Kit's loop
+        await asyncio.sleep(0)
+
         ctx = omni.usd.get_context()
         stage = ctx.get_stage()
         if not stage:
             return None
+
         root = stage.GetRootLayer().realPath
         return {"root": root}
+
 
     # ----------------------------------------
 
