@@ -42,7 +42,7 @@ class MotionExtension(omni.ext.IExt):
             async with run_data() as channel:
                 while True:
                     # Kit loop only when needed
-                    info = await self.call(self.get_stage_info())
+                    info = await self.call(self.get_stage_info)
                     payload = json.dumps({"session": session, "info": info})
                     await channel.publish_data(session, payload)
                     await asyncio.sleep(0.1)
@@ -81,11 +81,11 @@ class MotionExtension(omni.ext.IExt):
 
     # ---------- cross-loop helpers ----------
     async def call(self, f):
-        """Await a Kit-loop coroutine from any loop, without wrap_future."""
-        loop = omni.kit.app.get_app().get_async_event_loop()
-        cfut = asyncio.run_coroutine_threadsafe(f, loop)
-        # Wait for the result in a worker so we don't block our current event loop.
-        return await asyncio.get_running_loop().run_in_executor(None, cfut.result)
+        return await asyncio.wrap_future(
+            asyncio.run_coroutine_threadsafe(
+                f(), omni.kit.app.get_app().get_async_event_loop()
+            )
+        )
 
     async def get_stage_info(self):
         """Runs on Kit loop. Read whatever you need from the stage."""
