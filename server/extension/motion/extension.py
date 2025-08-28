@@ -1,13 +1,13 @@
 import asyncio
 import contextlib
 import json
+import threading
 
 import omni.ext
 import omni.kit
 import omni.timeline
 import omni.usd
 
-from .channel import Channel
 from .node import run_data, run_http
 
 
@@ -19,10 +19,10 @@ class MotionExtension(omni.ext.IExt):
 
         self.session = None
         self.run_http = None
-        self.run_data = None
-        self.channel = None
-
         self.stage = None
+
+        self.loop = None
+        self.thread = None
 
     def on_startup(self, ext_id):
         print("[motion.extension] startup")
@@ -37,18 +37,15 @@ class MotionExtension(omni.ext.IExt):
             )
         )
 
-        async def run_isaac(session: str, channel: Channel):
-
-            try:
+        async def run_isaac(session: str):
+            # NATS lives entirely on the background loop/thread.
+            async with run_data() as channel:
                 while True:
-                    payload = json.dumps({"session": session})
-                    print(
-                        f"[motion.extension] publish data={payload} for session={session}"
-                    )
+                    # Kit loop only when needed
+                    info = await self.call(self.get_stage_info())
+                    payload = json.dumps({"session": session, "info": info})
                     await channel.publish_data(session, payload)
-                    await asyncio.sleep(1.0)
-            finally:
-                pass
+                    await asyncio.sleep(0.1)
 
         async def f_stage(self, e):
             print("[motion.extension] stage")
@@ -65,28 +62,51 @@ class MotionExtension(omni.ext.IExt):
 
             self.run_http = run_http()
             await self.run_http.__aenter__()
-
             print("[motion.extension] http up")
-            self.run_data = run_data()
-            self.channel = await self.run_data.__aenter__()
 
-            print("[motion.extension] data up")
+            # dedicated asyncio loop in its own OS thread
+            self.loop = asyncio.new_event_loop()
+            self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+            self.thread.start()
+
+            # fire-and-forget publisher
+            asyncio.run_coroutine_threadsafe(run_isaac(self.session), self.loop)
 
             self.stage = stage
-
             print("[motion.extension] stage up")
-
-            await run_isaac(self.session, self.channel)
 
         omni.kit.async_engine.run_coroutine(
             f_stage(self, "file:///storage/node/scene/scene.usd")
         )
 
+    # ---------- cross-loop helpers ----------
+    async def call(self, f):
+        """Await a Kit-loop coroutine from any loop, without wrap_future."""
+        loop = omni.kit.app.get_app().get_async_event_loop()
+        cfut = asyncio.run_coroutine_threadsafe(f, loop)
+        # Wait for the result in a worker so we don't block our current event loop.
+        return await asyncio.get_running_loop().run_in_executor(None, cfut.result)
+
+    async def get_stage_info(self):
+        """Runs on Kit loop. Read whatever you need from the stage."""
+        ctx = omni.usd.get_context()
+        stage = ctx.get_stage()
+        if not stage:
+            return None
+        root = stage.GetRootLayer().realPath
+        return {"root": root}
+
+    # ----------------------------------------
+
     def on_shutdown(self):
         print("[motion.extension] shutdown")
         with contextlib.suppress(Exception):
-            if self.run_data:
-                self.run_data.__aexit__(None, None, None)
+            if self.loop:
+                self.loop.call_soon_threadsafe(self.loop.stop)
+            if self.thread:
+                self.thread.join(timeout=2.0)
+
+        with contextlib.suppress(Exception):
             if self.run_http:
                 self.run_http.__aexit__(None, None, None)
 
