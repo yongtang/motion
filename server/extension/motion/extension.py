@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import time
 
 import omni.ext
 import omni.kit
@@ -41,10 +42,20 @@ class MotionExtension(omni.ext.IExt):
             sub = await channel.subscribe_step(session)
             print(f"[motion.extension] subscribed step for session={session}")
 
+            last = time.perf_counter()
+
             try:
                 while True:
+                    # ---- drift probe (inline) ----
+                    now = time.perf_counter()
+                    drift = now - last - 1.0  # expected ~1.0s
+                    if drift > 0.05:
+                        print(f"[motion.extension][DRIFT] loop delayed by {drift:.3f}s")
+                    last = now
+                    # -----------------------------
+
                     payload = json.dumps({"session": session})
-                    await channel.publish_data(session, payload)
+                    # await channel.publish_data(session, payload)
                     await asyncio.sleep(1.0)
             finally:
                 with contextlib.suppress(Exception):
