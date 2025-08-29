@@ -76,7 +76,7 @@ class MotionExtension(omni.ext.IExt):
                     last = now
                     # -----------------------------
 
-
+                    print(f"[motion.extension] stage ={self.stage}")
                     robot = self.stage.GetPrimAtPath("/World/tracking/Franka")
                     assert robot.IsValid()
                     joint_targets, joint_states = ff(robot)
