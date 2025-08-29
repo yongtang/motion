@@ -90,10 +90,15 @@ class MotionExtension(omni.ext.IExt):
 
 
                     joint_targets_position = {k:v.Set(v.Get() + 0.1) for k, v in joint_targets.items()}
-                    joint_states_position = {k:v.Set(v.Get() + 0.1) for k, v in joint_states.items()}
+                    #joint_states_position = {k:v.Set(v.Get() + 0.1) for k, v in joint_states.items()}
 
 
                     self.timeline.forward_one_frame()
+
+                    joint_targets_position = {k:v.Get() for k, v in joint_targets.items()}
+                    joint_states_position = {k:v.Get() for k, v in joint_states.items()}
+
+                    print(f"[motion.extension][robot] xxxx - joint_targets_position={joint_targets_position}, joint_states_position={joint_states_position}")
 
                     payload = json.dumps({"session": session})
                     await channel.publish_data(session, payload)
