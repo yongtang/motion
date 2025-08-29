@@ -38,12 +38,34 @@ class MotionExtension(omni.ext.IExt):
             )
         )
 
-        async def run_isaac(session: str, channel: Channel):
+        def ff(robot):
+            joint_targets = {}  # joint_name -> Usd.Attribute (targetPosition)
+            joint_states  = {}  # joint_name -> Usd.Attribute (position)
+
+            def scan_prim(p: Usd.Prim):
+                for attr in p.GetAttributes():
+                    name = attr.GetName()
+                    # drive:<joint>:targetPosition
+                    if name.startswith("drive:") and name.endswith(":targetPosition"):
+                        joint = name.split(":")[1]
+                        joint_targets[joint] = attr
+                    # state:<joint>:position
+                    if name.startswith("state:") and name.endswith(":position"):
+                        joint = name.split(":")[1]
+                        joint_states[joint] = attr
+
+                for child in p.GetChildren():
+                    scan_prim(child)
+            scan_prim(robot)
+            return joint_targets, joint_states
+
+        async def run_isaac(self, session: str, channel: Channel):
             sub = await channel.subscribe_step(session)
             print(f"[motion.extension] subscribed step for session={session}")
 
             last = time.perf_counter()
 
+            self.timeline.set_ticks_per_frame(1) 
             try:
                 while True:
                     # ---- drift probe (inline) ----
@@ -53,6 +75,15 @@ class MotionExtension(omni.ext.IExt):
                         print(f"[motion.extension][DRIFT] loop delayed by {drift:.3f}s")
                     last = now
                     # -----------------------------
+
+
+                    robot = self.stage.GetPrimAtPath("/World/tracking/Franka")
+                    assert robot.IsValid()
+                    joint_targets, joint_states = ff(robot)
+
+                    print(f"[motion.extension][robot] joint_targets={joint_targets}, joint_states={joint_states}")
+
+                    self.timeline.forward_one_frame()
 
                     payload = json.dumps({"session": session})
                     await channel.publish_data(session, payload)
@@ -88,7 +119,7 @@ class MotionExtension(omni.ext.IExt):
 
             print("[motion.extension] stage up")
 
-            await run_isaac(self.session, self.channel)
+            await run_isaac(self, self.session, self.channel)
 
         omni.kit.async_engine.run_coroutine(
             f_stage(self, "file:///storage/node/scene/scene.usd")
