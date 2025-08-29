@@ -55,7 +55,7 @@ class MotionExtension(omni.ext.IExt):
                     # -----------------------------
 
                     payload = json.dumps({"session": session})
-                    # await channel.publish_data(session, payload)
+                    await channel.publish_data(session, payload)
                     await asyncio.sleep(1.0)
             finally:
                 with contextlib.suppress(Exception):
