@@ -89,7 +89,7 @@ class MotionExtension(omni.ext.IExt):
                     print(f"[motion.extension][robot] joint_targets_position={joint_targets_position}, joint_states_position={joint_states_position}")
 
 
-                    joint_targets_position = {k:v.Set(v.Get() + 0.1) for k, v in joint_targets.items()}
+                    #joint_targets_position = {k:v.Set(v.Get() + 0.1) for k, v in joint_targets.items()}
                     #joint_states_position = {k:v.Set(v.Get() + 0.1) for k, v in joint_states.items()}
 
 
