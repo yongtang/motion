@@ -28,7 +28,7 @@ class Channel:
         self.js = self.nc.jetstream()
         await self.nc.flush()
 
-        # Single stream for node commands and data
+        # JetStream stream that CAPTURES the NATS subjects (publish still goes to core NATS)
         config = nats.js.api.StreamConfig(
             name="motion",
             subjects=[
@@ -37,7 +37,11 @@ class Channel:
                 "motion.data.*",
                 "motion.step.*",
             ],
-            allow_rollup_hdrs=True,
+            allow_rollup_hdrs=True,  # needed for Nats-Rollup on step
+            storage=nats.js.api.StorageType.FILE,
+            retention=nats.js.api.RetentionPolicy.LIMITS,
+            max_msgs=-1,
+            max_bytes=-1,
         )
         try:
             await self.js.add_stream(config=config)
@@ -56,16 +60,16 @@ class Channel:
         self.nc = None
         self.js = None
 
-    # ----- Node (play/stop) -----
+    # ----- Node (play/stop) -> PUBLISH TO CORE NATS -----
 
     async def publish_node(self, node: str, session: str, op: str) -> None:
-        assert self.js is not None, "Channel not started"
+        assert self.nc is not None, "Channel not started"
         assert op in ("play", "stop"), f"Unsupported op: {op}"
         subject = f"motion.node.{node}.{op}"
-        payload = f"{session}"
-        self.log.info(f"Publish {subject}: {payload}")
-        ack = await self.js.publish(subject, payload.encode())
-        self.log.info(f"Ack {ack.stream} {ack.seq}")
+        payload = f"{session}".encode()
+        self.log.info(f"Publish (core) {subject}: {session}")
+        await self.nc.publish(subject, payload)
+        # No JS ack => non-blocking; JS stream 'motion' captures this transparently.
 
     async def subscribe_node(self, node: str, op: str):
         assert self.js is not None, "Channel not started"
@@ -82,12 +86,8 @@ class Channel:
             await self.js.add_consumer(stream="motion", config=config)
         except nats.js.errors.APIError:
             pass
-        sub = await self.js.pull_subscribe(
-            subject,
-            durable=durable,
-            stream="motion",
-        )
-        self.log.info(f"Subscribed to {subject} with durable {durable}")
+        sub = await self.js.pull_subscribe(subject, durable=durable, stream="motion")
+        self.log.info(f"Subscribed (JS) to {subject} with durable {durable}")
         return sub
 
     async def publish_play(self, node: str, session: str) -> None:
@@ -102,14 +102,13 @@ class Channel:
     async def subscribe_stop(self, node: str):
         return await self.subscribe_node(node=node, op="stop")
 
-    # ----- Data (motion.data.<session>) -----
+    # ----- Data (motion.data.<session>) -> PUBLISH TO CORE NATS -----
 
     async def publish_data(self, session: str, payload: str) -> None:
-        assert self.js is not None, "Channel not started"
+        assert self.nc is not None, "Channel not started"
         subject = f"motion.data.{session}"
-        self.log.info(f"Publish {subject}: {payload[:80]!r}")
-        ack = await self.js.publish(subject, payload.encode())
-        self.log.info(f"Ack {ack.stream} {ack.seq}")
+        self.log.info(f"Publish (core) {subject}: {payload[:80]!r}")
+        await self.nc.publish(subject, payload.encode())
 
     async def subscribe_data(self, session: str, start: int | None = None):
         assert self.js is not None, "Channel not started"
@@ -135,21 +134,21 @@ class Channel:
             note = f"START_SEQUENCE {start}"
 
         sub = await self.js.subscribe(subject, stream="motion", config=config)
-        self.log.info(f"[data] subscribed {subject} (ephemeral, {note})")
+        self.log.info(f"[data] subscribed (JS) {subject} (ephemeral, {note})")
         return sub
 
-    # ----- Step (motion.step.<session>) -----
+    # ----- Step (motion.step.<session>) -> PUBLISH TO CORE NATS (with Rollup) -----
 
     async def publish_step(self, session: str, payload: str) -> None:
-        assert self.js is not None, "Channel not started"
+        assert self.nc is not None, "Channel not started"
         subject = f"motion.step.{session}"
-        self.log.info(f"Publish {subject}: {payload[:80]!r}")
-        ack = await self.js.publish(
+        self.log.info(f"Publish (core) {subject}: {payload[:80]!r}")
+        # NATS headers are kept; JetStream honors Nats-Rollup when capturing.
+        await self.nc.publish(
             subject,
             payload.encode(),
-            headers={"Nats-Rollup": "sub"},  # <-- keep only the latest for this subject
+            headers={"Nats-Rollup": "sub"},
         )
-        self.log.info(f"Ack {ack.stream} {ack.seq}")
 
     async def subscribe_step(self, session: str):
         assert self.js is not None, "Channel not started"
@@ -158,7 +157,7 @@ class Channel:
         config = nats.js.api.ConsumerConfig(
             durable_name=durable,
             filter_subject=subject,
-            deliver_policy=nats.js.api.DeliverPolicy.LAST,  # <-- start at the current last
+            deliver_policy=nats.js.api.DeliverPolicy.LAST,
             ack_policy=nats.js.api.AckPolicy.EXPLICIT,
             max_ack_pending=1,
         )
@@ -167,5 +166,5 @@ class Channel:
         except nats.js.errors.APIError:
             pass
         sub = await self.js.pull_subscribe(subject, durable=durable, stream="motion")
-        self.log.info(f"[step] pull_subscribed {subject} durable={durable}")
+        self.log.info(f"[step] pull_subscribed (JS) {subject} durable={durable}")
         return sub
