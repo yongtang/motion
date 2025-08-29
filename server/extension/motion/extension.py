@@ -42,7 +42,7 @@ class MotionExtension(omni.ext.IExt):
             joint_targets = {}  # joint_name -> Usd.Attribute (targetPosition)
             joint_states  = {}  # joint_name -> Usd.Attribute (position)
 
-            def scan_prim(p: Usd.Prim):
+            def scan_prim(p):
                 for attr in p.GetAttributes():
                     name = attr.GetName()
                     # drive:<joint>:targetPosition
