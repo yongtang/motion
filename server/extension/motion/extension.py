@@ -98,12 +98,14 @@ class MotionExtension(omni.ext.IExt):
             ctx = omni.usd.get_context()
             if ctx.get_stage():
                 await ctx.close_stage_async()
-            stage = await asyncio.wait_for(
+            await asyncio.wait_for(
                 ctx.open_stage_async(
                     e, load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL
                 ),
                 timeout=120.0,
             )
+            stage = ctx.get_stage()
+            assert stage
             print("[motion.extension] loaded")
 
             self.run_http = run_http()
