@@ -40,7 +40,7 @@ class MotionExtension(omni.ext.IExt):
 
         def ff(robot):
             joint_targets = {}  # joint_name -> Usd.Attribute (targetPosition)
-            joint_states  = {}  # joint_name -> Usd.Attribute (position)
+            joint_states = {}  # joint_name -> Usd.Attribute (position)
 
             def scan_prim(p):
                 for attr in p.GetAttributes():
@@ -56,6 +56,7 @@ class MotionExtension(omni.ext.IExt):
 
                 for child in p.GetChildren():
                     scan_prim(child)
+
             scan_prim(robot)
             return joint_targets, joint_states
 
@@ -65,7 +66,7 @@ class MotionExtension(omni.ext.IExt):
 
             last = time.perf_counter()
 
-            self.timeline.set_ticks_per_frame(1) 
+            self.timeline.set_ticks_per_frame(1)
             try:
                 while True:
                     # ---- drift probe (inline) ----
@@ -77,6 +78,17 @@ class MotionExtension(omni.ext.IExt):
                     # -----------------------------
 
                     print(f"[motion.extension] stage ={self.stage}")
+
+                    articulation = ArticulationView(prim_paths_expr="/World/tracking/Franka")
+
+                    names = articulation.get_joints_state().names
+
+
+                    print(f"[motion.extension] articulation={names}")
+
+                    self.timeline.forward_one_frame()
+
+                    """
                     robot = self.stage.GetPrimAtPath("/World/tracking/Franka")
                     assert robot.IsValid()
                     joint_targets, joint_states = ff(robot)
@@ -99,6 +111,7 @@ class MotionExtension(omni.ext.IExt):
                     joint_states_position = {k:v.Get() for k, v in joint_states.items()}
 
                     print(f"[motion.extension][robot] xxxx - joint_targets_position={joint_targets_position}, joint_states_position={joint_states_position}")
+                    """
 
                     payload = json.dumps({"session": session})
                     await channel.publish_data(session, payload)
