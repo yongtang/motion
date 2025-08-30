@@ -4,10 +4,11 @@ import json
 import time
 
 import omni.ext
-import omni.isaac.core
 import omni.kit
 import omni.timeline
 import omni.usd
+
+from omni.isaac.core.articulations import ArticulationView
 
 from .channel import Channel
 from .node import run_data, run_http
@@ -80,7 +81,7 @@ class MotionExtension(omni.ext.IExt):
 
                     print(f"[motion.extension] stage ={self.stage}")
 
-                    articulation = omni.isaac.core.articulations.ArticulationView(
+                    articulation = ArticulationView(
                         prim_paths_expr="/World/tracking/Franka"
                     )
 
