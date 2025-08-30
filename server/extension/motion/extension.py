@@ -95,7 +95,8 @@ class MotionExtension(omni.ext.IExt):
                     if names is not None and positions is not None:
                         print(f"[motion.extension] names={len(names)} positions={positions.shape}")
                         q = positions.copy()
-                        q[:, -1] += 0.1
+                        # q[:, -1] += 0.1
+                        q += 0.1
                         articulation.set_joint_position_targets(q)
 
 
