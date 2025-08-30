@@ -94,6 +94,9 @@ class MotionExtension(omni.ext.IExt):
                     print(f"[motion.extension] names={type(names)} positions={type(positions)}")
                     if names is not None and positions is not None:
                         print(f"[motion.extension] names={len(names)} positions={positions.shape}")
+                        q = positions.copy()
+                        q[:, -1] += 0.1
+                        articulation.set_joint_position_targets(q)
 
 
                     self.timeline.forward_one_frame()
