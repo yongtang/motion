@@ -92,6 +92,9 @@ class MotionExtension(omni.ext.IExt):
                     print(f"[motion.extension] names={names}")
                     print(f"[motion.extension] positions={positions}")
                     print(f"[motion.extension] names={type(names)} positions={type(positions)}")
+                    if names and positions:
+                        print(f"[motion.extension] names={len(names)} positions={positions.shape}")
+
 
                     self.timeline.forward_one_frame()
 
