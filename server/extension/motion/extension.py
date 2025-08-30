@@ -8,7 +8,7 @@ import omni.kit
 import omni.timeline
 import omni.usd
 
-from omni.isaac.core.articulations import ArticulationView
+from omni.isaac.core.articulations import Articulation
 
 from .channel import Channel
 from .node import run_data, run_http
@@ -81,14 +81,14 @@ class MotionExtension(omni.ext.IExt):
 
                     print(f"[motion.extension] stage ={self.stage}")
 
-                    articulation = ArticulationView(
+                    articulation = Articulation(
                         prim_paths_expr="/World/tracking/Franka"
                     )
 
-                    positions = articulation.get_joint_positions()
+                    positions = articulation.data.joint_pos 
 
                     # names = articulation.get_joints_state().names
-                    names = articulation.get_dof_names()
+                    names = articulation.joint_names 
                     print(f"[motion.extension] names={names} positions={positions}")
 
                     self.timeline.forward_one_frame()
