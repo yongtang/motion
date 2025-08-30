@@ -48,6 +48,35 @@ services:
       timeout: 3s
       retries: 3
       start_period: 30s
+  gstreamer:
+    image: opensuse/tumbleweed
+    container_name: ${SCOPE:-motion}-gstreamer
+    restart: unless-stopped
+    depends_on:
+      - server
+    network_mode: "service:server"
+    volumes:
+      - storage:/storage
+    entrypoint: ["/bin/bash"]
+    command:
+      - -lc
+      - |
+        zypper install -y \
+            gstreamer \
+            gstreamer-plugins-base \
+            gstreamer-plugins-good \
+            gstreamer-plugins-bad \
+            gstreamer-plugins-ugly \
+            gstreamer-plugins-rs \
+            gstreamer-devel \
+            gstreamer-libnice
+        sleep infinity
+    healthcheck:
+      test: ["CMD-SHELL", "echo success"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
   minio:
     image: minio/minio:latest
     container_name: ${SCOPE:-motion}-minio
