@@ -85,7 +85,7 @@ class MotionExtension(omni.ext.IExt):
                         prim_paths_expr="/World/tracking/Franka"
                     )
 
-                    positions = articulation.data.joint_pos 
+                    positions = articulation.get_joint_positions()
 
                     # names = articulation.get_joints_state().names
                     names = articulation.joint_names 
