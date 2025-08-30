@@ -89,8 +89,8 @@ class MotionExtension(omni.ext.IExt):
 
                     # names = articulation.get_joints_state().names
                     names = articulation.dof_names 
-                    print(f"[motion.extension] names={names} positions={positions}")
-                    print(f"[motion.extension] positions={len(positions)}")
+                    print(f"[motion.extension] names={names}")
+                    print(f"[motion.extension] positions={positions}")
 
                     self.timeline.forward_one_frame()
 
