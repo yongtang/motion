@@ -4,7 +4,7 @@ import json
 import time
 
 import omni.ext
-import omni.isaac
+import omni.isaac.core
 import omni.kit
 import omni.timeline
 import omni.usd
