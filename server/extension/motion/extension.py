@@ -92,7 +92,7 @@ class MotionExtension(omni.ext.IExt):
                     print(f"[motion.extension] names={names}")
                     print(f"[motion.extension] positions={positions}")
                     print(f"[motion.extension] names={type(names)} positions={type(positions)}")
-                    if names and positions:
+                    if names is not None and positions is not None:
                         print(f"[motion.extension] names={len(names)} positions={positions.shape}")
 
 
