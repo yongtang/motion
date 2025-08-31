@@ -1,3 +1,4 @@
+import datetime
 import functools
 import logging
 
@@ -153,18 +154,14 @@ class Channel:
     async def subscribe_step(self, session: str):
         assert self.js is not None, "Channel not started"
         subject = f"motion.step.{session}"
-        durable = f"motion-step-{session}"
         config = nats.js.api.ConsumerConfig(
-            durable_name=durable,
             filter_subject=subject,
-            deliver_policy=nats.js.api.DeliverPolicy.LAST,
-            ack_policy=nats.js.api.AckPolicy.EXPLICIT,
-            max_ack_pending=1,
+            deliver_policy=nats.js.api.DeliverPolicy.ALL,
+            ack_policy=nats.js.api.AckPolicy.NONE,
+            inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
         )
-        try:
-            await self.js.add_consumer(stream="motion", config=config)
-        except nats.js.errors.APIError:
-            pass
-        sub = await self.js.pull_subscribe(subject, durable=durable, stream="motion")
-        self.log.info(f"[step] pull_subscribed (JS) {subject} durable={durable}")
+        sub = await self.js.pull_subscribe(
+            subject, durable=None, config=config, stream="motion"
+        )
+        self.log.info(f"[step] pull_subscribed {subject}")
         return sub
