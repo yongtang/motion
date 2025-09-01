@@ -34,7 +34,7 @@ async def run_http():
 
 
 @contextlib.asynccontextmanager
-async def run_data():
+async def run_link():
     channel = Channel()
     await channel.start()
     log.info("Channel started")
