@@ -12,17 +12,18 @@ log = logging.getLogger("echo")
 
 async def f_echo(session: str, channel: Channel, msg):
     log.info(f"[echo] step session={session}: {msg}")
-    data = json.loads(msg.data)
-    payload = json.dumps(data)
-    log.info(f"[echo] step->data session={session}: {payload[:120]!r}")
+    step = json.loads(msg.data)
+    data = json.dumps(step)
+    log.info(f"[echo] step->data session={session}: {data[:120]!r}")
 
-    await channel.publish_data(session, payload)
+    await channel.publish_data(session, data)
 
 
 async def main():
     with open("/storage/node/session.json", "r") as f:
-        session = json.loads(f.read())["session"]
+        metadata = json.loads(f.read())
 
+    session = metadata["session"]
     async with run_http():
         async with run_data() as channel:
             async with run_step(
