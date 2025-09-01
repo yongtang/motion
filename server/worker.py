@@ -98,10 +98,9 @@ async def run_data(session: str):
         finally:
             while True:
                 try:
-                    msg = await asyncio.wait_for(sub.messages.__anext__(), timeout=30.0)
-                except (asyncio.TimeoutError, StopAsyncIteration):
+                    msg = await sub.next_msg(timeout=30.0)
+                except asyncio.TimeoutError:
                     break
-
                 f.write(msg.data + b"\n")
 
             await sub.unsubscribe()
