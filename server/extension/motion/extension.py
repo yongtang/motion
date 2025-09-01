@@ -5,8 +5,10 @@ import time
 
 import omni.ext
 import omni.kit
+import omni.replicator
 import omni.timeline
 import omni.usd
+import pxr
 from omni.isaac.core.articulations import Articulation
 from omni.isaac.core.prims import XFormPrim
 
@@ -27,6 +29,21 @@ def f_prim(metadata, stage):
     )
     assert prim and prim.IsValid()
     return prim.GetPath().pathString
+
+
+def f_rend(metadata, stage):
+    print(f"[motion.extension] rend: {metadta} {stage}")
+    if "camera" not in metadata or len(metadata["camera"]) == 0:
+        return None
+    camera = list(stage.GetPrimAtPath(e) for e in metadata["camera"])
+    assert all((e and e.IsValid() and e.IsA(pxr.UsdGeom.Camera)) for e in camera)
+    camera = list(e.GetPath().pathString for e in camera)
+    return list(
+        omni.replicator.core.create.render_product(
+            e, (metadata["camera"][e]["weight"], metadata["camera"][e]["height"])
+        )
+        for e in camera
+    )
 
 
 def f_call(metadata, channel, articulation):
@@ -100,6 +117,25 @@ def f_data(session, articulation, link):
 
 
 @contextlib.asynccontextmanager
+async def run_rend(rend):
+    if rend:
+        writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
+        writer.initialize(
+            annotator="rgb", output_dir="rtsp://127.0.0.1:8554/RTSPWriter"
+        )
+        writer.attach(rend)
+    print("RTSP Writer attached")
+
+    try:
+        yield
+    finally:
+        with contextlib.suppress(Exception):
+            if rend:
+                writer.detach(rend)
+            print("RTSP Writer detached")
+
+
+@contextlib.asynccontextmanager
 async def run_call(call):
     subscription = (
         (
@@ -148,23 +184,24 @@ async def main():
                 channel=channel,
                 callback=f_step(metadata, channel, articulation),
             ) as subscribe:
-                async with run_call(
-                    f_call(metadata, channel, articulation)
-                ) as subscription:
-                    omni.timeline.get_timeline_interface().set_ticks_per_frame(1)
-                    omni.timeline.get_timeline_interface().forward_one_frame()
-                    print(
-                        f"[motion.extension] articulation dof: {articulation.dof_names}"
-                    )
-                    assert articulation.dof_names is not None
+                async with run_rend(f_rend(metadata, stage)):
+                    async with run_call(
+                        f_call(metadata, channel, articulation)
+                    ) as subscription:
+                        omni.timeline.get_timeline_interface().set_ticks_per_frame(1)
+                        omni.timeline.get_timeline_interface().forward_one_frame()
+                        print(
+                            f"[motion.extension] articulation dof: {articulation.dof_names}"
+                        )
+                        assert articulation.dof_names is not None
 
-                    (
-                        omni.timeline.get_timeline_interface().play()
-                        if subscription
-                        else None
-                    )
+                        (
+                            omni.timeline.get_timeline_interface().play()
+                            if subscription
+                            else None
+                        )
 
-                    await asyncio.Event().wait()
+                        await asyncio.Event().wait()
 
 
 class MotionExtension(omni.ext.IExt):
