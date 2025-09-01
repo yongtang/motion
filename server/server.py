@@ -379,9 +379,6 @@ async def session_data(ws: WebSocket, session: UUID4):
         while True:
             msg = await sub.next_msg()
             await ws.send_text(msg.data.decode(errors="ignore"))
-            if start:
-                with contextlib.suppress(Exception):
-                    await msg.ack()
     except WebSocketDisconnect:
         log.info(f"WS data disconnected: session={session}")
     finally:

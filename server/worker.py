@@ -98,12 +98,11 @@ async def run_data(session: str):
         finally:
             while True:
                 try:
-                    m = await asyncio.wait_for(sub.messages.__anext__(), timeout=30.0)
+                    msg = await asyncio.wait_for(sub.messages.__anext__(), timeout=30.0)
                 except (asyncio.TimeoutError, StopAsyncIteration):
                     break
 
-                f.write(m.data + b"\n")
-                await m.ack()
+                f.write(msg.data + b"\n")
 
             await sub.unsubscribe()
 

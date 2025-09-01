@@ -121,6 +121,7 @@ class Channel:
                 deliver_policy=nats.js.api.DeliverPolicy.NEW,
                 replay_policy=nats.js.api.ReplayPolicy.INSTANT,
                 ack_policy=nats.js.api.AckPolicy.NONE,
+                inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
             )
             note = "NEW"
         else:
@@ -129,8 +130,8 @@ class Channel:
                 deliver_policy=nats.js.api.DeliverPolicy.BY_START_SEQUENCE,
                 opt_start_seq=start,
                 replay_policy=nats.js.api.ReplayPolicy.INSTANT,
-                ack_policy=nats.js.api.AckPolicy.EXPLICIT,
-                max_ack_pending=10_000,
+                ack_policy=nats.js.api.AckPolicy.NONE,
+                inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
             )
             note = f"START_SEQUENCE {start}"
 
@@ -161,7 +162,7 @@ class Channel:
             inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
         )
         sub = await self.js.subscribe(
-            subject, durable=None, config=config, stream="motion", cb=callback
+            subject, config=config, stream="motion", cb=callback
         )
         self.log.info(f"[step] pull_subscribed {subject}")
         return sub
