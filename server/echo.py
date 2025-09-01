@@ -1,42 +1,22 @@
 import asyncio
-import contextlib
+import functools
 import json
 import logging
 
 from .channel import Channel
-from .node import run_data, run_http
+from .node import run_data, run_http, run_step
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("echo")
 
 
-async def run_echo(session: str, channel: Channel):
-    """
-    Subscribe to motion.step.{session} and republish each message to motion.data.{session}.
-    """
-    sub = await channel.subscribe_step(session)
-    log.info(f"[node] subscribed step for session={session}")
+async def f_echo(session: str, channel: Channel, msg):
+    log.info(f"[echo] step session={session}: {msg}")
+    data = json.loads(msg.data)
+    payload = json.dumps(data)
+    log.info(f"[echo] step->data session={session}: {payload[:120]!r}")
 
-    try:
-        while True:
-            try:
-                msgs = await sub.fetch(batch=1, timeout=5)
-            except asyncio.TimeoutError:
-                continue  # no message, just loop again
-
-            if not msgs:
-                continue
-
-            msg = msgs[0]
-            payload = msg.data.decode("utf-8", errors="ignore")
-            log.info(f"[node] step→data session={session}: {payload[:120]!r}")
-
-            await channel.publish_data(session, payload)
-            await msg.ack()
-    finally:
-        with contextlib.suppress(Exception):
-            await sub.unsubscribe()
-        log.info(f"[node] unsubscribed step for session={session}")
+    await channel.publish_data(session, payload)
 
 
 async def main():
@@ -45,7 +25,12 @@ async def main():
 
     async with run_http():
         async with run_data() as channel:
-            await run_echo(session, channel)
+            async with run_step(
+                session=session,
+                channel=channel,
+                callback=functools.partial(f_echo, session, channel),
+            ) as subscribe:
+                await asyncio.Event().wait()
 
 
 if __name__ == "__main__":

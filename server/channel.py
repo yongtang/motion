@@ -151,7 +151,7 @@ class Channel:
             headers={"Nats-Rollup": "sub"},
         )
 
-    async def subscribe_step(self, session: str):
+    async def subscribe_step(self, session: str, callback):
         assert self.js is not None, "Channel not started"
         subject = f"motion.step.{session}"
         config = nats.js.api.ConsumerConfig(
@@ -160,8 +160,8 @@ class Channel:
             ack_policy=nats.js.api.AckPolicy.NONE,
             inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
         )
-        sub = await self.js.pull_subscribe(
-            subject, durable=None, config=config, stream="motion"
+        sub = await self.js.subscribe(
+            subject, durable=None, config=config, stream="motion", cb=callback
         )
         self.log.info(f"[step] pull_subscribed {subject}")
         return sub

@@ -43,3 +43,15 @@ async def run_data():
     finally:
         await channel.close()
         log.info("Channel closed")
+
+
+@contextlib.asynccontextmanager
+async def run_step(session, channel, callback):
+    subscribe = await channel.subscribe_step(session, callback)
+    log.info(f"Sbscribed step for session={session}")
+    try:
+        yield subscribe
+    finally:
+        with contextlib.suppress(Exception):
+            await subscribe.unsubscribe()
+        log.info(f"Uubscribed step for session={session}")
