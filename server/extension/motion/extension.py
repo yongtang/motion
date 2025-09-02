@@ -38,15 +38,15 @@ def f_rend(metadata, stage):
     camera = list(stage.GetPrimAtPath(e) for e in metadata["camera"])
     assert all((e and e.IsValid() and e.IsA(pxr.UsdGeom.Camera)) for e in camera)
     camera = list(e.GetPath().pathString for e in camera)
-    return list(
-        omni.replicator.core.create.render_product(
+    return {
+        e: omni.replicator.core.create.render_product(
             e, (metadata["camera"][e]["weight"], metadata["camera"][e]["height"])
         )
         for e in camera
-    )
+    }
 
 
-def f_call(metadata, channel, articulation):
+def f_call(metadata, channel, articulation, annotator):
     print(f"[motion.extension] call: {metadta}")
     if f_sync(metadata):
         return None
@@ -64,7 +64,9 @@ def f_call(metadata, channel, articulation):
         print("[motion.extension] timeline step")
 
         omni.kit.async_engine.run_coroutin(
-            channel.publish_data(session, f_data(session, articulation, link))
+            channel.publish_data(
+                session, f_data(session, articulation, annotator, link)
+            )
         )
 
     return on_timeline_event
@@ -92,16 +94,17 @@ def f_step(metadata, channel, articulation):
             return None
         timeline.forward_one_frame()
 
-        await channel.publish_data(session, f_data(session, articulation, link))
+        await channel.publish_data(
+            session, f_data(session, articulation, annotator, link)
+        )
 
     return run_isaac
 
 
-def f_data(session, articulation, link):
+def f_data(session, articulation, annotator, link):
     time = omni.timeline.get_timeline_interface().get_current_time()
     joint = dict(zip(articulation.dof_names, articulation.get_joint_position()))
 
-    data = {"session": session, "joint": joint, "time": time}
     # orientation: quotanion - xyzw
     pose = {
         name: {"position": position, "orientation": orientation}
@@ -109,7 +112,12 @@ def f_data(session, articulation, link):
             (e.prim_link, *e.get_world_pose()) for e in link
         )
     }
-    data = {**data, **({"pose": pose} if len(pose) else {})}
+    data = {
+        "session": session,
+        "joint": joint,
+        "time": time,
+        **({"pose": pose} if len(pose) else {}),
+    }
 
     data = json.dumps(data)
     print(f"[motion.extension] step->data session={session}: {data[:120]!r}")
@@ -123,7 +131,13 @@ async def run_rend(rend):
         writer.initialize(
             annotator="rgb", output_dir="rtsp://127.0.0.1:8554/RTSPWriter"
         )
-        writer.attach(rend)
+        writer.attach(rend.values())
+
+        annotator = {
+            e: omni.replicator.core.AnnotatorRegistry.get_annotator("rgb") for e in rend
+        }
+        for i, e in annotator.items():
+            e.attach(rend[i])
     print("RTSP Writer attached")
 
     try:
@@ -131,7 +145,12 @@ async def run_rend(rend):
     finally:
         with contextlib.suppress(Exception):
             if rend:
-                writer.detach(rend)
+                for i, e in annotator.items():
+                    e.detach(rend[i])
+            print("Annotator detached")
+        with contextlib.suppress(Exception):
+            if rend:
+                writer.detach(rend.values())
             print("RTSP Writer detached")
 
 
@@ -179,14 +198,14 @@ async def main():
     session = metadata["session"]
     async with run_http():
         async with run_data() as channel:
-            async with run_step(
-                session=session,
-                channel=channel,
-                callback=f_step(metadata, channel, articulation),
-            ) as subscribe:
-                async with run_rend(f_rend(metadata, stage)):
+            async with run_rend(f_rend(metadata, stage)) as writer, annotator:
+                async with run_step(
+                    session=session,
+                    channel=channel,
+                    callback=f_step(metadata, channel, articulation, annotator),
+                ) as subscribe:
                     async with run_call(
-                        f_call(metadata, channel, articulation)
+                        f_call(metadata, channel, articulation, annotator)
                     ) as subscription:
                         omni.timeline.get_timeline_interface().set_ticks_per_frame(1)
                         omni.timeline.get_timeline_interface().forward_one_frame()
