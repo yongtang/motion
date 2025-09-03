@@ -1,4 +1,5 @@
 import contextlib
+import json
 import logging
 
 import aiohttp.web
@@ -55,3 +56,9 @@ async def run_step(session, channel, callback):
         with contextlib.suppress(Exception):
             await subscribe.unsubscribe()
         log.info(f"Uubscribed step for session={session}")
+
+
+async def run_data(session, channel, data, callback):
+    data = await callback(data) if callback else data
+    data = json.dumps({"session": session, **data})
+    await channel.publish_data(session, data)
