@@ -118,6 +118,8 @@ def f_data(session, articulation, annotator, link):
             (e.prim_link, *e.get_world_pose()) for e in link
         )
     }
+    camera = {k: v.get_data().get("data", None) for k, v in annotator.items()}
+    camera = {k: v for k, v in camera.items() if v}
     data = {
         "time": time,
         "joint": joint,
