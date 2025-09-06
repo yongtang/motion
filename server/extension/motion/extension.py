@@ -1,81 +1,60 @@
 import asyncio
+import json
+import sys
 
-import carb
 import omni.ext
+import omni.kit
 import omni.usd
+import carb.settings
+
+
+async def main():
+    print("[motion.extension] Load stage")
+    with open("/storage/node/session.json", "r") as f:
+        metadata = json.loads(f.read())
+    print(f"[motion.extension] Loaded metadata: {metadata}")
+
+    ctx = omni.usd.get_context()
+    if ctx.get_stage():
+        print("[motion.extension] Closing existing stage...")
+        ctx.set_pending_edit(False)
+        await ctx.close_stage_async()
+
+    print("[motion.extension] Opening stage…")
+    await asyncio.wait_for(
+        ctx.open_stage_async(
+            "file:///storage/node/scene/scene.usd",
+            load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,
+        ),
+        timeout=120.0,
+    )
+
+    # Let Kit process one update tick
+    await omni.kit.app.get_app().next_update_async()
+
+    stage = ctx.get_stage()
+    if not stage:
+        print("[motion.extension] Failed to open stage")
+        raise RuntimeError("stage is None after open")
+
+    print("[motion.extension] Stage loaded")
 
 
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
+        self.task = None
         super().__init__()
-        self.e_stage_task = None
-        self.e_stage_event = None
-        self.e_stage_subscription = None
 
     def on_startup(self, ext_id):
-        self.e_stage_event = asyncio.Event()
+        print(f"[motion.extension] [{ext_id}] Startup")
+        self.task = omni.kit.async_engine.run_coroutine(main())
 
-        ctx = omni.usd.get_context()
-        self.e_stage_subscription = (
-            ctx.get_stage_event_stream().create_subscription_to_pop(self.on_stage_event)
+        # When main finishes, exit Kit (0=success, 1=error)
+        self.task.add_done_callback(
+            lambda e: omni.kit.app.get_app().post_quit(0 if not e.exception() else 1)
         )
-
-        async def f_stage(url: str):
-            # Close any existing stage, then open with full load
-            if ctx.get_stage():
-                await ctx.close_stage_async()
-
-            self.e_stage_event.clear()
-            await ctx.open_stage_async(
-                url,
-                load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,  # ensure full load
-            )
-
-            # Wait for StageEventType.OPENED (signaled in on_stage_event)
-            await self.e_stage_event.wait()
-
-            # Wait until the stage finishes loading all assets
-            while ctx.is_stage_loading():
-                await asyncio.sleep(0.05)
-
-            carb.log_info("[motion.extension] Stage OPENED and fully loaded")
-
-        # Schedule the task (exceptions bubble up; we just log them)
-        self.e_stage_task = asyncio.create_task(
-            f_stage("file:///storage/node/scene/scene.usd")
-        )
-
-        # Done-callback to surface any unhandled exceptions prominently
-        def f_done(t: asyncio.Task):
-            exc = t.exception()
-            if exc is not None:
-                carb.log_error(f"[motion.extension] Stage task failed: {exc!r}")
-
-        self.e_stage_task.add_done_callback(f_done)
 
     def on_shutdown(self):
-        # Cancel stage-open task first
-        if self.e_stage_task:
-            try:
-                self.e_stage_task.cancel()
-            except Exception:
-                pass
-            self.e_stage_task = None
-
-        # Unsubscribe from stage events
-        if self.e_stage_subscription:
-            try:
-                self.e_stage_subscription.unsubscribe()
-            except Exception:
-                pass
-            self.e_stage_subscription = None
-
-        self.e_stage_event = None
-
-    # ---------- Stage events ----------
-
-    def on_stage_event(self, e):
-        if e.type == omni.usd.StageEventType.OPENED:
-            carb.log_info("[motion.extension] Stage OPENED")
-            if self.e_stage_event and not self.e_stage_event.is_set():
-                self.e_stage_event.set()
+        print("[motion.extension] Shutdown")
+        if self.task and not self.task.done():
+            self.task.cancel()
