@@ -6,6 +6,8 @@ license = "Apache-2.0"
 requires-python = ">=3.9"
 
 dependencies = [
+    "pydantic",
+    "requests",
     "tqdm",
 ]
 
@@ -15,13 +17,25 @@ test = [
 ]
 
 [build-system]
-requires = ["setuptools>=61"]
+requires = [
+    "setuptools>=61",
+]
 build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 pythonpath = [
-    "src" 
+    "src",
 ]
 testpaths = [
-    "tests"
+    "tests",
+]
+addopts = "-v -rP --show-capture=all"
+
+[tool.pylint."MESSAGES CONTROL"]
+disable = [
+    "all",
+]
+enable = [
+    "unused-import",
+    "unused-wildcard-import",
 ]

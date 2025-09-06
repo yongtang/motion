@@ -1,0 +1,12 @@
+[package]
+title = "Motion Extension"
+version = "0.0.1"
+category = "Robotics"
+
+[dependencies]
+"omni.usd" = {}
+"omni.client" = {}
+"omni.timeline" = {}
+
+[[python.module]]
+name = "motion.extension"

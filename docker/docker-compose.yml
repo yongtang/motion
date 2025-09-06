@@ -1,0 +1,198 @@
+services:
+  server:
+    image: python:3.12-slim
+    container_name: ${SCOPE:-motion}-server
+    restart: unless-stopped
+    network_mode: bridge
+    working_dir: /app
+    volumes:
+      - ${PWD}:/app
+      - storage:/storage
+    command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install curl && pip install -r server/requirements.txt && pip install -e . && uvicorn server.server:app --host 0.0.0.0 --port 8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
+  react:
+    image: node:alpine
+    container_name: ${SCOPE:-motion}-react
+    restart: unless-stopped
+    depends_on:
+      - server
+    network_mode: "service:server"
+    working_dir: /app/react
+    volumes:
+      - ${PWD}:/app
+    command: ["/bin/sh", "-lc", "npm ci --no-audit --no-fund && npm run dev -- --host"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173 > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
+  nats:
+    image: nats:alpine
+    container_name: ${SCOPE:-motion}-nats
+    restart: unless-stopped
+    depends_on:
+      - server
+    network_mode: "service:server"
+    volumes:
+      - storage:/storage
+    command: ["-a", "127.0.0.1", "-m", "8222", "-js", "-sd", "/storage/nats"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+  gstreamer:
+    image: opensuse/tumbleweed
+    container_name: ${SCOPE:-motion}-gstreamer
+    restart: unless-stopped
+    depends_on:
+      - server
+    network_mode: "service:server"
+    volumes:
+      - storage:/storage
+    entrypoint: ["/bin/bash"]
+    command:
+      - -lc
+      - |
+        zypper install -y \
+            gstreamer \
+            gstreamer-plugins-base \
+            gstreamer-plugins-good \
+            gstreamer-plugins-bad \
+            gstreamer-plugins-ugly \
+            gstreamer-plugins-rs \
+            gstreamer-devel \
+            gstreamer-libnice
+        sleep infinity
+    healthcheck:
+      test: ["CMD-SHELL", "echo success"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
+  minio:
+    image: minio/minio:latest
+    container_name: ${SCOPE:-motion}-minio
+    restart: unless-stopped
+    depends_on:
+      - server
+    network_mode: "service:server"
+    volumes:
+      - storage:/storage
+    environment:
+      MINIO_ROOT_USER: username
+      MINIO_ROOT_PASSWORD: password
+      MINIO_REGION: us-east-1
+    command: ["server", "/storage/minio"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+  worker:
+    image: python:3.12-slim
+    container_name: ${SCOPE:-motion}-worker
+    restart: unless-stopped
+    depends_on:
+      - server
+    network_mode: "service:server"
+    working_dir: /app
+    volumes:
+      - ${PWD}:/app
+      - storage:/storage
+      - /etc/machine-id:/etc/machine-id:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - MOTION=${PWD}
+      - SCOPE=${SCOPE}
+    command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install docker-cli docker-compose curl && pip install -r server/requirements.txt && pip install -e . && python -m server.worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9999/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
+  node-echo:
+    image: python:3.12-slim
+    container_name: ${SCOPE:-motion}-node-echo
+    restart: no
+    depends_on:
+      - server
+    network_mode: "service:server"
+    working_dir: /app
+    volumes:
+      - ${MOTION:-$PWD}/server/node.py:/isaac-sim/exts/motion.extension/motion/node.py:ro
+      - ${MOTION:-$PWD}/server/channel.py:/isaac-sim/exts/motion.extension/motion/channel.py:ro
+      - ${MOTION:-$PWD}/server/extension/motion/extension.py:/isaac-sim/exts/motion.extension/motion/extension.py:ro
+      - ${MOTION:-$PWD}/server/extension/config/extension.toml:/isaac-sim/exts/motion.extension/config/extension.toml:ro
+      - ${MOTION:-$PWD}:/app:ro
+      - storage:/storage:ro
+    environment:
+      - MOTION=${MOTION}
+      - SCOPE=${SCOPE}
+    entrypoint: ["/bin/bash"]
+    command:
+      - -lc
+      - |
+        if [ -z "${MOTION}" ]; then
+          echo "MOTION not set, exiting";
+          exit 0;
+        fi
+        apt -y -qq update
+        apt -y -qq install curl
+        pip install aiohttp nats-py boto3
+        python -m server.echo
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8888/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
+  node-isaac:
+    image: nvcr.io/nvidia/isaac-sim:5.0.0
+    container_name: ${SCOPE:-motion}-node-isaac
+    restart: no
+    depends_on:
+      - server
+    network_mode: "service:server"
+    working_dir: /app
+    volumes:
+      - ${MOTION:-$PWD}/server/node.py:/isaac-sim/exts/motion.extension/motion/node.py:ro
+      - ${MOTION:-$PWD}/server/channel.py:/isaac-sim/exts/motion.extension/motion/channel.py:ro
+      - ${MOTION:-$PWD}/server/extension/motion/extension.py:/isaac-sim/exts/motion.extension/motion/extension.py:ro
+      - ${MOTION:-$PWD}/server/extension/config/extension.toml:/isaac-sim/exts/motion.extension/config/extension.toml:ro
+      - ${MOTION:-$PWD}:/app:ro
+      - storage:/storage:ro
+    environment:
+      - MOTION=${MOTION}
+      - SCOPE=${SCOPE}
+      - ACCEPT_EULA=Y
+      - PRIVACY_CONSENT=Y
+    entrypoint: ["/bin/bash"]
+    command:
+      - -lc
+      - |
+        if [ -z "${MOTION}" ]; then
+          echo "MOTION not set, exiting";
+          exit 0;
+        fi
+        /isaac-sim/python.sh -m pip install aiohttp nats-py boto3
+        sleep infinity
+    profiles: ["gpu"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+volumes:
+  storage: {}
