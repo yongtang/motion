@@ -1,0 +1,27 @@
+[project]
+name = "motion"
+version = "0.0.1"
+description = "Motion"
+license = "Apache-2.0"
+requires-python = ">=3.9"
+
+dependencies = [
+    "tqdm",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+pythonpath = [
+    "src" 
+]
+testpaths = [
+    "tests"
+]
