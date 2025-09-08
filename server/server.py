@@ -153,26 +153,19 @@ async def session_create(body: SessionRequest) -> motion.session.SessionBaseMode
     # Validate scene existence via storage meta
     try:
         storage_kv_get("scene", f"{body.scene}.json")
-        log.info("Creating session for scene %s", body.scene)
+        log.info(f"Creating session for scene {body.scene}")
     except FileNotFoundError:
-        log.warning("Scene %s not found for session create", body.scene)
+        log.warning(f"Scene {body.scene} not found for session create")
         raise HTTPException(status_code=404, detail="scene not found")
 
-    session = uuid.uuid4()
-    payload = motion.session.SessionBaseModel(uuid=session, scene=body.scene)
+    session = motion.session.SessionBaseModel(uuid=uuid.uuid4(), scene=body.scene)
 
     # Store session doc in KV (no state machine)
-    storage_kv_set(
-        "session",
-        f"{session}.json",
-        json.dumps({"uuid": str(payload.uuid), "scene": str(payload.scene)}).encode(
-            "utf-8"
-        ),
-    )
-    log.info("Session %s created for scene %s", session, body.scene)
+    storage_kv_set("session", f"{str(session.uuid)}.json", session.json())
+    log.info(f"Session {session} created")
 
     # No auto-start here; use /session/{id}/play to trigger work
-    return payload
+    return session
 
 
 @app.get("/session/{session:uuid}", response_model=motion.session.SessionBaseModel)
@@ -180,14 +173,11 @@ async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
     # Load session doc from KV
     try:
         raw = storage_kv_get("session", f"{session}.json")
-        log.info("Session %s found", session)
+        log.info(f"Session {session} found")
     except FileNotFoundError:
-        log.warning("Session %s not found", session)
+        log.warning(f"Session {session} not found")
         raise HTTPException(status_code=404, detail="session not found")
-    d = json.loads(raw)
-    return motion.session.SessionBaseModel(
-        uuid=UUID4(d["uuid"]), scene=UUID4(d["scene"])
-    )
+    return motion.session.SessionBaseModel.parse_raw(raw)
 
 
 @app.get("/session/{session:uuid}/archive")
@@ -196,7 +186,7 @@ async def session_archive(session: UUID4):
     try:
         storage_kv_get("session", f"{session}.json")
     except FileNotFoundError:
-        log.warning("Session %s not found for archive", session)
+        log.warning(f"Session {session} not found for archive")
         raise HTTPException(status_code=404, detail="session not found")
 
     buffer = io.BytesIO()
@@ -206,22 +196,18 @@ async def session_archive(session: UUID4):
             # store the single consolidated file as data.json inside the zip
             z.writestr("data.json", blob)
             log.info(
-                "Added data.json for session %s to archive (%d bytes)",
-                session,
-                len(blob),
+                f"Added data.json for session {session} to archive ({len(blob)} bytes)"
             )
         except FileNotFoundError:
             # No data yet: return an empty archive
-            log.info("No data for session %s; returning empty archive", session)
+            log.info(f"No data for session {session}; returning empty archive")
 
     buffer.seek(0)
     headers = {
         "Content-Disposition": f'inline; filename="{session}.zip"',
         "Content-Type": "application/zip",
     }
-    log.info(
-        "Built session archive for %s: %d bytes", session, buffer.getbuffer().nbytes
-    )
+    log.info(f"Built session archive for {session}: {buffer.getbuffer().nbytes} bytes")
     return Response(
         content=buffer.read(), media_type="application/zip", headers=headers
     )
@@ -245,34 +231,32 @@ async def session_delete(session: UUID4):
                     ),
                     return_exceptions=True,  # don't let one failure break the rest
                 )
-                log.info(
-                    "Published stop for session %s to %d nodes", session, len(nodes)
-                )
+                log.info(f"Published stop for session {session} to {len(nodes)} nodes")
             else:
-                log.warning("No nodes available to stop for session %s", session)
+                log.warning(f"No nodes available to stop for session {session}")
         except Exception as e:
-            log.error("Error broadcasting stop for session %s: %s", session, e)
+            log.error(f"Error broadcasting stop for session {session}: {e}")
 
     # If session metadata isn't found: broadcast stop, then return 204
     try:
         storage_kv_get("session", f"{session}.json")
     except FileNotFoundError:
         log.warning(
-            "Session %s not found during delete; broadcasting stop anyway", session
+            f"Session {session} not found during delete; broadcasting stop anyway"
         )
         await broadcast_stop()
         return Response(status_code=204)
 
     # Session exists: broadcast stop, then delete metadata
-    log.info("Deleting session %s", session)
+    log.info(f"Deleting session {session}")
     await broadcast_stop()
 
     try:
         storage_kv_del("session", f"{session}.json")
-        log.debug("Deleted session %s metadata", session)
+        log.debug(f"Deleted session {session} metadata")
     except Exception as e:
         # Do not fail the request if delete races/errs
-        log.error("Error deleting metadata for session %s: %s", session, e)
+        log.error(f"Error deleting metadata for session {session}: {e}")
 
     return {"status": "deleted", "uuid": str(session)}
 
