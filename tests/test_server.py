@@ -35,7 +35,7 @@ def test_server_scene(docker_compose):
     # search
     r = requests.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == [scene]
+    assert r.json() == [{"uuid": scene}]
 
     # lookup
     r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
@@ -66,7 +66,7 @@ def test_server_scene(docker_compose):
     # delete
     r = requests.delete(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"status": "deleted", "uuid": scene}
+    assert r.json() == {"uuid": scene}
 
     # after delete: search empty, lookup/archive 404
     r = requests.get(f"{base}/scene", params={"q": scene}, timeout=5.0)

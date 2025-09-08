@@ -42,7 +42,7 @@ def test_client_scene(docker_compose):
     assert client.scene.search(bogus) == []
 
     # delete
-    assert client.scene.delete(scene) == {"status": "deleted", "uuid": str(scene.uuid)}
+    assert client.scene.delete(scene) is None
 
     # search after delete should be empty
     assert client.scene.search(str(scene.uuid)) == []
@@ -77,9 +77,6 @@ def test_client_session(scene_on_server):
         assert out.exists() and out.stat().st_size > 0
 
     # cleanup
-    assert client.session.delete(session) == {
-        "status": "deleted",
-        "uuid": str(session.uuid),
-    }
+    assert client.session.delete(session) is None
     r = requests.get(f"{base}/session/{session.uuid}", timeout=5.0)
     assert r.status_code == 404

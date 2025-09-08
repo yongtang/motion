@@ -176,6 +176,7 @@ services:
       - SCOPE=${SCOPE}
       - ACCEPT_EULA=Y
       - PRIVACY_CONSENT=Y
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-none}
     entrypoint: ["/bin/bash"]
     command:
       - -lc
@@ -186,13 +187,5 @@ services:
         fi
         /isaac-sim/python.sh -m pip install aiohttp nats-py boto3
         sleep infinity
-    profiles: ["gpu"]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
 volumes:
   storage: {}
