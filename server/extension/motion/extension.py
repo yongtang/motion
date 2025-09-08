@@ -223,7 +223,10 @@ async def main():
     if ctx.get_stage():
         await ctx.close_stage_async()
     await asyncio.wait_for(
-        ctx.open_stage_async(e, load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL),
+        ctx.open_stage_async(
+            "file:///storage/node/scene/scene.usd",
+            load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,
+        ),
         timeout=120.0,
     )
     stage = ctx.get_stage()
