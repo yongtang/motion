@@ -147,7 +147,10 @@ def f_data(session, frame, articulation, annotator, link):
         )
     }
     print(f"[motion.extension] step->data session={session}: pose={pose}")
-    camera = {k: v.get_data().get("data", None) for k, v in annotator.items()}
+    camera = {k: v.get_data() for k, v in annotator.items()}
+    print(f"[motion.extension] step->data session={session}: camera={camera}")
+    camera = {k: v.get("data", None) for k, v in camera.items()}
+    print(f"[motion.extension] step->data session={session}: camera={camera}")
     camera = {k: v for k, v in camera.items() if v}
     print(f"[motion.extension] step->data session={session}: camera={camera}")
 
