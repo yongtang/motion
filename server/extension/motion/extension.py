@@ -126,6 +126,7 @@ def f_step(metadata, channel, articulation, annotator, state):
 
 
 def f_data(session, frame, articulation, annotator, link):
+    print(f"[motion.extension] step->data session={session}: enter")
     time = omni.timeline.get_timeline_interface().get_current_time()
     joint = dict(zip(articulation.dof_names, articulation.get_joint_position()))
 
