@@ -33,6 +33,12 @@ def f_prim(metadata, stage):
 
 def f_rend(metadata, stage):
     print(f"[motion.extension] rend: {metadata} {stage}")
+    metadata["camera"] = {
+        "/OmniverseKit_Persp": {
+            "weight": 1024,
+            "height": 768,
+        }
+    }
     if "camera" not in metadata or len(metadata["camera"]) == 0:
         return None
     camera = list(stage.GetPrimAtPath(e) for e in metadata["camera"])
@@ -130,11 +136,17 @@ def f_data(session, frame, articulation, annotator, link):
     print(f"[motion.extension] step->data session={session}: enter")
     time = omni.timeline.get_timeline_interface().get_current_time()
     print(f"[motion.extension] step->data session={session}: time={time}")
-    print(f"[motion.extension] step->data session={session}: articulation.dof_names={articulation.dof_names}")
-    print(f"[motion.extension] step->data session={session}: articulation={articulation}")
-    print(f"[motion.extension] step->data session={session}: articulation={dir(articulation)}")
-    #print(f"[motion.extension] step->data session={session}: articulation.data={articulation.data}")
-    #print(f"[motion.extension] step->data session={session}: articulation.data.joint_pos={articulation.data.joint_pos}")
+    print(
+        f"[motion.extension] step->data session={session}: articulation.dof_names={articulation.dof_names}"
+    )
+    print(
+        f"[motion.extension] step->data session={session}: articulation={articulation}"
+    )
+    print(
+        f"[motion.extension] step->data session={session}: articulation={dir(articulation)}"
+    )
+    # print(f"[motion.extension] step->data session={session}: articulation.data={articulation.data}")
+    # print(f"[motion.extension] step->data session={session}: articulation.data.joint_pos={articulation.data.joint_pos}")
     positions = articulation.get_joint_positions()
     print(f"[motion.extension] step->data session={session}: positions={positions}")
     joint = dict(zip(articulation.dof_names, positions))
