@@ -89,7 +89,7 @@ def f_call(metadata, channel, articulation, annotator, state):
 
 
 def f_step(metadata, channel, articulation, annotator, state):
-    print(f"[motion.extension] call: {metadata}")
+    print(f"[motion.extension] step: {metadata}")
     session = metadata["uuid"]
     link = tuple(
         XFormPrim(e)
