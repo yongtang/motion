@@ -129,7 +129,10 @@ def f_data(session, frame, articulation, annotator, link):
     print(f"[motion.extension] step->data session={session}: enter")
     time = omni.timeline.get_timeline_interface().get_current_time()
     print(f"[motion.extension] step->data session={session}: time={time}")
-    joint = dict(zip(articulation.dof_names, articulation.get_joint_position()))
+    print(f"[motion.extension] step->data session={session}: dof_names={dof_names}")
+    positions = articulation.get_joint_position()
+    print(f"[motion.extension] step->data session={session}: positions={positions}")
+    joint = dict(zip(articulation.dof_names, positions))
 
     print(f"[motion.extension] step->data session={session}: joint={joint}")
     # orientation: quotanion - xyzw
