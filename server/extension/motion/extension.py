@@ -50,7 +50,7 @@ def f_call(metadata, channel, articulation, annotator, state):
     print(f"[motion.extension] call: {metadata}")
     if f_sync(metadata):
         return None
-    session = metadata["session"]
+    session = metadata["uuid"]
     link = tuple(
         XFormPrim(e)
         for e in sorted(set(metadata["link"] if "link" in metadata else []))
@@ -86,7 +86,7 @@ def f_call(metadata, channel, articulation, annotator, state):
 
 def f_step(metadata, channel, articulation, annotator, state):
     print(f"[motion.extension] call: {metadata}")
-    session = metadata["session"]
+    session = metadata["uuid"]
     link = tuple(
         XFormPrim(e)
         for e in sorted(set(metadata["link"] if "link" in metadata else []))
@@ -238,7 +238,7 @@ async def main():
     articulation.initialize()
 
     state = {"frame": 0}
-    session = metadata["session"]
+    session = metadata["uuid"]
     async with run_http():
         async with run_link() as channel:
             async with run_rend(f_rend(metadata, stage)) as writer, annotator:
