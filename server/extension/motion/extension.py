@@ -72,10 +72,10 @@ def f_call(metadata, channel, articulation, annotator, state):
             annotator=annotator,
             link=link,
         )
-        omni.kit.async_engine.run_coroutin(
+        omni.kit.async_engine.run_coroutine(
             channel.publish_data(session=session, data=data)
         )
-        omni.kit.async_engine.run_coroutin(post())
+        omni.kit.async_engine.run_coroutine(post())
 
         print(f"[motion.extension] timeline step {frame} leave")
 
@@ -158,7 +158,7 @@ def f_data(session, frame, articulation, annotator, link):
 
     async def post():
         for key, value in camera.items():
-            omni.kit.async_engine.run_coroutin(f(key, value))
+            omni.kit.async_engine.run_coroutine(f(key, value))
 
     return data, post
 
@@ -270,7 +270,7 @@ class MotionExtension(omni.ext.IExt):
 
     def on_startup(self, ext_id):
         print("[motion.extension] startup")
-        omni.kit.app.get_app().get_async_event_loop().create_task(main())
+        omni.kit.async_engine.run_coroutine(main())
 
     def on_shutdown(self):
         print("[motion.extension] shutdown")
