@@ -11,6 +11,8 @@ import omni.usd
 import PIL.Image
 import pxr
 from omni.isaac import core
+from omni.isaac.core import articulations
+from omni.isaac.core import prims 
 # from omni.isaac.core.articulations import Articulation
 # from omni.isaac.core.prims import XFormPrim
 
@@ -53,7 +55,7 @@ def f_call(metadata, channel, articulation, annotator, state):
         return None
     session = metadata["uuid"]
     link = tuple(
-        core.prims.XFormPrim(e)
+        prims.XFormPrim(e)
         for e in sorted(set(metadata["link"] if "link" in metadata else []))
     )
 
@@ -239,7 +241,7 @@ async def main():
     sim.step(render=False)
 
     prim = f_prim(metadata, stage)
-    articulation = core.articulations.Articulation(prim)
+    articulation = articulations.Articulation(prim)
     articulation.initialize()
 
     await omni.kit.app.get_app().next_update_async()
