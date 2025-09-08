@@ -240,6 +240,10 @@ async def main():
     await omni.kit.app.get_app().next_update_async()
     sim.step(render=False)
 
+    omni.timeline.get_timeline_interface().set_ticks_per_frame(1)
+    omni.timeline.get_timeline_interface().forward_one_frame()
+    await omni.kit.app.get_app().next_update_async()
+
     prim = f_prim(metadata, stage)
     articulation = articulations.Articulation(prim)
     articulation.initialize()
