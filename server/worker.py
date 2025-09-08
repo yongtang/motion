@@ -22,20 +22,18 @@ log = logging.getLogger("worker")
 
 @contextlib.asynccontextmanager
 async def run_done(session: str):
-    scene = json.loads(storage_kv_get("session", f"{session}.json"))["scene"]
-    log.info(f"[run_done]: session={session}, scene={scene}")
-
     shutil.rmtree("/storage/node", ignore_errors=True)
     os.makedirs("/storage/node/scene", exist_ok=True)
 
-    buffer = storage_kv_get("scene", f"{scene}.zip")
+    session = json.loads(storage_kv_get("session", f"{session}.json"))
+    with open("/storage/node/session.json", "w") as f:
+        f.write(json.dumps(session))
+    log.info(f"[run_done]: session storage: {session}")
+
+    buffer = storage_kv_get("scene", f"{session['scene']}.zip")
     with zipfile.ZipFile(io.BytesIO(buffer)) as zf:
         zf.extractall("/storage/node/scene")
     log.info(f"[run_done]: uncompress scene")
-
-    with open("/storage/node/session.json", "w") as f:
-        f.write(json.dumps({"session": session}))
-    log.info(f"[run_done]: session storage")
 
     with open("/storage/node/scene/meta.json", "r") as f:
         meta = json.loads(f.read())

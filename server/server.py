@@ -182,15 +182,20 @@ async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
 
 @app.get("/session/{session:uuid}/archive")
 async def session_archive(session: UUID4):
-    # Ensure session exists
-    try:
-        storage_kv_get("session", f"{session}.json")
-    except FileNotFoundError:
-        log.warning(f"Session {session} not found for archive")
-        raise HTTPException(status_code=404, detail="session not found")
-
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        # Ensure session exists
+        try:
+            blob = storage_kv_get("session", f"{session}.json")
+            # store the single consolidated file as data.json inside the zip
+            z.writestr("session.json", blob)
+            log.info(
+                f"Added session.json for session {session} to archive ({len(blob)} bytes)"
+            )
+        except FileNotFoundError:
+            log.warning(f"Session {session} not found for archive")
+            raise HTTPException(status_code=404, detail="session not found")
+
         try:
             blob = storage_kv_get("data", f"{session}.json")
             # store the single consolidated file as data.json inside the zip
@@ -266,9 +271,9 @@ async def session_play(session: UUID4):
     # Ensure session exists
     try:
         storage_kv_get("session", f"{session}.json")
-        log.info("Play requested for session %s", session)
+        log.info(f"Play requested for session {session}")
     except FileNotFoundError:
-        log.warning("Session %s not found for play", session)
+        log.warning(f"Session {session} not found for play")
         raise HTTPException(status_code=404, detail="session not found")
 
     nodes = list(
@@ -282,7 +287,7 @@ async def session_play(session: UUID4):
 
     node = random.choice(nodes)
     await app.state.channel.publish_play(node, str(session))
-    log.info("Published play for session %s to node %s", session, node)
+    log.info(f"Published play for session {session} to node {node}")
     return {"status": "accepted", "uuid": str(session)}
 
 
@@ -291,9 +296,9 @@ async def session_stop(session: UUID4):
     # Ensure session exists
     try:
         storage_kv_get("session", f"{session}.json")
-        log.info("Stop requested for session %s", session)
+        log.info(f"Stop requested for session {session}")
     except FileNotFoundError:
-        log.warning("Stop requested for nonexistent session %s", session)
+        log.warning(f"Stop requested for nonexistent session {session}")
         return Response(status_code=204)
 
     nodes = list(
@@ -304,7 +309,7 @@ async def session_stop(session: UUID4):
     await asyncio.gather(
         *(app.state.channel.publish_stop(node, str(session)) for node in nodes)
     )
-    log.info("Published stop for session %s to %d nodes", session, len(nodes))
+    log.info(f"Published stop for session {session} to {len(nodes)} nodes")
     return {"status": "accepted", "uuid": str(session)}
 
 

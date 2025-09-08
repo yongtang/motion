@@ -11,7 +11,7 @@ log = logging.getLogger("echo")
 def f_step(metadata, channel):
     log.info(f"[echo] step: {metadata}")
 
-    session = metadata["session"]
+    session = metadata["uuid"]
 
     async def run_echo(msg):
         log.info(f"[echo] step session={session}: {msg}")
@@ -28,7 +28,7 @@ async def main():
     with open("/storage/node/session.json", "r") as f:
         metadata = json.loads(f.read())
 
-    session = metadata["session"]
+    session = metadata["uuid"]
     async with run_http():
         async with run_link() as channel:
             async with run_step(
