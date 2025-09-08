@@ -10,11 +10,7 @@ import omni.timeline
 import omni.usd
 import PIL.Image
 import pxr
-from omni.isaac.core import articulations
-from omni.isaac.core import prims
-
-# from omni.isaac.core.articulations import Articulation
-# from omni.isaac.core.prims import XFormPrim
+from omni.isaac.core import articulations, prims
 
 from .node import run_http, run_link, run_step
 
