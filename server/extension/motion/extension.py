@@ -11,8 +11,8 @@ import omni.usd
 import PIL.Image
 import pxr
 from omni.isaac import core
-from omni.isaac.core.articulations import Articulation
-from omni.isaac.core.prims import XFormPrim
+# from omni.isaac.core.articulations import Articulation
+# from omni.isaac.core.prims import XFormPrim
 
 from .node import run_http, run_link, run_step
 
@@ -53,7 +53,7 @@ def f_call(metadata, channel, articulation, annotator, state):
         return None
     session = metadata["uuid"]
     link = tuple(
-        XFormPrim(e)
+        core.prims.XFormPrim(e)
         for e in sorted(set(metadata["link"] if "link" in metadata else []))
     )
 
@@ -235,13 +235,15 @@ async def main():
     print("[motion.extension] loaded")
 
     sim = core.SimulationContext()
+    await omni.kit.app.get_app().next_update_async()
+    sim.step(render=False)
 
     prim = f_prim(metadata, stage)
-    articulation = Articulation(prim)
+    articulation = core.articulations.Articulation(prim)
     articulation.initialize()
 
     await omni.kit.app.get_app().next_update_async()
-    sim.step(render=False)
+    print("[motion.extension] dofs:", articulation.dof_names)
 
     state = {"frame": 0}
     session = metadata["uuid"]
