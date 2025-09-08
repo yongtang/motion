@@ -10,7 +10,6 @@ import omni.timeline
 import omni.usd
 import PIL.Image
 import pxr
-from omni.isaac import core
 from omni.isaac.core import articulations
 from omni.isaac.core import prims 
 # from omni.isaac.core.articulations import Articulation
@@ -237,9 +236,9 @@ async def main():
     assert stage
     print("[motion.extension] loaded")
 
-    sim = core.SimulationContext()
-    await omni.kit.app.get_app().next_update_async()
-    sim.step(render=False)
+    #sim = core.SimulationContext()
+    #await omni.kit.app.get_app().next_update_async()
+    #sim.step(render=False)
 
     omni.timeline.get_timeline_interface().set_ticks_per_frame(1)
     omni.timeline.get_timeline_interface().forward_one_frame()
@@ -265,7 +264,6 @@ async def main():
                     async with run_call(
                         f_call(metadata, channel, articulation, annotator, state)
                     ) as subscription:
-                        omni.timeline.get_timeline_interface().set_ticks_per_frame(1)
                         omni.timeline.get_timeline_interface().forward_one_frame()
                         print(
                             f"[motion.extension] articulation dof: {articulation.dof_names}"
