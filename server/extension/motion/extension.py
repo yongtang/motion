@@ -10,6 +10,7 @@ import omni.timeline
 import omni.usd
 import PIL.Image
 import pxr
+from omni.isaac import core
 from omni.isaac.core.articulations import Articulation
 from omni.isaac.core.prims import XFormPrim
 
@@ -233,9 +234,14 @@ async def main():
     assert stage
     print("[motion.extension] loaded")
 
+    sim = core.SimulationContext()
+
     prim = f_prim(metadata, stage)
     articulation = Articulation(prim)
     articulation.initialize()
+
+    await omni.kit.app.get_app().next_update_async()
+    sim.step(render=False)
 
     state = {"frame": 0}
     session = metadata["uuid"]
