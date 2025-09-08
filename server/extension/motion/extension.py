@@ -130,6 +130,7 @@ def f_data(session, frame, articulation, annotator, link):
     time = omni.timeline.get_timeline_interface().get_current_time()
     joint = dict(zip(articulation.dof_names, articulation.get_joint_position()))
 
+    print(f"[motion.extension] step->data session={session}: joint={joint}")
     # orientation: quotanion - xyzw
     pose = {
         name: {"position": position, "orientation": orientation}
@@ -137,8 +138,10 @@ def f_data(session, frame, articulation, annotator, link):
             (e.prim_link, *e.get_world_pose()) for e in link
         )
     }
+    print(f"[motion.extension] step->data session={session}: pose={pose}")
     camera = {k: v.get_data().get("data", None) for k, v in annotator.items()}
     camera = {k: v for k, v in camera.items() if v}
+    print(f"[motion.extension] step->data session={session}: camera={camera}")
 
     data = json.dumps(
         {
