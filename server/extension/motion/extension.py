@@ -132,9 +132,9 @@ def f_data(session, frame, articulation, annotator, link):
     print(f"[motion.extension] step->data session={session}: articulation.dof_names={articulation.dof_names}")
     print(f"[motion.extension] step->data session={session}: articulation={articulation}")
     print(f"[motion.extension] step->data session={session}: articulation={dir(articulation)}")
-    print(f"[motion.extension] step->data session={session}: articulation.data={articulation.data}")
-    print(f"[motion.extension] step->data session={session}: articulation.data.joint_pos={articulation.data.joint_pos}")
-    positions = articulation.get_joint_position()
+    #print(f"[motion.extension] step->data session={session}: articulation.data={articulation.data}")
+    #print(f"[motion.extension] step->data session={session}: articulation.data.joint_pos={articulation.data.joint_pos}")
+    positions = articulation.get_joint_positions()
     print(f"[motion.extension] step->data session={session}: positions={positions}")
     joint = dict(zip(articulation.dof_names, positions))
 
