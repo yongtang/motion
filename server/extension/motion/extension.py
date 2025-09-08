@@ -38,6 +38,7 @@ def f_rend(metadata, stage):
     camera = list(stage.GetPrimAtPath(e) for e in metadata["camera"])
     assert all((e and e.IsValid() and e.IsA(pxr.UsdGeom.Camera)) for e in camera)
     camera = list(e.GetPath().pathString for e in camera)
+    print(f"[motion.extension] rend: camera={camera}")
     return {
         e: omni.replicator.core.create.render_product(
             e, (metadata["camera"][e]["weight"], metadata["camera"][e]["height"])
