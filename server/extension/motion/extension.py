@@ -173,7 +173,7 @@ def f_data(session, frame, articulation, annotator, link):
             "frame": frame,
             "joint": joint,
             **({"pose": pose} if len(pose) else {}),
-            "time": time,
+            #"time": time,
         }
     )
     print(f"[motion.extension] step->data session={session}: {data}")

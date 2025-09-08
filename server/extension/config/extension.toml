@@ -7,8 +7,6 @@ category = "Robotics"
 "omni.usd" = {}
 "omni.client" = {}
 "omni.timeline" = {}
-"isaacsim.replicator.agent" = {}
-"isaacsim.replicator.writers" = {}
 
 [[python.module]]
 name = "motion.extension"
