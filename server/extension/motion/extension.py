@@ -11,7 +11,8 @@ import omni.usd
 import PIL.Image
 import pxr
 from omni.isaac.core import articulations
-from omni.isaac.core import prims 
+from omni.isaac.core import prims
+
 # from omni.isaac.core.articulations import Articulation
 # from omni.isaac.core.prims import XFormPrim
 
@@ -24,7 +25,7 @@ def f_sync(metadata):
 
 def f_prim(metadata, stage):
     print(f"[motion.extension] prim: {metadata} {stage}")
-    metadata["prim"]="/World/tracking/Franka"
+    metadata["prim"] = "/World/tracking/Franka"
     prim = (
         stage.GetPrimAtPath(metadata["prim"])
         if "prim" in metadata
@@ -168,32 +169,32 @@ def f_data(session, frame, articulation, annotator, link):
 
 @contextlib.asynccontextmanager
 async def run_rend(rend):
+    annotator = None
     if rend:
         writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
         writer.initialize(
             annotator="rgb", output_dir="rtsp://127.0.0.1:8554/RTSPWriter"
         )
-        writer.attach(rend.values())
+        writer.attach(list(rend.values()))
 
         annotator = {
             e: omni.replicator.core.AnnotatorRegistry.get_annotator("rgb") for e in rend
         }
         for i, e in annotator.items():
             e.attach(rend[i])
-    print("RTSP Writer attached")
-
+        print("RTSP Writer attached")
     try:
-        yield
+        yield annotator
     finally:
         with contextlib.suppress(Exception):
-            if rend:
+            if rend and annotator:
                 for i, e in annotator.items():
                     e.detach(rend[i])
-            print("Annotator detached")
+                print("Annotator detached")
         with contextlib.suppress(Exception):
             if rend:
-                writer.detach(rend.values())
-            print("RTSP Writer detached")
+                writer.detach(list(rend.values()))
+                print("RTSP Writer detached")
 
 
 @contextlib.asynccontextmanager
@@ -236,9 +237,9 @@ async def main():
     assert stage
     print("[motion.extension] loaded")
 
-    #sim = core.SimulationContext()
-    #await omni.kit.app.get_app().next_update_async()
-    #sim.step(render=False)
+    # sim = core.SimulationContext()
+    # await omni.kit.app.get_app().next_update_async()
+    # sim.step(render=False)
 
     omni.timeline.get_timeline_interface().set_ticks_per_frame(1)
     omni.timeline.get_timeline_interface().forward_one_frame()
@@ -255,7 +256,7 @@ async def main():
     session = metadata["uuid"]
     async with run_http():
         async with run_link() as channel:
-            async with run_rend(f_rend(metadata, stage)) as writer, annotator:
+            async with run_rend(f_rend(metadata, stage)) as annotator:
                 async with run_step(
                     session=session,
                     channel=channel,
