@@ -25,6 +25,7 @@ def f_sync(metadata):
 
 def f_prim(metadata, stage):
     print(f"[motion.extension] prim: {metadata} {stage}")
+    metadata["prim"]="/World/tracking/Franka"
     prim = (
         stage.GetPrimAtPath(metadata["prim"])
         if "prim" in metadata
