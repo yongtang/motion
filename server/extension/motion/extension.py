@@ -186,15 +186,13 @@ async def run_rend(rend):
     try:
         yield annotator
     finally:
-        with contextlib.suppress(Exception):
-            if rend and annotator:
+        if rend:
+            with contextlib.suppress(Exception):
                 for i, e in annotator.items():
                     e.detach(rend[i])
-                print("Annotator detached")
-        with contextlib.suppress(Exception):
-            if rend:
+            with contextlib.suppress(Exception):
                 writer.detach(list(rend.values()))
-                print("RTSP Writer detached")
+            print("RTSP Writer detached")
 
 
 @contextlib.asynccontextmanager
