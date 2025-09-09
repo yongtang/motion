@@ -53,7 +53,7 @@ async def health():
 
 class SessionRequest(BaseModel):
     scene: UUID4
-    camera: list[str] = []
+    camera: list[str] = ["*"]
 
 
 @app.post("/scene", response_model=motion.scene.SceneBaseModel, status_code=201)
@@ -70,7 +70,7 @@ async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseMo
     log.info(f"[Scene {scene.uuid}] Stored archive {file.filename} ({len(data)} bytes)")
 
     # metadata persisted with Pydantic v1/v2-compatible .json()
-    storage_kv_set("scene", f"{scene.uuid}.json", scene.json())
+    storage_kv_set("scene", f"{scene.uuid}.json", scene.json().encode())
     log.info(f"[Scene {scene.uuid}] Stored metadata")
 
     return scene
@@ -152,14 +152,14 @@ async def session_create(body: SessionRequest) -> motion.session.SessionBaseMode
     session = motion.session.SessionBaseModel(
         uuid=uuid.uuid4(),
         scene=body.scene,
-        camera=body.camera,
+        camera=body.camera,  # CHANGED: carry through, defaults to ["*"]
     )
 
     # validate scene exists; only persist if valid
     try:
         storage_kv_get("scene", f"{session.scene}.json")
         log.info(
-            f"[Session {session.uuid}] Creating (scene={session.scene}, cameras={len(session.camera)})"
+            f"[Session {session.uuid}] Creating (scene={session.scene}, cameras={'ALL' if session.camera == ['*'] else len(session.camera)})"
         )
     except FileNotFoundError:
         log.warning(
@@ -167,9 +167,9 @@ async def session_create(body: SessionRequest) -> motion.session.SessionBaseMode
         )
         raise HTTPException(status_code=404, detail=f"Scene {session.scene} not found")
 
-    storage_kv_set("session", f"{session.uuid}.json", session.json())
+    storage_kv_set("session", f"{session.uuid}.json", session.json().encode())
     log.info(
-        f"[Session {session.uuid}] Created (scene={session.scene}, cameras={len(session.camera)})"
+        f"[Session {session.uuid}] Created (scene={session.scene}, cameras={'ALL' if session.camera == ['*'] else len(session.camera)})"
     )
 
     return session

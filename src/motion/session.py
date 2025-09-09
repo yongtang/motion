@@ -8,7 +8,7 @@ from .scene import Scene
 class SessionBaseModel(pydantic.BaseModel):
     uuid: pydantic.UUID4
     scene: pydantic.UUID4
-    camera: list[str] = []
+    camera: list[str] = ["*"]
 
 
 @motionclass

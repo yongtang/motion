@@ -83,10 +83,11 @@ class SessionClient:
         self._base_ = base.rstrip("/")
         self._timeout_ = timeout
 
-    def create(self, scene: Scene) -> Session:
+    def create(self, scene: Scene, *, camera: list[str] = ["*"]) -> Session:
+        payload = {"scene": str(scene.uuid), "camera": camera}
         r = requests.post(
             f"{self._base_}/session",
-            json={"scene": str(scene.uuid)},
+            json=payload,
             timeout=self._timeout_,
         )
         r.raise_for_status()
