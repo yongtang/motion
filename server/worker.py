@@ -42,12 +42,11 @@ async def run_done(session: str):
 
     scope = os.environ.get("SCOPE")
     project = f"{scope}-motion" if scope else "motion"
-    service = f"node-{runtime}"
 
     try:
         yield runtime
     finally:
-        done = ["docker", "compose", "-p", project, "rm", "-f", "-s", service]
+        done = ["docker", "compose", "-p", project, "rm", "-f", "-s", "node"]
         log.info(f"[run_done]: done={done}")
         proc = await asyncio.create_subprocess_exec(*done, env={**os.environ})
 
@@ -60,18 +59,19 @@ async def run_done(session: str):
 async def run_node(runtime: str):
     scope = os.environ.get("SCOPE")
     project = f"{scope}-motion" if scope else "motion"
-    service = f"node-{runtime}"
     node = [
         "docker",
         "compose",
         "-p",
         project,
         "-f",
-        "/app/docker/docker-compose.yml",
+        f"/app/docker/docker-compose.yml",
+        "-f",
+        f"/app/docker/docker-compose-{runtime}.yml",
         "up",
         "--no-deps",
         "--force-recreate",
-        service,
+        "node",
     ]
     log.info(f"[run_node]: node={node}")
     proc = await asyncio.create_subprocess_exec(*node, env={**os.environ})
@@ -129,7 +129,6 @@ async def session_stop(session: str):
 
     scope = os.environ.get("SCOPE")
     project = f"{scope}-motion" if scope else "motion"
-    service = f"node-{runtime}"
 
     stop = [
         "docker",
@@ -137,7 +136,7 @@ async def session_stop(session: str):
         "-p",
         project,
         "stop",
-        service,
+        "node",
     ]
     log.info(f"[session_stop] stop={stop}")
     proc = await asyncio.create_subprocess_exec(*stop, env={**os.environ})
