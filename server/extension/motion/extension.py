@@ -14,13 +14,12 @@ async def main():
         metadata = json.loads(f.read())
     print(f"[motion.extension] Loaded metadata: {metadata}")
 
-    carb.settings.get_settings().set(
-        "/persistent/app/stage/confirmCloseWithUnsavedChanges", False
-    )
-
     ctx = omni.usd.get_context()
+    if ctx.get_stage():
+        print("[motion.extension] Closing existing stage…")
+        await ctx.close_stage_async()
 
-    print("[motion.extension] Opening stage...")
+    print("[motion.extension] Opening stage…")
     await asyncio.wait_for(
         ctx.open_stage_async(
             "file:///storage/node/scene/scene.usd",
