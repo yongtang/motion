@@ -53,6 +53,7 @@ async def health():
 
 class SessionRequest(BaseModel):
     scene: UUID4
+    camera: list[str] = []
 
 
 @app.post("/scene", response_model=motion.scene.SceneBaseModel, status_code=201)
@@ -147,13 +148,19 @@ async def scene_search(q: UUID4 = Query(..., description="exact scene uuid")):
 
 @app.post("/session", response_model=motion.session.SessionBaseModel, status_code=201)
 async def session_create(body: SessionRequest) -> motion.session.SessionBaseModel:
-    # model-first (uuid now; scene from body)
-    session = motion.session.SessionBaseModel(uuid=uuid.uuid4(), scene=body.scene)
+    # model-first (uuid now; scene/camera from body)
+    session = motion.session.SessionBaseModel(
+        uuid=uuid.uuid4(),
+        scene=body.scene,
+        camera=body.camera,
+    )
 
     # validate scene exists; only persist if valid
     try:
         storage_kv_get("scene", f"{session.scene}.json")
-        log.info(f"[Session {session.uuid}] Creating (scene={session.scene})")
+        log.info(
+            f"[Session {session.uuid}] Creating (scene={session.scene}, cameras={len(session.camera)})"
+        )
     except FileNotFoundError:
         log.warning(
             f"[Session {session.uuid}] Scene {session.scene} not found for create"
@@ -161,7 +168,9 @@ async def session_create(body: SessionRequest) -> motion.session.SessionBaseMode
         raise HTTPException(status_code=404, detail=f"Scene {session.scene} not found")
 
     storage_kv_set("session", f"{session.uuid}.json", session.json())
-    log.info(f"[Session {session.uuid}] Created (scene={session.scene})")
+    log.info(
+        f"[Session {session.uuid}] Created (scene={session.scene}, cameras={len(session.camera)})"
+    )
 
     return session
 

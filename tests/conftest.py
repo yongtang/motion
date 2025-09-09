@@ -226,7 +226,11 @@ def session_on_server(scene_on_server):
     assert r.status_code == 201, r.text
     data = r.json()
     session = data["uuid"]
-    assert data == {"uuid": session, "scene": scene}
+    assert data == {
+        "uuid": session,
+        "scene": scene,
+        "camera": [],
+    }
 
     yield base, session, scene
 

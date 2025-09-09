@@ -8,21 +8,25 @@ from .scene import Scene
 class SessionBaseModel(pydantic.BaseModel):
     uuid: pydantic.UUID4
     scene: pydantic.UUID4
+    camera: list[str] = []
 
 
 @motionclass
 class Session(SessionBaseModel):
+    # Store the resolved Scene model (instead of the UUID)
     scene: Scene
 
     def __init__(self, base: str, uuid: pydantic.UUID4, timeout: float = 5.0):
-        url = f"{base.rstrip('/')}/session/{uuid}"
-        r = requests.get(url, timeout=timeout)
+        base = base.rstrip("/")
+        r = requests.get(f"{base}/session/{uuid}", timeout=timeout)
         r.raise_for_status()
-        wire = r.json()
-        scene = Scene(base, wire["scene"], timeout=timeout)
-        super().__init__(uuid=wire["uuid"], scene=scene)
-        # bypass Pydantic field validation for decorator-added private attrs
-        object.__setattr__(self, "_base_", base.rstrip("/"))
+
+        session = SessionBaseModel.parse_obj(r.json())
+        scene = Scene(base, session.scene, timeout=timeout)
+        super().__init__(uuid=session.uuid, scene=scene, camera=session.camera)
+
+        # bypass Pydantic validation for decorator-added private attrs
+        object.__setattr__(self, "_base_", base)
         object.__setattr__(self, "_timeout_", timeout)
 
     def play(self):
