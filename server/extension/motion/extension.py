@@ -1,26 +1,25 @@
 import asyncio
 import json
+import sys
 
 import omni.ext
 import omni.kit
 import omni.usd
-
-import carb
 import carb.settings
 
 
 async def main():
-    carb.log_info("Load stage")
+    print("[motion.extension] Load stage")
     with open("/storage/node/session.json", "r") as f:
         metadata = json.loads(f.read())
-    carb.log_info(f"Loaded metadata: {metadata}")
+    print(f"[motion.extension] Loaded metadata: {metadata}")
 
     ctx = omni.usd.get_context()
     if ctx.get_stage():
-        carb.log_info("Closing existing stage…")
+        print("[motion.extension] Closing existing stage…")
         await ctx.close_stage_async()
 
-    carb.log_info("Opening stage…")
+    print("[motion.extension] Opening stage…")
     await asyncio.wait_for(
         ctx.open_stage_async(
             "file:///storage/node/scene/scene.usd",
@@ -34,10 +33,10 @@ async def main():
 
     stage = ctx.get_stage()
     if not stage:
-        carb.log_error("Failed to open stage")
+        print("[motion.extension] Failed to open stage")
         raise RuntimeError("stage is None after open")
 
-    carb.log_info("Stage loaded")
+    print("[motion.extension] Stage loaded")
 
 
 class MotionExtension(omni.ext.IExt):
@@ -46,24 +45,15 @@ class MotionExtension(omni.ext.IExt):
         super().__init__()
 
     def on_startup(self, ext_id):
-        settings = carb.settings.get_settings()
-        settings.set("/log/enabled", True)
-        settings.set("/log/level", "info")
-        settings.set("/log/enableStandardStreamOutput", True)
-        settings.set("/log/outputStream", "stdout")
-        settings.set("/log/outputStreamLevel", "info")
-        settings.set("/log/flushStandardStreamOutput", True)
-        settings.set("/log/file", "")  # disable file logging; stdout only
-
-        carb.log_info(f"[{ext_id}] Startup")
-
-        # Run main(); always terminate Kit when done (0=ok, 1=error)
+        print(f"[motion.extension] [{ext_id}] Startup")
         self.task = omni.kit.async_engine.run_coroutine(main())
+
+        # When main finishes, exit Kit (0=success, 1=error)
         self.task.add_done_callback(
             lambda e: omni.kit.app.get_app().post_quit(0 if not e.exception() else 1)
         )
 
     def on_shutdown(self):
-        carb.log_info("Shutdown")
+        print("[motion.extension] Shutdown")
         if self.task and not self.task.done():
             self.task.cancel()
