@@ -12,7 +12,7 @@ import carb.settings
 async def main():
     carb.log_info("Load stage")
     with open("/storage/node/session.json", "r") as f:
-        metadata = json.load(f)
+        metadata = json.loads(f.read())
     carb.log_info(f"Loaded metadata: {metadata}")
 
     ctx = omni.usd.get_context()
@@ -43,6 +43,7 @@ async def main():
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
         self.task = None
+        super().__init__()
 
     def on_startup(self, ext_id):
         settings = carb.settings.get_settings()
