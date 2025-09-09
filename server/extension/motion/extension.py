@@ -16,8 +16,8 @@ async def main():
 
     ctx = omni.usd.get_context()
     if ctx.get_stage():
-        print("[motion.extension] Closing existing stage…")
-        await ctx.close_stage_async()
+        print("[motion.extension] Closing existing stage...")
+        await ctx.close_stage_async(force=True)
 
     print("[motion.extension] Opening stage…")
     await asyncio.wait_for(
