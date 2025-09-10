@@ -25,31 +25,19 @@ async def main():
             print("[motion.extension] Stage opened")
             event.set()
 
-    event = asyncio.Event()
-    subscription = ctx.get_stage_event_stream().create_subscription_to_push(
-        functools.partial(f_event, event)
+    print("[motion.extension] Opening stage...")
+    await ctx.open_stage_async(
+        "file:///storage/node/scene/scene.usd",
+        load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,
     )
-    try:
-        print("[motion.extension] Opening stage...")
 
-        await ctx.open_stage_async(
-            "file:///storage/node/scene/scene.usd",
-            load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,
-        )
-
-        print("[motion.extension] Waiting stage...")
-        await event.wait()
-    finally:
-        subscription.unsubscribe()
-
-    while ctx.is_stage_loading():
+    print("[motion.extension] Waiting stage...")
+    while ctx.is_stage_loading() or ctx.get_stage() is None:
         print("[motion.extension] Waiting loading...")
         await omni.kit.app.get_app().next_update_async()
 
     stage = ctx.get_stage()
-    if not stage:
-        print("[motion.extension] Failed to load stage")
-        raise RuntimeError("stage is None after open")
+    assert stage
 
     print("[motion.extension] Stage loaded")
 
