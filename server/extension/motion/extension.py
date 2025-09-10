@@ -19,12 +19,13 @@ async def main():
         print("[motion.extension] Existing stage closed")
 
     def on_stage_event(event, e):
+        print(f"[motion.extension] Stage event {omni.usd.StageEventType(e.type)}")
         if e.type == omni.usd.StageEventType.OPENED:
             print("[motion.extension] Stage opened")
             event.set()
 
     event = asyncio.Event()
-    subscription = ctx.get_stage_event_stream().create_subscription_to_pop(
+    subscription = ctx.get_stage_event_stream().create_subscription_to_push(
         functools.partial(on_stage_event, event)
     )
     try:
