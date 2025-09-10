@@ -47,28 +47,33 @@ async def run_rend(rend):
     print("[motion.extension] rend start")
     annotator = None
     if rend:
+        print("[motion.extension] rend writer")
         writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
         writer.initialize(
             annotator="rgb", output_dir="rtsp://127.0.0.1:8554/RTSPWriter"
         )
+        print(f"[motion.extension] rend writer={writer} attach{rend.values()}")
         writer.attach(list(rend.values()))
 
+        print("[motion.extension] rend annotator")
         annotator = {
             e: omni.replicator.core.AnnotatorRegistry.get_annotator("rgb") for e in rend
         }
+        print(f"[motion.extension] rend annotator={annotator} attach{rend.values()}")
         for i, e in annotator.items():
             e.attach(rend[i])
-        print("RTSP Writer attached")
+        print("[motion.extension] rend ready")
     try:
         yield annotator
     finally:
         if rend:
+            print("[motion.extension] rend annotator detach")
             with contextlib.suppress(Exception):
                 for i, e in annotator.items():
                     e.detach(rend[i])
+            print("[motion.extension] rend writer detach")
             with contextlib.suppress(Exception):
                 writer.detach(list(rend.values()))
-            print("RTSP Writer detached")
     print("[motion.extension] rend complete")
 
 
