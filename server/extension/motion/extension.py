@@ -20,6 +20,12 @@ def f_rend(metadata, stage):
     ]
     print(f"[motion.extension] Camera available: {[str(e.GetPath()) for e in camera]}")
 
+    import omni.kit.app, omni.replicator.core as rep
+    em = omni.kit.app.get_app().get_extension_manager()
+    em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
+    em.set_extension_enabled_immediate("isaacsim.replicator.agent.ui", True)  # harmless if headless
+    print(f"[motion.extension] REGISTRY: {rep.WriterRegistry.list()}")
+
     camera = {
         "/World/Scene/CameraA": {
             "width": 1280,
