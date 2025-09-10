@@ -229,7 +229,7 @@ def session_on_server(scene_on_server):
     assert data == {
         "uuid": session,
         "scene": scene,
-        "camera": ["*"],
+        "camera": {"*": {"width": 1280, "height": 720}},
     }
 
     yield base, session, scene

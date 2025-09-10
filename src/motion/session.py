@@ -5,10 +5,20 @@ from .motionclass import motionclass
 from .scene import Scene
 
 
-class SessionBaseModel(pydantic.BaseModel):
-    uuid: pydantic.UUID4
+class CameraSpec(pydantic.BaseModel):
+    width: pydantic.PositiveInt
+    height: pydantic.PositiveInt
+
+
+class SessionSpecModel(pydantic.BaseModel):
     scene: pydantic.UUID4
-    camera: list[str] = ["*"]
+    camera: dict[str, CameraSpec] = pydantic.Field(
+        default_factory=lambda: {"*": CameraSpec(width=1280, height=720)}
+    )
+
+
+class SessionBaseModel(SessionSpecModel):
+    uuid: pydantic.UUID4
 
 
 @motionclass

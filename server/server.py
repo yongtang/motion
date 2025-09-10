@@ -17,7 +17,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.responses import JSONResponse
-from pydantic import UUID4, BaseModel
+from pydantic import UUID4
 
 import motion
 
@@ -49,11 +49,6 @@ app = FastAPI(lifespan=lifespan)
 async def health():
     log.info("[Health] OK")
     return JSONResponse({"status": "ok"})
-
-
-class SessionRequest(BaseModel):
-    scene: UUID4
-    camera: list[str] = ["*"]
 
 
 @app.post("/scene", response_model=motion.scene.SceneBaseModel, status_code=201)
@@ -147,19 +142,17 @@ async def scene_search(q: UUID4 = Query(..., description="exact scene uuid")):
 
 
 @app.post("/session", response_model=motion.session.SessionBaseModel, status_code=201)
-async def session_create(body: SessionRequest) -> motion.session.SessionBaseModel:
-    # model-first (uuid now; scene/camera from body)
-    session = motion.session.SessionBaseModel(
-        uuid=uuid.uuid4(),
-        scene=body.scene,
-        camera=body.camera,  # CHANGED: carry through, defaults to ["*"]
-    )
+async def session_create(
+    body: motion.session.SessionSpecModel,
+) -> motion.session.SessionBaseModel:
+    # assign uuid, merge with spec
+    session = motion.session.SessionBaseModel(uuid=uuid.uuid4(), **body.dict())
 
-    # validate scene exists; only persist if valid
+    # validate scene exists
     try:
         storage_kv_get("scene", f"{session.scene}.json")
         log.info(
-            f"[Session {session.uuid}] Creating (scene={session.scene}, cameras={'ALL' if session.camera == ['*'] else len(session.camera)})"
+            f"[Session {session.uuid}] Creating (scene={session.scene}, cameras={'ALL' if set(session.camera.keys()) == {'*'} else len(session.camera)})"
         )
     except FileNotFoundError:
         log.warning(
@@ -169,7 +162,7 @@ async def session_create(body: SessionRequest) -> motion.session.SessionBaseMode
 
     storage_kv_set("session", f"{session.uuid}.json", session.json().encode())
     log.info(
-        f"[Session {session.uuid}] Created (scene={session.scene}, cameras={'ALL' if session.camera == ['*'] else len(session.camera)})"
+        f"[Session {session.uuid}] Created (scene={session.scene}, cameras={'ALL' if set(session.camera.keys()) == {'*'} else len(session.camera)})"
     )
 
     return session
