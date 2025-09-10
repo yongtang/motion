@@ -17,7 +17,6 @@ async def main():
     ctx = omni.usd.get_context()
     if ctx.get_stage():
         print("[motion.extension] Closing existing stage...")
-        ctx.set_pending_edit(False)
         await ctx.close_stage_async()
 
     print("[motion.extension] Opening stage…")
@@ -47,7 +46,7 @@ class MotionExtension(omni.ext.IExt):
 
     def on_startup(self, ext_id):
         print(f"[motion.extension] [{ext_id}] Startup")
-        self.task = omni.kit.async_engine.run_coroutine(main())
+        self.task = asyncio.create_task(main())
 
         # When main finishes, exit Kit (0=success, 1=error)
         self.task.add_done_callback(
