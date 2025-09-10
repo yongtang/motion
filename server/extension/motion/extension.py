@@ -15,6 +15,7 @@ async def main(self, ctx):
         print("[motion.extension] Closing existing stage...")
         await ctx.close_stage_async()
 
+    print("[motion.extension] Opening stage…")
     self.e_stage_event.clear()
     await ctx.open_stage_async(
         "file:///storage/node/scene/scene.usd",
@@ -28,7 +29,12 @@ async def main(self, ctx):
     while ctx.is_stage_loading():
         await asyncio.sleep(0.05)
 
-    carb.log_info("[motion.extension] Stage OPENED and fully loaded")
+    stage = ctx.get_stage()
+    if not stage:
+        print("[motion.extension] Failed to open stage")
+        raise RuntimeError("stage is None after open")
+
+    print("[motion.extension] Stage loaded")
 
 
 class MotionExtension(omni.ext.IExt):
