@@ -44,6 +44,7 @@ def f_rend(metadata, stage):
 
 @contextlib.asynccontextmanager
 async def run_rend(rend):
+    print("[motion.extension] rend start")
     annotator = None
     if rend:
         writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
@@ -68,6 +69,7 @@ async def run_rend(rend):
             with contextlib.suppress(Exception):
                 writer.detach(list(rend.values()))
             print("RTSP Writer detached")
+    print("[motion.extension] rend complete")
 
 
 async def main():
