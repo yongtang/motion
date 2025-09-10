@@ -22,10 +22,14 @@ def f_rend(metadata, stage):
     print(f"[motion.extension] Camera available: {[str(e.GetPath()) for e in camera]}")
 
     import omni.kit.app, omni.replicator.core as rep
+
     em = omni.kit.app.get_app().get_extension_manager()
     em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
-    em.set_extension_enabled_immediate("isaacsim.replicator.agent.ui", True)  # harmless if headless
+    em.set_extension_enabled_immediate(
+        "isaacsim.replicator.agent.ui", True
+    )  # harmless if headless
     import isaacsim.replicator.agent.core.data_generation.writers.rtsp
+
     omni.kit.app.get_app().update()
     print(f"[motion.extension] REGISTRY: {rep.WriterRegistry.get_writers().keys()}")
 
@@ -44,30 +48,62 @@ def f_rend(metadata, stage):
 
 @contextlib.asynccontextmanager
 async def run_rend(rend):
+    print("[motion.extension] rend start 1")
+    import omni.kit.app, omni.replicator.core as rep
+
+    em = omni.kit.app.get_app().get_extension_manager()
+    em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
+    em.set_extension_enabled_immediate(
+        "isaacsim.replicator.agent.ui", True
+    )  # harmless if headless
+    import isaacsim.replicator.agent.core.data_generation.writers.rtsp
+
+    omni.kit.app.get_app().update()
+    print(
+        f"[motion.extension] xxxxxx - REGISTRY: {rep.WriterRegistry.get_writers().keys()}"
+    )
+
     annotator = None
+
     if rend:
-        writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
-        writer.initialize(
-            annotator="rgb", output_dir="rtsp://127.0.0.1:8554/RTSPWriter"
-        )
+        print("[motion.extension] rend writer - 3")
+        try:
+            writer = rep.WriterRegistry.get("RTSPWriter")
+        except Exception as e:
+            print(f"[motion.extension] rend writer exception: {e}")
+            raise
+        print(f"[motion.extension] rend writer - 4 {writer}")
+
+        try:
+            writer.initialize(
+                rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
+                rtsp_rgb=True,
+            )
+        except Exception as e:
+            print(f"[motion.extension] rend writer xxxx exception: {e}")
+            raise
+
+        print(f"[motion.extension] rend 5 - writer={writer} attach{rend.values()}")
         writer.attach(list(rend.values()))
 
-        annotator = {
-            e: omni.replicator.core.AnnotatorRegistry.get_annotator("rgb") for e in rend
-        }
-        for i, e in annotator.items():
-            e.attach(rend[i])
-        print("RTSP Writer attached")
+        print("[motion.extension] rend annotator")
+        annotator = rep.AnnotatorRegistry.get_annotator("rgb")
+        print(f"[motion.extension] rend annotator={annotator} attach{rend.values()}")
+        annotator.attach(list(rend.values()))
+
+        print("[motion.extension] rend ready")
+
     try:
         yield annotator
     finally:
         if rend:
+            print("[motion.extension] rend annotator detach")
             with contextlib.suppress(Exception):
-                for i, e in annotator.items():
-                    e.detach(rend[i])
+                annotator.detach(list(rend.values()))
+            print("[motion.extension] rend writer detach")
             with contextlib.suppress(Exception):
                 writer.detach(list(rend.values()))
-            print("RTSP Writer detached")
+    print("[motion.extension] rend complete")
 
 
 async def main():
@@ -119,7 +155,7 @@ class MotionExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
         print(f"[motion.extension] Startup [{ext_id}]")
 
-        self.task = asyncio.create_task(main())
+        self.task = omni.kit.async_engine.run_coroutine(main())
 
         def f_done(e: asyncio.Task):
             if e.exception() is not None:
