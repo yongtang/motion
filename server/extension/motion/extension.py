@@ -24,7 +24,7 @@ def f_rend(metadata, stage):
     em = omni.kit.app.get_app().get_extension_manager()
     em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
     em.set_extension_enabled_immediate("isaacsim.replicator.agent.ui", True)  # harmless if headless
-    print(f"[motion.extension] REGISTRY: {rep.WriterRegistry.list()}")
+    print(f"[motion.extension] REGISTRY: {rep.WriterRegistry.keys()}")
 
     camera = {
         "/World/Scene/CameraA": {
