@@ -5,6 +5,7 @@ import json
 import sys
 
 import omni.ext
+import omni.kit
 import omni.replicator.core
 import omni.usd
 import pxr
@@ -24,6 +25,7 @@ def f_rend(metadata, stage):
     em = omni.kit.app.get_app().get_extension_manager()
     em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
     em.set_extension_enabled_immediate("isaacsim.replicator.agent.ui", True)  # harmless if headless
+    omni.kit.app.get_app().update()
     print(f"[motion.extension] REGISTRY: {rep.WriterRegistry.get_writers().keys()}")
 
     camera = {
