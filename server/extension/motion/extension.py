@@ -1,10 +1,64 @@
 import asyncio
+import contextlib
 import functools
 import json
 import sys
 
 import omni.ext
+import omni.replicator.core
 import omni.usd
+import pxr
+
+from .node import run_http, run_link, run_step
+
+
+def f_rend(metadata, stage):
+    camera = [
+        pxr.UsdGeom.Camera(e)
+        for e in stage.Traverse()
+        if e.IsA(pxr.UsdGeom.Camera) and e.IsActive()
+    ]
+    print(f"[motion.extension] Camera available: {[str(e.GetPath()) for e in camera]}")
+
+    camera = {
+        "/World/Scene/CameraA": {
+            "width": 1280,
+            "height": 720,
+        }
+    }
+    print(f"[motion.extension] Camera rend: {camera}")
+    return {
+        e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
+        for e, v in camera.items()
+    }
+
+
+@contextlib.asynccontextmanager
+async def run_rend(rend):
+    annotator = None
+    if rend:
+        writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
+        writer.initialize(
+            annotator="rgb", output_dir="rtsp://127.0.0.1:8554/RTSPWriter"
+        )
+        writer.attach(list(rend.values()))
+
+        annotator = {
+            e: omni.replicator.core.AnnotatorRegistry.get_annotator("rgb") for e in rend
+        }
+        for i, e in annotator.items():
+            e.attach(rend[i])
+        print("RTSP Writer attached")
+    try:
+        yield annotator
+    finally:
+        if rend:
+            with contextlib.suppress(Exception):
+                for i, e in annotator.items():
+                    e.detach(rend[i])
+            with contextlib.suppress(Exception):
+                writer.detach(list(rend.values()))
+            print("RTSP Writer detached")
 
 
 async def main():
@@ -40,6 +94,12 @@ async def main():
     assert stage
 
     print("[motion.extension] Stage loaded")
+
+    session = metadata["uuid"]
+    async with run_http():
+        async with run_link() as channel:
+            async with run_rend(f_rend(metadata, stage)) as annotator:
+                await asyncio.Event().wait()
 
 
 class MotionExtension(omni.ext.IExt):
