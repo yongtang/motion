@@ -15,7 +15,7 @@ async def main(self, ctx):
         print("[motion.extension] Closing existing stage...")
         await ctx.close_stage_async()
 
-    print("[motion.extension] Opening stage…")
+    print("[motion.extension] Opening stage...")
     self.e_stage_event.clear()
     await ctx.open_stage_async(
         "file:///storage/node/scene/scene.usd",
@@ -23,6 +23,7 @@ async def main(self, ctx):
     )
 
     # Wait for StageEventType.OPENED (signaled in on_stage_event)
+    print("[motion.extension] Waiting stage...")
     await self.e_stage_event.wait()
 
     # Wait until the stage finishes loading all assets
