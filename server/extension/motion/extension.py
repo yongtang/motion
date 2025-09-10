@@ -20,7 +20,7 @@ async def main():
 
     def on_stage_event(event, e):
         print(f"[motion.extension] Stage event {omni.usd.StageEventType(e.type)}")
-        if e.type == omni.usd.StageEventType.OPENED:
+        if omni.usd.StageEventType.OPENED(e.type) == omni.usd.StageEventType.OPENED:
             print("[motion.extension] Stage opened")
             event.set()
 
@@ -61,13 +61,7 @@ class MotionExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
         print(f"[motion.extension] Startup [{ext_id}]")
         self.task = asyncio.create_task(main())
-
-        # Done-callback to surface any unhandled exceptions prominently
-        def f_done(e: asyncio.Task):
-            if e.exception() is not None:
-                print(f"[motion.extension] Stage task failed: {e.exception()}")
-
-        self.task.add_done_callback(f_done)
+        self.task.add_done_callback(lambda e: e.exception() and sys.exit(1))
 
     def on_shutdown(self):
         print("[motion.extension] Shutdown")
