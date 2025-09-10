@@ -19,7 +19,7 @@ async def main():
         await ctx.close_stage_async()
         print("[motion.extension] Existing stage closed")
 
-    def on_stage_event(event, e):
+    def f_event(event, e):
         print(f"[motion.extension] Stage event {omni.usd.StageEventType(e.type)}")
         if omni.usd.StageEventType(e.type) == omni.usd.StageEventType.OPENED:
             print("[motion.extension] Stage opened")
@@ -27,7 +27,7 @@ async def main():
 
     event = asyncio.Event()
     subscription = ctx.get_stage_event_stream().create_subscription_to_push(
-        functools.partial(on_stage_event, event)
+        functools.partial(f_event, event)
     )
     try:
         print("[motion.extension] Opening stage...")
@@ -61,8 +61,15 @@ class MotionExtension(omni.ext.IExt):
 
     def on_startup(self, ext_id):
         print(f"[motion.extension] Startup [{ext_id}]")
+
         self.task = asyncio.create_task(main())
-        self.task.add_done_callback(lambda e: e.exception() and sys.exit(1))
+
+        def f_done(e: asyncio.Task):
+            if e.exception() is not None:
+                print(f"[motion.extension] Task failed: {e.exception()}")
+                sys.exit(1)
+
+        self.task.add_done_callback(f_done)
 
     def on_shutdown(self):
         print("[motion.extension] Shutdown")
