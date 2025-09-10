@@ -1,6 +1,6 @@
 import asyncio
+import json
 
-import carb
 import omni.ext
 import omni.usd
 
@@ -19,7 +19,7 @@ async def main(self, ctx):
     self.e_stage_event.clear()
     await ctx.open_stage_async(
         "file:///storage/node/scene/scene.usd",
-        load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,  # ensure full load
+        load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,
     )
 
     # Wait for StageEventType.OPENED (signaled in on_stage_event)
@@ -61,7 +61,7 @@ class MotionExtension(omni.ext.IExt):
         def f_done(t: asyncio.Task):
             exc = t.exception()
             if exc is not None:
-                carb.log_error(f"[motion.extension] Stage task failed: {exc!r}")
+                print(f"[motion.extension] Stage task failed: {exc!r}")
 
         self.e_stage_task.add_done_callback(f_done)
 
@@ -88,6 +88,6 @@ class MotionExtension(omni.ext.IExt):
 
     def on_stage_event(self, e):
         if e.type == omni.usd.StageEventType.OPENED:
-            carb.log_info("[motion.extension] Stage OPENED")
+            print("[motion.extension] Stage OPENED")
             if self.e_stage_event and not self.e_stage_event.is_set():
                 self.e_stage_event.set()
