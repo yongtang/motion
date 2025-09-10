@@ -32,11 +32,11 @@ async def main():
     )
 
     print("[motion.extension] Waiting stage...")
-    while ctx.is_stage_loading() or ctx.get_stage() is None:
+    stage = ctx.get_stage()
+    while stage is None:
         print("[motion.extension] Waiting loading...")
         await omni.kit.app.get_app().next_update_async()
-
-    stage = ctx.get_stage()
+        stage = ctx.get_stage()
     assert stage
 
     print("[motion.extension] Stage loaded")
