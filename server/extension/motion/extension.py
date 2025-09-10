@@ -1,14 +1,121 @@
 import asyncio
+import contextlib
 import functools
 import json
 import sys
 
 import omni.ext
 import omni.kit
+import omni.replicator.core
 import omni.usd
+import pxr
+
+from .node import run_http, run_link, run_step
+
+
+def f_rend(metadata, stage):
+  try:
+    camera = [
+        pxr.UsdGeom.Camera(e)
+        for e in stage.Traverse()
+        if e.IsA(pxr.UsdGeom.Camera) and e.IsActive()
+    ]
+    print(f"[motion.extension] Camera available: {[str(e.GetPath()) for e in camera]}")
+
+    import omni.kit.app, omni.replicator.core as rep
+
+    em = omni.kit.app.get_app().get_extension_manager()
+    em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
+    em.set_extension_enabled_immediate(
+        "isaacsim.replicator.agent.ui", True
+    )  # harmless if headless
+    import isaacsim.replicator.agent.core.data_generation.writers.rtsp
+
+    omni.kit.app.get_app().update()
+    print(f"[motion.extension] REGISTRY: {rep.WriterRegistry.get_writers().keys()}")
+
+    camera = {
+        "/World/Scene/CameraA": {
+            "width": 1280,
+            "height": 720,
+        }
+    }
+    print(f"[motion.extension] Camera rend: {camera}")
+    returned = {
+        e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
+        for e, v in camera.items()
+    }
+    return returned
+  except Exception as e:
+    print(f"[motion.extension] f_REND Exception {e}")
+
+
+
+@contextlib.asynccontextmanager
+async def run_rend(rend):
+  try:
+    print("[motion.extension] rend start 1")
+    import omni.kit.app, omni.replicator.core as rep
+
+    em = omni.kit.app.get_app().get_extension_manager()
+    em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
+    em.set_extension_enabled_immediate(
+        "isaacsim.replicator.agent.ui", True
+    )  # harmless if headless
+    import isaacsim.replicator.agent.core.data_generation.writers.rtsp
+
+    omni.kit.app.get_app().update()
+    print(
+        f"[motion.extension] xxxxxx - REGISTRY: {rep.WriterRegistry.get_writers().keys()}"
+    )
+
+    annotator = None
+
+    if rend:
+        print("[motion.extension] rend writer - 3")
+        try:
+            writer = rep.WriterRegistry.get("RTSPWriter")
+        except Exception as e:
+            print(f"[motion.extension] rend writer exception: {e}")
+            raise
+        print(f"[motion.extension] rend writer - 4 {writer}")
+
+        try:
+            writer.initialize(
+                rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
+                rtsp_rgb=True,
+            )
+        except Exception as e:
+            print(f"[motion.extension] rend writer xxxx exception: {e}")
+            raise
+
+        print(f"[motion.extension] rend 5 - writer={writer} attach{rend.values()}")
+        writer.attach(list(rend.values()))
+
+        print("[motion.extension] rend annotator")
+        annotator = rep.AnnotatorRegistry.get_annotator("rgb")
+        print(f"[motion.extension] rend annotator={annotator} attach{rend.values()}")
+        annotator.attach(list(rend.values()))
+
+        print("[motion.extension] rend ready")
+
+    try:
+        yield annotator
+    finally:
+        if rend:
+            print("[motion.extension] rend annotator detach")
+            with contextlib.suppress(Exception):
+                annotator.detach(list(rend.values()))
+            print("[motion.extension] rend writer detach")
+            with contextlib.suppress(Exception):
+                writer.detach(list(rend.values()))
+    print("[motion.extension] rend complete")
+  except Exception as e:
+      print(f"[motion.extension] RUN REND: {e}")
 
 
 async def main():
+  try:
     print("[motion.extension] Loading stage")
     with open("/storage/node/session.json", "r") as f:
         metadata = json.loads(f.read())
@@ -42,6 +149,21 @@ async def main():
 
     print("[motion.extension] Stage loaded")
 
+    session = metadata["uuid"]
+    async with run_http():
+        async with run_link() as channel:
+            async with run_rend(f_rend(metadata, stage)) as annotator:
+                print("[motion.extension] wait 1")
+                while True:
+                    await omni.kit.app.get_app().next_update_async()
+                #event  = asyncio.Event()
+                print("[motion.extension] wait 2")
+                #await event.wait()
+                #print("[motion.extension] wait 3")
+  except Exception as e:
+      print(f"[motion.extension] EXCEPTION: {e}")
+  finally:
+      print("[motion.extension] FINALLY")
 
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
@@ -51,14 +173,14 @@ class MotionExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
         print(f"[motion.extension] Startup [{ext_id}]")
 
-        self.task = asyncio.create_task(main())
+        self.task = asyncio.create_task(main()) #omni.kit.async_engine.run_coroutine(main())
 
         def f_done(e: asyncio.Task):
             if e.exception() is not None:
                 print(f"[motion.extension] Task failed: {e.exception()}")
                 sys.exit(1)
 
-        self.task.add_done_callback(f_done)
+        #self.task.add_done_callback(f_done)
 
     def on_shutdown(self):
         print("[motion.extension] Shutdown")
