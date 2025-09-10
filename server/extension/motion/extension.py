@@ -7,6 +7,8 @@ import omni.ext
 import omni.usd
 import pxr
 
+from .node import run_http, run_link, run_step
+
 
 async def main():
     print("[motion.extension] Loading stage")
@@ -47,6 +49,12 @@ async def main():
     ]
 
     print(f"[motion.extension] Camera available: {[str(e.GetPath()) for e in camera]}")
+
+    session = metadata["uuid"]
+    async with run_http():
+        async with run_link() as channel:
+            async with run_rend(f_rend(metadata, stage)) as annotator:
+                await asyncio.Event().wait()
 
 
 class MotionExtension(omni.ext.IExt):
