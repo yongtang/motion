@@ -10,6 +10,7 @@ services:
         fi
         /isaac-sim/python.sh -m pip install aiohttp nats-py boto3
         sleep infinity
+        /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers
     profiles: ["gpu"]
     deploy:
       resources:
