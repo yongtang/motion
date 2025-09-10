@@ -7,7 +7,7 @@ import omni.usd
 
 async def main(self, ctx):
     print("[motion.extension] Load stage")
-    with open("/storage/node/session.json", "r") as f:
+    with open("file:///storage/node/scene/scene.usd", "r") as f:
         metadata = json.loads(f.read())
     print(f"[motion.extension] Loaded metadata: {metadata}")
 
