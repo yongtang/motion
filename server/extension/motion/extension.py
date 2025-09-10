@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import json
+import sys
 
 import omni.ext
 import omni.usd
