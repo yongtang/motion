@@ -1,81 +1,66 @@
 import asyncio
+import functools
+import json
+import sys
 
-import carb
 import omni.ext
+import omni.kit
 import omni.usd
+
+
+async def main():
+    print("[motion.extension] Loading stage")
+    with open("/storage/node/session.json", "r") as f:
+        metadata = json.loads(f.read())
+    print(f"[motion.extension] Loaded metadata: {metadata}")
+
+    ctx = omni.usd.get_context()
+    if ctx.get_stage():
+        print("[motion.extension] Closing existing stage...")
+        await ctx.close_stage_async()
+        print("[motion.extension] Existing stage closed")
+
+    def f_event(event, e):
+        print(f"[motion.extension] Stage event {omni.usd.StageEventType(e.type)}")
+        if omni.usd.StageEventType(e.type) == omni.usd.StageEventType.OPENED:
+            print("[motion.extension] Stage opened")
+            event.set()
+
+    print("[motion.extension] Opening stage...")
+    await ctx.open_stage_async(
+        "file:///storage/node/scene/scene.usd",
+        load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,
+    )
+
+    print("[motion.extension] Waiting stage...")
+    stage = ctx.get_stage()
+    while stage is None:
+        print("[motion.extension] Waiting loading...")
+        await omni.kit.app.get_app().next_update_async()
+        stage = ctx.get_stage()
+    assert stage
+
+    print("[motion.extension] Stage loaded")
 
 
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
+        self.task = None
         super().__init__()
-        self.e_stage_task = None
-        self.e_stage_event = None
-        self.e_stage_subscription = None
 
     def on_startup(self, ext_id):
-        self.e_stage_event = asyncio.Event()
+        print(f"[motion.extension] Startup [{ext_id}]")
 
-        ctx = omni.usd.get_context()
-        self.e_stage_subscription = (
-            ctx.get_stage_event_stream().create_subscription_to_pop(self.on_stage_event)
-        )
+        self.task = asyncio.create_task(main())
 
-        async def f_stage(url: str):
-            # Close any existing stage, then open with full load
-            if ctx.get_stage():
-                await ctx.close_stage_async()
+        def f_done(e: asyncio.Task):
+            if e.exception() is not None:
+                print(f"[motion.extension] Task failed: {e.exception()}")
+                sys.exit(1)
 
-            self.e_stage_event.clear()
-            await ctx.open_stage_async(
-                url,
-                load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,  # ensure full load
-            )
-
-            # Wait for StageEventType.OPENED (signaled in on_stage_event)
-            await self.e_stage_event.wait()
-
-            # Wait until the stage finishes loading all assets
-            while ctx.is_stage_loading():
-                await asyncio.sleep(0.05)
-
-            carb.log_info("[motion.extension] Stage OPENED and fully loaded")
-
-        # Schedule the task (exceptions bubble up; we just log them)
-        self.e_stage_task = asyncio.create_task(
-            f_stage("file:///storage/node/scene/scene.usd")
-        )
-
-        # Done-callback to surface any unhandled exceptions prominently
-        def f_done(t: asyncio.Task):
-            exc = t.exception()
-            if exc is not None:
-                carb.log_error(f"[motion.extension] Stage task failed: {exc!r}")
-
-        self.e_stage_task.add_done_callback(f_done)
+        self.task.add_done_callback(f_done)
 
     def on_shutdown(self):
-        # Cancel stage-open task first
-        if self.e_stage_task:
-            try:
-                self.e_stage_task.cancel()
-            except Exception:
-                pass
-            self.e_stage_task = None
-
-        # Unsubscribe from stage events
-        if self.e_stage_subscription:
-            try:
-                self.e_stage_subscription.unsubscribe()
-            except Exception:
-                pass
-            self.e_stage_subscription = None
-
-        self.e_stage_event = None
-
-    # ---------- Stage events ----------
-
-    def on_stage_event(self, e):
-        if e.type == omni.usd.StageEventType.OPENED:
-            carb.log_info("[motion.extension] Stage OPENED")
-            if self.e_stage_event and not self.e_stage_event.is_set():
-                self.e_stage_event.set()
+        print("[motion.extension] Shutdown")
+        if self.task and not self.task.done():
+            self.task.cancel()
