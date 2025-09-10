@@ -5,6 +5,7 @@ import sys
 
 import omni.ext
 import omni.usd
+import pxr
 
 
 async def main():
@@ -40,6 +41,12 @@ async def main():
     assert stage
 
     print("[motion.extension] Stage loaded")
+
+    camera = [
+        pxr.UsdGeom.Camera(e) for e in stage.Traverse() if e.IsA(pxr.UsdGeom.Camera)
+    ]
+
+    print("[motion.extension] Camera available: {[str(e.GetPath()) for e in camera]}")
 
 
 class MotionExtension(omni.ext.IExt):
