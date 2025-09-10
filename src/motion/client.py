@@ -5,14 +5,17 @@ import zipfile
 
 import requests
 
+from .motionclass import motionclass
 from .scene import Scene, SceneBaseModel
 from .session import Session, SessionBaseModel
 
 
+@motionclass
 class SceneClient:
     def __init__(self, base: str, *, timeout: float):
-        self._base_ = base.rstrip("/")
-        self._timeout_ = timeout
+        object.__setattr__(self, "_base_", base.rstrip("/"))
+        object.__setattr__(self, "_timeout_", timeout)
+        object.__setattr__(self, "_session_", requests.Session())
 
     def create(self, file: str | pathlib.Path, runtime: str) -> Scene:
         file = pathlib.Path(file)
@@ -38,31 +41,17 @@ class SceneClient:
             # Upload the zip
             with zip_path.open("rb") as f:
                 files = {"file": (zip_path.name, f, "application/zip")}
-                r = requests.post(
-                    f"{self._base_}/scene", files=files, timeout=self._timeout_
-                )
+                r = self._request_("POST", "scene", files=files)
 
-        r.raise_for_status()
         scene = SceneBaseModel.parse_obj(r.json())
         return Scene(self._base_, scene.uuid, timeout=self._timeout_)
 
     def archive(self, scene: Scene, file: str | pathlib.Path) -> pathlib.Path:
-        r = requests.get(
-            f"{self._base_}/scene/{scene.uuid}/archive",
-            stream=True,
-            timeout=self._timeout_,
-        )
-        r.raise_for_status()
-        file = pathlib.Path(file)
-        file.parent.mkdir(parents=True, exist_ok=True)
-        with file.open("wb") as f:
-            for chunk in r.iter_content(8192):
-                if chunk:
-                    f.write(chunk)
-        return file
+        return self._download_(f"scene/{scene.uuid}/archive", file)
 
     def search(self, q: str) -> list[Scene]:
-        r = requests.get(
+        # preserve special 422 -> [] behavior (check before raising)
+        r = self._session_.get(
             f"{self._base_}/scene", params={"q": q}, timeout=self._timeout_
         )
         if r.status_code == 422:
@@ -72,16 +61,17 @@ class SceneClient:
         return [Scene(self._base_, s.uuid, timeout=self._timeout_) for s in scenes]
 
     def delete(self, scene: Scene) -> None:
-        r = requests.delete(f"{self._base_}/scene/{scene.uuid}", timeout=self._timeout_)
-        r.raise_for_status()
+        r = self._request_("DELETE", f"scene/{scene.uuid}")
         SceneBaseModel.parse_obj(r.json())  # validate, discard
         return None
 
 
+@motionclass
 class SessionClient:
     def __init__(self, base: str, *, timeout: float):
-        self._base_ = base.rstrip("/")
-        self._timeout_ = timeout
+        object.__setattr__(self, "_base_", base.rstrip("/"))
+        object.__setattr__(self, "_timeout_", timeout)
+        object.__setattr__(self, "_session_", requests.Session())
 
     def create(
         self,
@@ -97,33 +87,16 @@ class SessionClient:
             | ({"camera": camera} if camera is not None else {})
             | ({"link": link} if link is not None else {})
         )
-
-        r = requests.post(
-            f"{self._base_}/session",
-            json=payload,
-            timeout=self._timeout_,
-        )
-        r.raise_for_status()
+        r = self._request_("POST", "session", json=payload)
         session = SessionBaseModel.parse_obj(r.json())
         return Session(self._base_, session.uuid, timeout=self._timeout_)
 
     def archive(self, session: Session, file: str | pathlib.Path) -> pathlib.Path:
-        r = requests.get(
-            f"{self._base_}/session/{session.uuid}/archive",
-            stream=True,
-            timeout=self._timeout_,
-        )
-        r.raise_for_status()
-        file = pathlib.Path(file)
-        file.parent.mkdir(parents=True, exist_ok=True)
-        with file.open("wb") as f:
-            for chunk in r.iter_content(8192):
-                if chunk:
-                    f.write(chunk)
-        return file
+        return self._download_(f"session/{session.uuid}/archive", file)
 
     def search(self, q: str) -> list[Session]:
-        r = requests.get(f"{self._base_}/session/{q}", timeout=self._timeout_)
+        # preserve special 404 -> [] behavior (check before raising)
+        r = self._session_.get(f"{self._base_}/session/{q}", timeout=self._timeout_)
         if r.status_code == 404:
             return []
         r.raise_for_status()
@@ -131,10 +104,7 @@ class SessionClient:
         return [Session(self._base_, session.uuid, timeout=self._timeout_)]
 
     def delete(self, session: Session) -> None:
-        r = requests.delete(
-            f"{self._base_}/session/{session.uuid}", timeout=self._timeout_
-        )
-        r.raise_for_status()
+        r = self._request_("DELETE", f"session/{session.uuid}")
         SessionBaseModel.parse_obj(r.json())  # validate, discard
         return None
 

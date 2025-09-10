@@ -22,6 +22,11 @@ class SessionSpecModel(pydantic.BaseModel):
 class SessionBaseModel(SessionSpecModel):
     uuid: pydantic.UUID4
 
+    def __eq__(self, other):
+        if not isinstance(other, SessionBaseModel):
+            return NotImplemented
+        return self.uuid == other.uuid
+
 
 @motionclass
 class Session(SessionBaseModel):
@@ -30,23 +35,31 @@ class Session(SessionBaseModel):
 
     def __init__(self, base: str, uuid: pydantic.UUID4, timeout: float = 5.0):
         base = base.rstrip("/")
-        r = requests.get(f"{base}/session/{uuid}", timeout=timeout)
+
+        s = requests.Session()
+        r = s.request("GET", f"{base}/session/{uuid}")
         r.raise_for_status()
 
         session = SessionBaseModel.parse_obj(r.json())
-        scene = Scene(base, session.scene, timeout=timeout)
-        super().__init__(uuid=session.uuid, scene=scene, camera=session.camera)
 
-        # bypass Pydantic validation for decorator-added private attrs
+        scene = Scene(base, session.scene, timeout=timeout)
+        super().__init__(
+            uuid=session.uuid,
+            scene=scene,
+            joint=session.joint,
+            camera=session.camera,
+            link=session.link,
+        )
+
+        # set private attrs
         object.__setattr__(self, "_base_", base)
         object.__setattr__(self, "_timeout_", timeout)
+        object.__setattr__(self, "_session_", s)
 
     def play(self):
-        r = requests.post(f"{self.base}/session/{self.uuid}/play", timeout=self.timeout)
-        r.raise_for_status()
+        r = self._request_("POST", f"session/{self.uuid}/play")
         return r.json()
 
     def stop(self):
-        r = requests.post(f"{self.base}/session/{self.uuid}/stop", timeout=self.timeout)
-        r.raise_for_status()
+        r = self._request_("POST", f"session/{self.uuid}/stop")
         return r.json()

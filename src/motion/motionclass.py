@@ -5,11 +5,9 @@ import requests
 
 
 def motionclass(cls):
-    cls._base_: str = pydantic.PrivateAttr("")
-    cls._timeout_: float = pydantic.PrivateAttr(5.0)
-    cls._session_: requests.Session = pydantic.PrivateAttr(
-        default_factory=requests.Session
-    )
+    cls._base_ = pydantic.PrivateAttr()
+    cls._timeout_ = pydantic.PrivateAttr()
+    cls._session_ = pydantic.PrivateAttr()
 
     @property
     def base(self) -> str:
@@ -19,7 +17,7 @@ def motionclass(cls):
     def timeout(self) -> float:
         return self._timeout_
 
-    def _request_(self, method: str, path: str, **kwargs) -> requests.Response:
+    def _request_(self, method: str, path: str, **kwargs):
         url = f"{self._base_}/{path.lstrip('/')}"
         r = self._session_.request(method, url, timeout=self._timeout_, **kwargs)
         r.raise_for_status()
