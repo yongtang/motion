@@ -46,7 +46,7 @@ async def main():
         pxr.UsdGeom.Camera(e) for e in stage.Traverse() if e.IsA(pxr.UsdGeom.Camera)
     ]
 
-    print("[motion.extension] Camera available: {[str(e.GetPath()) for e in camera]}")
+    print(f"[motion.extension] Camera available: {[str(e.GetPath()) for e in camera]}")
 
 
 class MotionExtension(omni.ext.IExt):
