@@ -145,26 +145,30 @@ async def scene_search(q: UUID4 = Query(..., description="exact scene uuid")):
 async def session_create(
     body: motion.session.SessionSpecModel,
 ) -> motion.session.SessionBaseModel:
-    # assign uuid, merge with spec
     session = motion.session.SessionBaseModel(uuid=uuid.uuid4(), **body.dict())
 
     # validate scene exists
     try:
         storage_kv_get("scene", f"{session.scene}.json")
         log.info(
-            f"[Session {session.uuid}] Creating (scene={session.scene}, cameras={'ALL' if set(session.camera.keys()) == {'*'} else len(session.camera)})"
+            f"[Session {session.uuid}] Creating ("
+            f"scene={session.scene}, "
+            f"joints={'ALL' if session.joint == ['*'] else len(session.joint)}, "
+            f"cameras={'ALL' if set(session.camera.keys()) == {'*'} else len(session.camera)}, "
+            f"links={'ALL' if session.link == ['*'] else len(session.link)})"
         )
     except FileNotFoundError:
-        log.warning(
-            f"[Session {session.uuid}] Scene {session.scene} not found for create"
-        )
         raise HTTPException(status_code=404, detail=f"Scene {session.scene} not found")
 
     storage_kv_set("session", f"{session.uuid}.json", session.json().encode())
-    log.info(
-        f"[Session {session.uuid}] Created (scene={session.scene}, cameras={'ALL' if set(session.camera.keys()) == {'*'} else len(session.camera)})"
-    )
 
+    log.info(
+        f"[Session {session.uuid}] Created ("
+        f"scene={session.scene}, "
+        f"joints={'ALL' if session.joint == ['*'] else len(session.joint)}, "
+        f"cameras={'ALL' if set(session.camera.keys()) == {'*'} else len(session.camera)}, "
+        f"links={'ALL' if session.link == ['*'] else len(session.link)})"
+    )
     return session
 
 

@@ -83,9 +83,19 @@ class SessionClient:
         self._base_ = base.rstrip("/")
         self._timeout_ = timeout
 
-    def create(self, scene: Scene, *, camera: dict | None = None) -> Session:
-        payload = {"scene": str(scene.uuid)} | (
-            {"camera": camera} if camera is not None else {}
+    def create(
+        self,
+        scene: Scene,
+        *,
+        joint: list[str] | None = None,
+        camera: dict | None = None,
+        link: list[str] | None = None,
+    ) -> Session:
+        payload = (
+            {"scene": str(scene.uuid)}
+            | ({"joint": joint} if joint is not None else {})
+            | ({"camera": camera} if camera is not None else {})
+            | ({"link": link} if link is not None else {})
         )
 
         r = requests.post(
