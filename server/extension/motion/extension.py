@@ -5,6 +5,32 @@ import omni.ext
 import omni.usd
 
 
+async def main(self, ctx):
+    print("[motion.extension] Load stage")
+    with open("/storage/node/session.json", "r") as f:
+        metadata = json.loads(f.read())
+    print(f"[motion.extension] Loaded metadata: {metadata}")
+
+    if ctx.get_stage():
+        print("[motion.extension] Closing existing stage...")
+        await ctx.close_stage_async()
+
+    self.e_stage_event.clear()
+    await ctx.open_stage_async(
+        "file:///storage/node/scene/scene.usd",
+        load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,  # ensure full load
+    )
+
+    # Wait for StageEventType.OPENED (signaled in on_stage_event)
+    await self.e_stage_event.wait()
+
+    # Wait until the stage finishes loading all assets
+    while ctx.is_stage_loading():
+        await asyncio.sleep(0.05)
+
+    carb.log_info("[motion.extension] Stage OPENED and fully loaded")
+
+
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
         super().__init__()
@@ -20,29 +46,9 @@ class MotionExtension(omni.ext.IExt):
             ctx.get_stage_event_stream().create_subscription_to_pop(self.on_stage_event)
         )
 
-        async def f_stage(url: str):
-            # Close any existing stage, then open with full load
-            if ctx.get_stage():
-                await ctx.close_stage_async()
-
-            self.e_stage_event.clear()
-            await ctx.open_stage_async(
-                url,
-                load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,  # ensure full load
-            )
-
-            # Wait for StageEventType.OPENED (signaled in on_stage_event)
-            await self.e_stage_event.wait()
-
-            # Wait until the stage finishes loading all assets
-            while ctx.is_stage_loading():
-                await asyncio.sleep(0.05)
-
-            carb.log_info("[motion.extension] Stage OPENED and fully loaded")
-
         # Schedule the task (exceptions bubble up; we just log them)
         self.e_stage_task = asyncio.create_task(
-            f_stage("file:///storage/node/scene/scene.usd")
+            main(self, ctx)
         )
 
         # Done-callback to surface any unhandled exceptions prominently
