@@ -1,5 +1,5 @@
+import httpx
 import pydantic
-import requests
 
 from .motionclass import motionclass
 
@@ -18,13 +18,12 @@ class Scene(SceneBaseModel):
     def __init__(self, base: str, uuid: pydantic.UUID4, timeout: float = 5.0):
         base = base.rstrip("/")
 
-        s = requests.Session()
-        r = s.request("GET", f"{base}/scene/{uuid}")
+        r = httpx.request("GET", f"{base}/scene/{uuid}", timeout=timeout)
         r.raise_for_status()
 
         super().__init__(**r.json())
 
-        # set private attrs after
+        # set private attrs
         object.__setattr__(self, "_base_", base)
         object.__setattr__(self, "_timeout_", timeout)
-        object.__setattr__(self, "_session_", s)
+        object.__setattr__(self, "_httpx_", httpx)

@@ -6,8 +6,8 @@ import time
 import uuid
 import zipfile
 
+import httpx
 import pytest
-import requests
 
 
 def pytest_addoption(parser):
@@ -204,7 +204,7 @@ def scene_on_server(docker_compose):
     buf.seek(0)
 
     files = {"file": ("scene.zip", buf, "application/zip")}
-    r = requests.post(f"{base}/scene", files=files, timeout=5.0)
+    r = httpx.post(f"{base}/scene", files=files, timeout=5.0)
     assert r.status_code == 201, r.text
     scene = r.json()["uuid"]
     assert scene
@@ -213,7 +213,7 @@ def scene_on_server(docker_compose):
 
     # teardown once all tests are finished
     try:
-        requests.delete(f"{base}/scene/{scene}", timeout=5.0)
+        httpx.delete(f"{base}/scene/{scene}", timeout=5.0)
     except Exception:
         pass
 
@@ -222,7 +222,7 @@ def scene_on_server(docker_compose):
 def session_on_server(scene_on_server):
     """Create a session bound to the scene created above."""
     base, scene = scene_on_server
-    r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
+    r = httpx.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
     assert r.status_code == 201, r.text
     data = r.json()
     session = data["uuid"]
@@ -238,6 +238,6 @@ def session_on_server(scene_on_server):
 
     # teardown
     try:
-        requests.delete(f"{base}/session/{session}", timeout=5.0)
+        httpx.delete(f"{base}/session/{session}", timeout=5.0)
     except Exception:
         pass

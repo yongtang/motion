@@ -3,7 +3,7 @@ import tempfile
 import time
 import uuid
 
-import requests
+import httpx
 
 import motion
 
@@ -27,7 +27,7 @@ def test_client_scene(docker_compose):
     assert client.scene.search(str(scene.uuid)) == [scene]
 
     # direct REST check for minimal metadata
-    r = requests.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
+    r = httpx.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"uuid": str(scene.uuid)}
 
@@ -48,7 +48,7 @@ def test_client_scene(docker_compose):
     assert client.scene.search(str(scene.uuid)) == []
 
     # after delete, REST lookup should 404
-    r = requests.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
+    r = httpx.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
     assert r.status_code == 404
 
 
@@ -62,11 +62,11 @@ def test_client_session(scene_on_server):
     assert isinstance(session, motion.Session)
 
     # play -> wait 120s -> stop -> wait 30s
-    r = requests.post(f"{base}/session/{session.uuid}/play", timeout=5.0)
+    r = httpx.post(f"{base}/session/{session.uuid}/play", timeout=5.0)
     assert r.status_code == 200
     time.sleep(30)
 
-    r = requests.post(f"{base}/session/{session.uuid}/stop", timeout=5.0)
+    r = httpx.post(f"{base}/session/{session.uuid}/stop", timeout=5.0)
     assert r.status_code == 200
     time.sleep(30)
 
@@ -78,5 +78,5 @@ def test_client_session(scene_on_server):
 
     # cleanup
     assert client.session.delete(session) is None
-    r = requests.get(f"{base}/session/{session.uuid}", timeout=5.0)
+    r = httpx.get(f"{base}/session/{session.uuid}", timeout=5.0)
     assert r.status_code == 404

@@ -7,7 +7,6 @@ requires-python = ">=3.9"
 
 dependencies = [
     "pydantic",
-    "requests",
     "httpx",
 ]
 

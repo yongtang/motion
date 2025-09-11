@@ -1,8 +1,8 @@
 import time
 import uuid
 
+import httpx
 import pytest
-import requests
 
 import motion
 
@@ -25,5 +25,5 @@ def test_session(capsys, session_on_server):
 
     # negative: constructing with a bogus session should raise
     bogus = str(uuid.uuid4())
-    with pytest.raises(requests.HTTPError):
+    with pytest.raises(httpx.HTTPError):
         motion.Session(base, bogus)

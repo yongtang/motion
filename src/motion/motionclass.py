@@ -1,13 +1,13 @@
 import pathlib
 
+import httpx
 import pydantic
-import requests
 
 
 def motionclass(cls):
     cls._base_ = pydantic.PrivateAttr()
     cls._timeout_ = pydantic.PrivateAttr()
-    cls._session_ = pydantic.PrivateAttr()
+    cls._httpx_ = pydantic.PrivateAttr()
 
     @property
     def base(self) -> str:
@@ -17,23 +17,23 @@ def motionclass(cls):
     def timeout(self) -> float:
         return self._timeout_
 
-    def _request_(self, method: str, path: str, **kwargs):
+    def _request_(self, method: str, path: str, **kwargs) -> httpx.Response:
         url = f"{self._base_}/{path.lstrip('/')}"
-        r = self._session_.request(method, url, timeout=self._timeout_, **kwargs)
+        r = self._httpx_.request(method, url, timeout=self._timeout_, **kwargs)
         r.raise_for_status()
         return r
 
-    def _download_(self, path: str, dest: str | pathlib.Path) -> pathlib.Path:
-        dest = pathlib.Path(dest)
-        dest.parent.mkdir(parents=True, exist_ok=True)
+    def _download_(self, path: str, file: str | pathlib.Path) -> pathlib.Path:
+        file = pathlib.Path(file)
+        file.parent.mkdir(parents=True, exist_ok=True)
         url = f"{self._base_}/{path.lstrip('/')}"
-        with self._session_.get(url, stream=True, timeout=self._timeout_) as r:
+        with self._httpx_.stream("GET", url, timeout=self._timeout_) as r:
             r.raise_for_status()
-            with dest.open("wb") as f:
-                for chunk in r.iter_content(8192):
+            with file.open("wb") as f:
+                for chunk in r.iter_bytes():
                     if chunk:
                         f.write(chunk)
-        return dest
+        return file
 
     cls.base = base
     cls.timeout = timeout

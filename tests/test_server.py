@@ -5,13 +5,13 @@ import time
 import uuid
 import zipfile
 
-import requests
+import httpx
 import websockets
 
 
 def test_server_health(docker_compose):
     base = f"http://{docker_compose['motion']}:8080"
-    r = requests.get(f"{base}/health", timeout=2.0)
+    r = httpx.get(f"{base}/health", timeout=2.0)
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
 
@@ -27,23 +27,23 @@ def test_server_scene(docker_compose):
         z.writestr("meta.json", json.dumps({"runtime": "echo"}))
     buf.seek(0)
     files = {"file": ("scene.zip", buf, "application/zip")}
-    r = requests.post(f"{base}/scene", files=files, timeout=5.0)
+    r = httpx.post(f"{base}/scene", files=files, timeout=5.0)
     assert r.status_code == 201, r.text
     scene = r.json()["uuid"]
     assert scene
 
     # search
-    r = requests.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
+    r = httpx.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
     assert r.status_code == 200
     assert r.json() == [{"uuid": scene}]
 
     # lookup
-    r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
+    r = httpx.get(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"uuid": scene}
 
     # ARCHIVE (download) -> GET /scene/{uuid}/archive
-    r = requests.get(f"{base}/scene/{scene}/archive", timeout=5.0)
+    r = httpx.get(f"{base}/scene/{scene}/archive", timeout=5.0)
     assert r.status_code == 200
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
         names = set(z.namelist())
@@ -59,23 +59,23 @@ def test_server_scene(docker_compose):
 
     # negative search
     bogus = str(uuid.uuid4())
-    r = requests.get(f"{base}/scene", params={"q": bogus}, timeout=5.0)
+    r = httpx.get(f"{base}/scene", params={"q": bogus}, timeout=5.0)
     assert r.status_code == 200
     assert r.json() == []
 
     # delete
-    r = requests.delete(f"{base}/scene/{scene}", timeout=5.0)
+    r = httpx.delete(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"uuid": scene}
 
     # after delete: search empty, lookup/archive 404
-    r = requests.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
+    r = httpx.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
     assert r.status_code == 200 and r.json() == []
 
-    r = requests.get(f"{base}/scene/{scene}", timeout=5.0)
+    r = httpx.get(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 404
 
-    r = requests.get(f"{base}/scene/{scene}/archive", timeout=5.0)
+    r = httpx.get(f"{base}/scene/{scene}/archive", timeout=5.0)
     assert r.status_code == 404
 
 
@@ -85,7 +85,7 @@ def test_server_session(scene_on_server):
     # ---- helpers ----
 
     def f_archive_lines_if_ready(session: str):
-        r = requests.get(f"{base}/session/{session}/archive", timeout=10.0)
+        r = httpx.get(f"{base}/session/{session}/archive", timeout=10.0)
         if r.status_code != 200:
             return None
         with zipfile.ZipFile(io.BytesIO(r.content)) as z:
@@ -175,15 +175,15 @@ def test_server_session(scene_on_server):
 
     # 1) ARCHIVE before session exists -> 404
     bogus_session = str(uuid.uuid4())
-    r = requests.get(f"{base}/session/{bogus_session}/archive", timeout=5.0)
+    r = httpx.get(f"{base}/session/{bogus_session}/archive", timeout=5.0)
     assert r.status_code == 404
 
     # ---- CASE 1: Explicit stop flow ----
-    r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
+    r = httpx.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
     assert r.status_code == 201, r.text
     session = r.json()["uuid"]
 
-    r = requests.post(f"{base}/session/{session}/play", timeout=5.0)
+    r = httpx.post(f"{base}/session/{session}/play", timeout=5.0)
     assert r.status_code == 200
 
     ws_url_step = f"ws://{base.split('://',1)[1]}/session/{session}/step"
@@ -194,12 +194,12 @@ def test_server_session(scene_on_server):
     asyncio.run(f_stream_steps_entire_run(ws_url_step, duration=RUN_WINDOW, period=0.2))
 
     # Stop and allow archiver to flush
-    r = requests.post(f"{base}/session/{session}/stop", timeout=5.0)
+    r = httpx.post(f"{base}/session/{session}/stop", timeout=5.0)
     assert r.status_code == 200
     time.sleep(60)  # archiver safety window
 
     # archive must contain data.json with valid JSONL
-    r = requests.get(f"{base}/session/{session}/archive", timeout=10.0)
+    r = httpx.get(f"{base}/session/{session}/archive", timeout=10.0)
     assert r.status_code == 200
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
         names = set(z.namelist())
@@ -223,15 +223,15 @@ def test_server_session(scene_on_server):
     got_replay = asyncio.run(f_subscribe_data_for(ws_url_data_replay, duration=60.0))
     assert got_replay, "expected to receive replayed data with start=1"
 
-    r = requests.delete(f"{base}/session/{session}", timeout=5.0)
+    r = httpx.delete(f"{base}/session/{session}", timeout=5.0)
     assert r.status_code == 200
 
     # ---- CASE 2: Natural completion (no stop) ----
-    r = requests.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
+    r = httpx.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
     assert r.status_code == 201, r.text
     session2 = r.json()["uuid"]
 
-    r = requests.post(f"{base}/session/{session2}/play", timeout=5.0)
+    r = httpx.post(f"{base}/session/{session2}/play", timeout=5.0)
     assert r.status_code == 200
 
     ws_url2_step = f"ws://{base.split('://',1)[1]}/session/{session2}/step"
@@ -243,15 +243,15 @@ def test_server_session(scene_on_server):
     )
 
     # For consistency we still issue an explicit stop (even if node would finish naturally)
-    r = requests.post(f"{base}/session/{session2}/stop", timeout=5.0)
+    r = httpx.post(f"{base}/session/{session2}/stop", timeout=5.0)
     assert r.status_code == 200
 
     time.sleep(60)
 
-    r = requests.get(f"{base}/session/{session2}/archive", timeout=10.0)
+    r = httpx.get(f"{base}/session/{session2}/archive", timeout=10.0)
     assert r.status_code == 200
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
         assert "data.json" in set(z.namelist())
 
-    r = requests.delete(f"{base}/session/{session2}", timeout=5.0)
+    r = httpx.delete(f"{base}/session/{session2}", timeout=5.0)
     assert r.status_code == 200
