@@ -54,7 +54,7 @@ async def run_rend(rend):
     if rend:
         print("[motion.extension] rend writer")
         writer = rep.WriterRegistry.get("RTSPWriter")
-        # Isaac Sim 5.0.0 API: rtsp_stream_url + per-channel toggles
+        print("[motion.extension] rend writer {writer}")
         writer.initialize(
             rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
             rtsp_rgb=True,
