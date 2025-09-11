@@ -57,8 +57,10 @@ services:
     network_mode: "service:server"
     volumes:
       - storage:/storage
+    environment:
+      MTX_API: yes
     healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 8554 || exit 1"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9997/v3/paths/list"]
       interval: 30s
       timeout: 5s
       retries: 3
