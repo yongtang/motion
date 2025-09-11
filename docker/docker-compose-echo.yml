@@ -12,7 +12,7 @@ services:
         pip install aiohttp nats-py boto3
         python -m server.echo
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8888/health >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8899/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3

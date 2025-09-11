@@ -22,9 +22,9 @@ async def run_http():
 
     runner = aiohttp.web.AppRunner(app)
     await runner.setup()
-    site = aiohttp.web.TCPSite(runner, "0.0.0.0", 8888)
+    site = aiohttp.web.TCPSite(runner, "0.0.0.0", 8899)
     await site.start()
-    log.info("HTTP health at http://0.0.0.0:8888/health")
+    log.info("HTTP health at http://0.0.0.0:8899/health")
 
     try:
         yield
