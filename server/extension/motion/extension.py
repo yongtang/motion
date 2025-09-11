@@ -145,8 +145,10 @@ async def main():
         async with run_link() as channel:
             async with run_rend(f_rend(metadata, stage)) as annotator:
                 print("[motion.extension] wait 1")
-                await asyncio.Event().wait()
+                event  = asyncio.Event()
                 print("[motion.extension] wait 2")
+                await event.wait()
+                print("[motion.extension] wait 3")
 
 
 class MotionExtension(omni.ext.IExt):
