@@ -155,7 +155,7 @@ async def main():
   except Exception as e:
       print(f"[motion.extension] EXCEPTION: {e}")
   finally:
-      pass
+      print("[motion.extension] FINALLY")
 
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
@@ -172,7 +172,7 @@ class MotionExtension(omni.ext.IExt):
                 print(f"[motion.extension] Task failed: {e.exception()}")
                 sys.exit(1)
 
-        self.task.add_done_callback(f_done)
+        #self.task.add_done_callback(f_done)
 
     def on_shutdown(self):
         print("[motion.extension] Shutdown")
