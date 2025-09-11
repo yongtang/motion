@@ -107,6 +107,7 @@ async def run_rend(rend):
 
 
 async def main():
+  try:
     print("[motion.extension] Loading stage")
     with open("/storage/node/session.json", "r") as f:
         metadata = json.loads(f.read())
@@ -150,7 +151,10 @@ async def main():
                 print("[motion.extension] wait 2")
                 #await event.wait()
                 #print("[motion.extension] wait 3")
-
+  except Exception as e:
+      print(f"[motion.extension] EXCEPTION: {e}")
+  finally:
+      pass
 
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
