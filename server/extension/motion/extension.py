@@ -155,12 +155,16 @@ async def main():
 
         print("[motion.extension] Stage loaded")
 
+        writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
+        print(f"[motion.extension] Writer {writer}")
 
-        keys = omni.replicator.core.WriterRegistry.get_writers().keys()
-        print(f"[motion.extension] REGISTRY: {keys}")
+        writer.initialize(
+            rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
+            rtsp_rgb=True,
+        )
+        print(f"[motion.extension] Writer initialized")
 
         session = metadata["uuid"]
-
 
         camera = {
             "/World/Scene/CameraA": {
@@ -174,7 +178,6 @@ async def main():
             for e, v in camera.items()
         }
         print(f"[motion.extension] Camera rend: {returned}")
-
 
         """
         async with run_http():
