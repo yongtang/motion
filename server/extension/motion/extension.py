@@ -49,12 +49,28 @@ def f_rend(metadata, stage):
 @contextlib.asynccontextmanager
 async def run_rend(rend):
     print("[motion.extension] rend start")
+    import omni.kit.app, omni.replicator.core as rep
+
+    em = omni.kit.app.get_app().get_extension_manager()
+    em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
+    em.set_extension_enabled_immediate(
+        "isaacsim.replicator.agent.ui", True
+    )  # harmless if headless
+    import isaacsim.replicator.agent.core.data_generation.writers.rtsp
+
+    omni.kit.app.get_app().update()
+    print(f"[motion.extension] REGISTRY: {rep.WriterRegistry.get_writers().keys()}")
+
     annotator = None
 
     if rend:
         print("[motion.extension] rend writer")
-        writer = rep.WriterRegistry.get("RTSPWriter")
-        print("[motion.extension] rend writer {writer}")
+        try:
+          writer = rep.WriterRegistry.get("RTSPWriter")
+        except Exception as e:
+            print(f"[motion.extension] rend writer: {e}")
+            raise
+        print(f"[motion.extension] rend writer {writer}")
         writer.initialize(
             rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
             rtsp_rgb=True,
