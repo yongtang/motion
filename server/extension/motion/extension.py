@@ -4,6 +4,7 @@ import functools
 import json
 import sys
 
+import isaacsim.replicator.agent.core.data_generation.writers.rtsp
 import omni.ext
 import omni.kit
 import omni.replicator.core
@@ -24,7 +25,8 @@ def f_rend(metadata, stage):
             f"[motion.extension] Camera available: {[str(e.GetPath()) for e in camera]}"
         )
 
-        import omni.kit.app, omni.replicator.core as rep
+        import omni.kit.app
+        import omni.replicator.core as rep
 
         em = omni.kit.app.get_app().get_extension_manager()
         em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
@@ -56,7 +58,8 @@ def f_rend(metadata, stage):
 async def run_rend(rend):
     try:
         print("[motion.extension] rend start 1")
-        import omni.kit.app, omni.replicator.core as rep
+        import omni.kit.app
+        import omni.replicator.core as rep
 
         em = omni.kit.app.get_app().get_extension_manager()
         em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
@@ -153,6 +156,8 @@ async def main():
         print("[motion.extension] Stage loaded")
 
         session = metadata["uuid"]
+
+        """
         async with run_http():
             async with run_link() as channel:
                 async with run_rend(f_rend(metadata, stage)) as annotator:
@@ -163,6 +168,7 @@ async def main():
                     print("[motion.extension] wait 2")
                     # await event.wait()
                     # print("[motion.extension] wait 3")
+        """
     except Exception as e:
         print(f"[motion.extension] EXCEPTION: {e}")
     finally:
