@@ -173,11 +173,15 @@ async def main():
             }
         }
         print(f"[motion.extension] Camera rend: {camera}")
-        returned = {
+        render = {
             e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
             for e, v in camera.items()
         }
-        print(f"[motion.extension] Camera rend: {returned}")
+        print(f"[motion.extension] Camera rend: {render}")
+
+        writer.attach(list(render.values()))
+
+        print(f"[motion.extension] Writer attached")
 
         """
         async with run_http():
