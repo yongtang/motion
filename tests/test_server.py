@@ -186,12 +186,13 @@ def test_server_session(scene_on_server):
     r = httpx.post(f"{base}/session/{session}/play", timeout=5.0)
     assert r.status_code == 200
 
-    ws_url_step = f"ws://{base.split('://',1)[1]}/session/{session}/step"
-    ws_url_data = f"ws://{base.split('://',1)[1]}/session/{session}/data"
+    ws_url_stream = f"ws://{base.split('://',1)[1]}/session/{session}/stream"
 
     # Stream steps during the entire play window instead of sleeping 150s
     RUN_WINDOW = 150.0
-    asyncio.run(f_stream_steps_entire_run(ws_url_step, duration=RUN_WINDOW, period=0.2))
+    asyncio.run(
+        f_stream_steps_entire_run(ws_url_stream, duration=RUN_WINDOW, period=0.2)
+    )
 
     # Stop and allow archiver to flush
     r = httpx.post(f"{base}/session/{session}/stop", timeout=5.0)
@@ -212,15 +213,17 @@ def test_server_session(scene_on_server):
                 json.loads(ln)
 
     # After stop: NEW subscription should see nothing within the flush window (60s)
-    ws_url_data_new_after = f"ws://{base.split('://',1)[1]}/session/{session}/data"
+    ws_url_stream_new_after = f"ws://{base.split('://',1)[1]}/session/{session}/stream"
     got_new_after = asyncio.run(
-        f_subscribe_data_for(ws_url_data_new_after, duration=60.0)
+        f_subscribe_data_for(ws_url_stream_new_after, duration=60.0)
     )
     assert not got_new_after, "did not expect NEW data after stop within 60s"
 
     # After stop: replay from beginning should work (start=1)
-    ws_url_data_replay = f"ws://{base.split('://',1)[1]}/session/{session}/data?start=1"
-    got_replay = asyncio.run(f_subscribe_data_for(ws_url_data_replay, duration=60.0))
+    ws_url_stream_replay = (
+        f"ws://{base.split('://',1)[1]}/session/{session}/stream?start=1"
+    )
+    got_replay = asyncio.run(f_subscribe_data_for(ws_url_stream_replay, duration=60.0))
     assert got_replay, "expected to receive replayed data with start=1"
 
     r = httpx.delete(f"{base}/session/{session}", timeout=5.0)

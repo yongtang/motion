@@ -352,41 +352,17 @@ async def session_stop(session: UUID4) -> motion.session.SessionBaseModel:
     return session
 
 
-@app.websocket("/session/{session:uuid}/step")
-async def session_step(ws: WebSocket, session: UUID4):
+@app.websocket("/session/{session:uuid}/stream")
+async def session_stream(ws: WebSocket, session: UUID4):
     try:
         storage_kv_get("session", f"{session}.json")
-        log.info(f"[Session {session}] WS step requested")
+        log.info(f"[Session {session}] WS stream requested")
     except FileNotFoundError:
-        log.warning(f"[Session {session}] WS step for nonexistent session")
+        log.warning(f"[Session {session}] WS stream for nonexistent session")
         await ws.close(code=1008)
         return
 
-    await ws.accept()
-    log.info(f"[Session {session}] WS step connected")
-
-    try:
-        while True:
-            data = await ws.receive_text()
-            await app.state.channel.publish_step(str(session), data)
-    except WebSocketDisconnect:
-        log.info(f"[Session {session}] WS step disconnected")
-    finally:
-        with contextlib.suppress(Exception):
-            await ws.close()
-        log.info(f"[Session {session}] WS step closed")
-
-
-@app.websocket("/session/{session:uuid}/data")
-async def session_data(ws: WebSocket, session: UUID4):
-    try:
-        storage_kv_get("session", f"{session}.json")
-        log.info(f"[Session {session}] WS data requested")
-    except FileNotFoundError:
-        log.warning(f"[Session {session}] WS data for nonexistent session")
-        await ws.close(code=1008)
-        return
-
+    # Optional backlog offset (?start=n)
     start = ws.query_params.get("start")
     match start:
         case None:
@@ -394,24 +370,60 @@ async def session_data(ws: WebSocket, session: UUID4):
         case s if s.isdigit() and int(s) > 0:
             start = int(s)
         case other:
-            log.warning(f"[Session {session}] WS data invalid start={other!r}")
+            log.warning(f"[Session {session}] WS stream invalid start={other!r}")
             await ws.close(code=1008)
             return
 
     await ws.accept()
-    log.info(f"[Session {session}] WS data connected (start={start})")
+    log.info(f"[Session {session}] WS stream connected (start={start})")
 
+    # server -> client: data
     sub = await app.state.channel.subscribe_data(str(session), start=start)
 
+    async def recv_loop():
+        # client -> server: step
+        try:
+            while True:
+                data = await ws.receive_text()
+                await app.state.channel.publish_step(str(session), data)
+        except WebSocketDisconnect:
+            log.info(f"[Session {session}] WS stream recv disconnected")
+            raise
+        except Exception as e:
+            log.error(f"[Session {session}] WS stream recv error: {e}", exc_info=True)
+            raise
+
+    async def send_loop():
+        # server -> client: data
+        try:
+            while True:
+                msg = await sub.next_msg()
+                await ws.send_text(msg.data.decode(errors="ignore"))
+        except WebSocketDisconnect:
+            log.info(f"[Session {session}] WS stream send disconnected")
+            raise
+        except Exception as e:
+            log.error(f"[Session {session}] WS stream send error: {e}", exc_info=True)
+            raise
+
+    recv_task = asyncio.create_task(recv_loop(), name=f"ws-recv-{session}")
+    send_task = asyncio.create_task(send_loop(), name=f"ws-send-{session}")
+
     try:
-        while True:
-            msg = await sub.next_msg()
-            await ws.send_text(msg.data.decode(errors="ignore"))
-    except WebSocketDisconnect:
-        log.info(f"[Session {session}] WS data disconnected")
+        done, pending = await asyncio.wait(
+            {recv_task, send_task}, return_when=asyncio.FIRST_EXCEPTION
+        )
+        # cancel the other direction if one side ends/errors
+        for e in pending:
+            e.cancel()
+            with contextlib.suppress(Exception):
+                await t
+        # surface any exception from the completed task
+        for e in done:
+            _ = e.result()
     finally:
         with contextlib.suppress(Exception):
             await sub.unsubscribe()
         with contextlib.suppress(Exception):
             await ws.close()
-        log.info(f"[Session {session}] WS data closed (start={start})")
+        log.info(f"[Session {session}] WS stream closed (start={start})")
