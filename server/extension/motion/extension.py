@@ -22,10 +22,14 @@ def f_rend(metadata, stage):
     print(f"[motion.extension] Camera available: {[str(e.GetPath()) for e in camera]}")
 
     import omni.kit.app, omni.replicator.core as rep
+
     em = omni.kit.app.get_app().get_extension_manager()
     em.set_extension_enabled_immediate("isaacsim.replicator.agent.core", True)
-    em.set_extension_enabled_immediate("isaacsim.replicator.agent.ui", True)  # harmless if headless
+    em.set_extension_enabled_immediate(
+        "isaacsim.replicator.agent.ui", True
+    )  # harmless if headless
     import isaacsim.replicator.agent.core.data_generation.writers.rtsp
+
     omni.kit.app.get_app().update()
     print(f"[motion.extension] REGISTRY: {rep.WriterRegistry.get_writers().keys()}")
 
@@ -46,31 +50,32 @@ def f_rend(metadata, stage):
 async def run_rend(rend):
     print("[motion.extension] rend start")
     annotator = None
+
     if rend:
         print("[motion.extension] rend writer")
-        writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
+        writer = rep.WriterRegistry.get("RTSPWriter")
+        # Isaac Sim 5.0.0 API: rtsp_stream_url + per-channel toggles
         writer.initialize(
-            annotator="rgb", output_dir="rtsp://127.0.0.1:8554/RTSPWriter"
+            rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
+            rtsp_rgb=True,
         )
         print(f"[motion.extension] rend writer={writer} attach{rend.values()}")
         writer.attach(list(rend.values()))
 
         print("[motion.extension] rend annotator")
-        annotator = {
-            e: omni.replicator.core.AnnotatorRegistry.get_annotator("rgb") for e in rend
-        }
+        annotator = rep.AnnotatorRegistry.get_annotator("rgb")
         print(f"[motion.extension] rend annotator={annotator} attach{rend.values()}")
-        for i, e in annotator.items():
-            e.attach(rend[i])
+        annotator.attach(list(rend.values()))
+
         print("[motion.extension] rend ready")
+
     try:
         yield annotator
     finally:
         if rend:
             print("[motion.extension] rend annotator detach")
             with contextlib.suppress(Exception):
-                for i, e in annotator.items():
-                    e.detach(rend[i])
+                annotator.detach(list(rend.values()))
             print("[motion.extension] rend writer detach")
             with contextlib.suppress(Exception):
                 writer.detach(list(rend.values()))
