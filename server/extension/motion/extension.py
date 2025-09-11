@@ -14,6 +14,7 @@ from .node import run_http, run_link, run_step
 
 
 def f_rend(metadata, stage):
+  try:
     camera = [
         pxr.UsdGeom.Camera(e)
         for e in stage.Traverse()
@@ -40,14 +41,19 @@ def f_rend(metadata, stage):
         }
     }
     print(f"[motion.extension] Camera rend: {camera}")
-    return {
+    returned = {
         e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
         for e, v in camera.items()
     }
+    return returned
+  except Exception as e:
+    print(f"[motion.extension] f_REND Exception {e}")
+
 
 
 @contextlib.asynccontextmanager
 async def run_rend(rend):
+  try:
     print("[motion.extension] rend start 1")
     import omni.kit.app, omni.replicator.core as rep
 
@@ -104,6 +110,8 @@ async def run_rend(rend):
             with contextlib.suppress(Exception):
                 writer.detach(list(rend.values()))
     print("[motion.extension] rend complete")
+  except Exception as e:
+      print(f"[motion.extension] RUN REND: {e}")
 
 
 async def main():
