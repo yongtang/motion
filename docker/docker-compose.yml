@@ -164,7 +164,7 @@ services:
           exit 0;
         fi
         apt -y -qq update
-        apt -y -qq install curl
+        apt -y -qq install curl ffmpeg
         pip install aiohttp nats-py boto3
         python -m server.echo
 volumes:
