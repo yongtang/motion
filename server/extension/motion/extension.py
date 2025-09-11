@@ -164,7 +164,7 @@ class MotionExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
         print(f"[motion.extension] Startup [{ext_id}]")
 
-        self.task = omni.kit.async_engine.run_coroutine(main())
+        self.task = asyncio.create_task(main()) #omni.kit.async_engine.run_coroutine(main())
 
         def f_done(e: asyncio.Task):
             if e.exception() is not None:
