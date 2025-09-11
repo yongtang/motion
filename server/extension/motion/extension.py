@@ -48,7 +48,7 @@ def f_rend(metadata, stage):
 
 @contextlib.asynccontextmanager
 async def run_rend(rend):
-    print("[motion.extension] rend start")
+    print("[motion.extension] rend start 1")
     import omni.kit.app, omni.replicator.core as rep
 
     em = omni.kit.app.get_app().get_extension_manager()
@@ -59,23 +59,23 @@ async def run_rend(rend):
     import isaacsim.replicator.agent.core.data_generation.writers.rtsp
 
     omni.kit.app.get_app().update()
-    print(f"[motion.extension] REGISTRY: {rep.WriterRegistry.get_writers().keys()}")
+    print(f"[motion.extension] xxxxxx - REGISTRY: {rep.WriterRegistry.get_writers().keys()}")
 
     annotator = None
 
     if rend:
-        print("[motion.extension] rend writer")
+        print("[motion.extension] rend writer - 3")
         try:
           writer = rep.WriterRegistry.get("RTSPWriter")
         except Exception as e:
-            print(f"[motion.extension] rend writer: {e}")
+            print(f"[motion.extension] rend writer exception: {e}")
             raise
-        print(f"[motion.extension] rend writer {writer}")
+        print(f"[motion.extension] rend writer - 4 {writer}")
         writer.initialize(
             rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
             rtsp_rgb=True,
         )
-        print(f"[motion.extension] rend writer={writer} attach{rend.values()}")
+        print(f"[motion.extension] rend 5 - writer={writer} attach{rend.values()}")
         writer.attach(list(rend.values()))
 
         print("[motion.extension] rend annotator")
