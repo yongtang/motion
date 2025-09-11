@@ -30,6 +30,13 @@ class SessionBaseModel(SessionSpecModel):
 
 @motionclass
 class Session(SessionBaseModel):
+    """
+    Usage:
+        async with Session(base, uuid, timeout=5.0) as session:
+            await session.play()
+            await session.stop()
+    """
+
     scene: Scene
 
     def __init__(self, base: str, uuid: pydantic.UUID4, timeout: float = 5.0):
@@ -37,27 +44,25 @@ class Session(SessionBaseModel):
 
         r = httpx.request("GET", f"{base}/session/{uuid}", timeout=timeout)
         r.raise_for_status()
+        data = SessionBaseModel.parse_obj(r.json())
 
-        session = SessionBaseModel.parse_obj(r.json())
-        scene = Scene(base, session.scene, timeout=timeout)
+        scene = Scene(base, data.scene, timeout=timeout)
 
         super().__init__(
-            uuid=session.uuid,
+            uuid=data.uuid,
             scene=scene,
-            joint=session.joint,
-            camera=session.camera,
-            link=session.link,
+            joint=data.joint,
+            camera=data.camera,
+            link=data.link,
         )
 
-        # set private attrs
         object.__setattr__(self, "_base_", base)
         object.__setattr__(self, "_timeout_", timeout)
-        object.__setattr__(self, "_httpx_", httpx)
 
-    def play(self):
-        r = self._request_("POST", f"session/{self.uuid}/play")
+    async def play(self):
+        r = await self._request_("POST", f"session/{self.uuid}/play")
         return r.json()
 
-    def stop(self):
-        r = self._request_("POST", f"session/{self.uuid}/stop")
+    async def stop(self):
+        r = await self._request_("POST", f"session/{self.uuid}/stop")
         return r.json()
