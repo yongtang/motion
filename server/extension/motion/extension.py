@@ -157,10 +157,25 @@ async def main():
 
 
         keys = omni.replicator.core.WriterRegistry.get_writers().keys()
-
         print(f"[motion.extension] REGISTRY: {keys}")
 
         session = metadata["uuid"]
+
+
+        camera = {
+            "/World/Scene/CameraA": {
+                "width": 1280,
+                "height": 720,
+            }
+        }
+        print(f"[motion.extension] Camera rend: {camera}")
+        returned = {
+            e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
+            for e, v in camera.items()
+        }
+        print(f"[motion.extension] Camera rend: {returned}")
+
+
         """
         async with run_http():
             async with run_link() as channel:
