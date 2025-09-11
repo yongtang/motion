@@ -48,6 +48,21 @@ services:
       timeout: 3s
       retries: 3
       start_period: 30s
+  rtsp:
+    image: bluenviron/mediamtx:latest-ffmpeg
+    container_name: ${SCOPE:-motion}-rtsp
+    restart: unless-stopped
+    depends_on:
+      - server
+    network_mode: "service:server"
+    volumes:
+      - storage:/storage
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8554 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
   gstreamer:
     image: opensuse/tumbleweed
     container_name: ${SCOPE:-motion}-gstreamer
