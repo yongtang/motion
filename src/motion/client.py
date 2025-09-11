@@ -3,20 +3,37 @@ import pathlib
 import tempfile
 import zipfile
 
-import requests
+import httpx
 
-from .motionclass import motionclass
 from .scene import Scene, SceneBaseModel
 from .session import Session, SessionBaseModel
 
 
-@motionclass
-class SceneClient:
-    def __init__(self, base: str, *, timeout: float):
-        object.__setattr__(self, "_base_", base.rstrip("/"))
-        object.__setattr__(self, "_timeout_", timeout)
-        object.__setattr__(self, "_session_", requests.Session())
+class BaseClient:
 
+    def __init__(self, base: str, *, timeout: float):
+        self._base_ = base.rstrip("/")
+        self._timeout_ = float(timeout)
+
+    def _request_(self, method: str, path: str, **kwargs) -> httpx.Response:
+        url = f"{self._base_}/{path.lstrip('/')}"
+        r = httpx.request(method, url, timeout=self._timeout_, **kwargs)
+        r.raise_for_status()
+        return r
+
+    def _download_(self, path: str, file: str | pathlib.Path) -> pathlib.Path:
+        file = pathlib.Path(file)
+        file.parent.mkdir(parents=True, exist_ok=True)
+        url = f"{self._base_}/{path.lstrip('/')}"
+        with httpx.stream("GET", url, timeout=self._timeout_) as r:
+            r.raise_for_status()
+            with file.open("wb") as f:
+                for chunk in r.iter_bytes():
+                    f.write(chunk)
+        return file
+
+
+class SceneClient(BaseClient):
     def create(self, file: str | pathlib.Path, runtime: str) -> Scene:
         file = pathlib.Path(file)
         if not file.is_file():
@@ -24,23 +41,18 @@ class SceneClient:
 
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
-            zip_path = directory / f"{file.stem}.zip"
-            meta = directory / "meta.json"
+            zipf = directory.joinpath(f"{file.stem}.zip")
+            meta = directory.joinpath("meta.json")
 
-            # Serialize runtime into meta.json
             with meta.open("w", encoding="utf-8") as mf:
                 json.dump({"runtime": runtime}, mf, ensure_ascii=False)
 
-            # Zip USD file + meta.json
-            with zipfile.ZipFile(
-                zip_path, mode="w", compression=zipfile.ZIP_DEFLATED
-            ) as zf:
+            with zipfile.ZipFile(zipf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
                 zf.write(file, arcname="scene.usd")
                 zf.write(meta, arcname="meta.json")
 
-            # Upload the zip
-            with zip_path.open("rb") as f:
-                files = {"file": (zip_path.name, f, "application/zip")}
+            with zipf.open("rb") as f:
+                files = {"file": (zipf.name, f, "application/zip")}
                 r = self._request_("POST", "scene", files=files)
 
         scene = SceneBaseModel.parse_obj(r.json())
@@ -50,10 +62,7 @@ class SceneClient:
         return self._download_(f"scene/{scene.uuid}/archive", file)
 
     def search(self, q: str) -> list[Scene]:
-        # preserve special 422 -> [] behavior (check before raising)
-        r = self._session_.get(
-            f"{self._base_}/scene", params={"q": q}, timeout=self._timeout_
-        )
+        r = httpx.get(f"{self._base_}/scene", params={"q": q}, timeout=self._timeout_)
         if r.status_code == 422:
             return []
         r.raise_for_status()
@@ -62,17 +71,11 @@ class SceneClient:
 
     def delete(self, scene: Scene) -> None:
         r = self._request_("DELETE", f"scene/{scene.uuid}")
-        SceneBaseModel.parse_obj(r.json())  # validate, discard
+        SceneBaseModel.parse_obj(r.json())
         return None
 
 
-@motionclass
-class SessionClient:
-    def __init__(self, base: str, *, timeout: float):
-        object.__setattr__(self, "_base_", base.rstrip("/"))
-        object.__setattr__(self, "_timeout_", timeout)
-        object.__setattr__(self, "_session_", requests.Session())
-
+class SessionClient(BaseClient):
     def create(
         self,
         scene: Scene,
@@ -95,8 +98,7 @@ class SessionClient:
         return self._download_(f"session/{session.uuid}/archive", file)
 
     def search(self, q: str) -> list[Session]:
-        # preserve special 404 -> [] behavior (check before raising)
-        r = self._session_.get(f"{self._base_}/session/{q}", timeout=self._timeout_)
+        r = httpx.get(f"{self._base_}/session/{q}", timeout=self._timeout_)
         if r.status_code == 404:
             return []
         r.raise_for_status()
@@ -105,14 +107,16 @@ class SessionClient:
 
     def delete(self, session: Session) -> None:
         r = self._request_("DELETE", f"session/{session.uuid}")
-        SessionBaseModel.parse_obj(r.json())  # validate, discard
+        SessionBaseModel.parse_obj(r.json())
         return None
 
 
 class Client:
     def __init__(self, base: str, *, timeout: float = 30.0):
-        self.scene = SceneClient(base, timeout=timeout)
-        self.session = SessionClient(base, timeout=timeout)
+        self._base_ = base.rstrip("/")
+        self._timeout_ = timeout
+        self.scene = SceneClient(self._base_, timeout=timeout)
+        self.session = SessionClient(self._base_, timeout=timeout)
 
 
 def client(base: str, *, timeout: float = 30.0) -> Client:
