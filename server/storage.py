@@ -1,7 +1,8 @@
+import collections
 import logging
 
 import boto3
-from botocore.config import Config
+import botocore
 from botocore.exceptions import ClientError
 
 logging.basicConfig(level=logging.INFO)
@@ -13,7 +14,7 @@ storage = boto3.client(
     region_name="us-east-1",
     aws_access_key_id="username",
     aws_secret_access_key="password",
-    config=Config(
+    config=botocore.config.Config(
         signature_version="s3v4",
         s3={"addressing_style": "path"},
         retries={"max_attempts": 5, "mode": "standard"},
@@ -24,17 +25,16 @@ storage = boto3.client(
 
 
 def storage_kv_set(bucket: str, key: str, data: bytes) -> str | None:
-    # Try to create the bucket; ignore races/already-exists.
     try:
         storage.create_bucket(Bucket=bucket)
         log.info(f"[KV {bucket}] Created bucket")
     except ClientError as e:
-        code = str(((e.response or {}).get("Error") or {}).get("Code", ""))
-        if code in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
-            log.debug(f"[KV {bucket}] Bucket exists ({code})")
-        else:
-            log.error(f"[KV {bucket}] Bucket create failed: {code}")
-            raise
+        match str(((e.response or {}).get("Error") or {}).get("Code", "")):
+            case "BucketAlreadyOwnedByYou" | "BucketAlreadyExists":
+                log.debug(f"[KV {bucket}] Bucket exists")
+            case code:
+                log.error(f"[KV {bucket}] Bucket create failed: {code}")
+                raise
 
     resp = storage.put_object(
         Bucket=bucket,
@@ -57,12 +57,13 @@ def storage_kv_get(bucket: str, key: str) -> bytes:
         log.info(f"[KV {bucket}/{key}] Loaded {len(data)} bytes")
         return data
     except ClientError as e:
-        code = str(((e.response or {}).get("Error") or {}).get("Code", ""))
-        if code in ("NoSuchKey", "NoSuchBucket", "NotFound", "404"):
-            log.warning(f"[KV {bucket}/{key}] Not found ({code})")
-            raise FileNotFoundError(f"{bucket}/{key}") from e
-        log.error(f"[KV {bucket}/{key}] Get failed: {code}")
-        raise
+        match str(((e.response or {}).get("Error") or {}).get("Code", "")):
+            case "NoSuchKey" | "NoSuchBucket" | "NotFound" | "404":
+                log.warning(f"[KV {bucket}/{key}] Not found")
+                raise FileNotFoundError(f"{bucket}/{key}") from e
+            case code:
+                log.error(f"[KV {bucket}/{key}] Get failed: {code}")
+                raise
 
 
 def storage_kv_del(bucket: str, key: str) -> None:
@@ -70,15 +71,18 @@ def storage_kv_del(bucket: str, key: str) -> None:
         storage.delete_object(Bucket=bucket, Key=key)
         log.info(f"[KV {bucket}/{key}] Deleted")
     except ClientError as e:
-        code = str(((e.response or {}).get("Error") or {}).get("Code", ""))
-        if code in ("NoSuchKey", "NoSuchBucket", "NotFound", "404"):
-            log.info(f"[KV {bucket}/{key}] Delete skipped (missing: {code})")
-            return
-        log.error(f"[KV {bucket}/{key}] Delete failed: {code}")
-        raise
+        match str(((e.response or {}).get("Error") or {}).get("Code", "")):
+            case "NoSuchKey" | "NoSuchBucket" | "NotFound" | "404":
+                log.info(f"[KV {bucket}/{key}] Delete skipped (missing)")
+                return
+            case code:
+                log.error(f"[KV {bucket}/{key}] Delete failed: {code}")
+                raise
 
 
-def storage_kv_scan(bucket: str, prefix: str):
+def storage_kv_scan(
+    bucket: str, prefix: str
+) -> collections.abc.Generator[str, None, None]:
     log.info(f"[KV {bucket}/{prefix}] Scan start")
     paginator = storage.get_paginator("list_objects_v2")
     found = False
@@ -96,9 +100,10 @@ def storage_kv_scan(bucket: str, prefix: str):
         else:
             log.info(f"[KV {bucket}/{prefix}] Scan complete")
     except ClientError as e:
-        code = str(((e.response or {}).get("Error") or {}).get("Code", ""))
-        if code in ("NoSuchBucket", "NotFound", "404"):
-            log.info(f"[KV {bucket}/{prefix}] Scan skipped (bucket missing: {code})")
-            return
-        log.error(f"[KV {bucket}/{prefix}] Scan failed: {code}")
-        raise
+        match str(((e.response or {}).get("Error") or {}).get("Code", "")):
+            case "NoSuchBucket" | "NotFound" | "404":
+                log.info(f"[KV {bucket}/{prefix}] Scan skipped (bucket missing)")
+                return
+            case code:
+                log.error(f"[KV {bucket}/{prefix}] Scan failed: {code}")
+                raise

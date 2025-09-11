@@ -53,18 +53,19 @@ async def health():
 
 @app.post("/scene", response_model=motion.scene.SceneBaseModel, status_code=201)
 async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseModel:
-    if file.content_type not in ("application/zip", "application/x-zip-compressed"):
-        log.warning(f"[Scene N/A] Upload rejected: invalid type {file.content_type}")
-        raise HTTPException(status_code=415, detail="zip required")
+    match file.content_type:
+        case "application/zip" | "application/x-zip-compressed":
+            pass
+        case other:
+            log.warning(f"[Scene N/A] Upload rejected: invalid type {other}")
+            raise HTTPException(status_code=415, detail="zip required")
 
-    # model-first
     scene = motion.scene.SceneBaseModel(uuid=uuid.uuid4())
 
     data = await file.read()
     storage_kv_set("scene", f"{scene.uuid}.zip", data)
     log.info(f"[Scene {scene.uuid}] Stored archive {file.filename} ({len(data)} bytes)")
 
-    # metadata persisted with Pydantic v1/v2-compatible .json()
     storage_kv_set("scene", f"{scene.uuid}.json", scene.json().encode())
     log.info(f"[Scene {scene.uuid}] Stored metadata")
 
@@ -74,7 +75,6 @@ async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseMo
 @app.get("/scene/{scene:uuid}", response_model=motion.scene.SceneBaseModel)
 async def scene_lookup(scene: UUID4) -> motion.scene.SceneBaseModel:
     try:
-        # construct immediately from storage; single source of truth
         scene = motion.scene.SceneBaseModel.parse_raw(
             storage_kv_get("scene", f"{scene}.json")
         )
@@ -103,7 +103,6 @@ async def scene_archive(scene: UUID4):
 
 @app.delete("/scene/{scene:uuid}", response_model=motion.scene.SceneBaseModel)
 async def scene_delete(scene: UUID4) -> motion.scene.SceneBaseModel:
-    # load and construct the model up front; return it at the end
     try:
         scene = motion.scene.SceneBaseModel.parse_raw(
             storage_kv_get("scene", f"{scene}.json")
@@ -113,7 +112,6 @@ async def scene_delete(scene: UUID4) -> motion.scene.SceneBaseModel:
         log.warning(f"[Scene {scene}] Not found")
         raise HTTPException(status_code=404, detail=f"Scene {scene} not found")
 
-    # best-effort deletes
     try:
         storage_kv_del("scene", f"{scene.uuid}.zip")
         log.info(f"[Scene {scene.uuid}] Archive deleted")
@@ -147,7 +145,6 @@ async def session_create(
 ) -> motion.session.SessionBaseModel:
     session = motion.session.SessionBaseModel(uuid=uuid.uuid4(), **body.dict())
 
-    # validate scene exists
     try:
         storage_kv_get("scene", f"{session.scene}.json")
         log.info(
@@ -189,7 +186,6 @@ async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
 async def session_archive(session: UUID4):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as z:
-        # ensure session exists; construct immediately
         try:
             session = motion.session.SessionBaseModel.parse_raw(
                 storage_kv_get("session", f"{session}.json")
@@ -200,7 +196,6 @@ async def session_archive(session: UUID4):
             log.warning(f"[Session {session}] Not found for archive")
             raise HTTPException(status_code=404, detail=f"Session {session} not found")
 
-        # optional data.json
         try:
             data_blob = storage_kv_get("data", f"{session.uuid}.json")
             z.writestr("data.json", data_blob)
@@ -227,7 +222,6 @@ async def session_archive(session: UUID4):
 
 @app.delete("/session/{session:uuid}", response_model=motion.session.SessionBaseModel)
 async def session_delete(session: UUID4) -> motion.session.SessionBaseModel:
-    # load and construct up front; return the model after cleanup
     try:
         session = motion.session.SessionBaseModel.parse_raw(
             storage_kv_get("session", f"{session}.json")
@@ -237,58 +231,59 @@ async def session_delete(session: UUID4) -> motion.session.SessionBaseModel:
         log.warning(
             f"[Session {session}] Not found during delete; broadcasting stop anyway"
         )
-        # best-effort broadcast even if not found, then 404
         try:
             nodes = [
                 k.removesuffix(".json")
                 for k in storage_kv_scan("node", "")
                 if k.endswith(".json")
             ]
-            if nodes:
-                await asyncio.gather(
-                    *(
-                        app.state.channel.publish_stop(node, str(session))
-                        for node in nodes
-                    ),
-                    return_exceptions=True,
-                )
-                log.info(
-                    f"[Session {session}] Published stop to {len(nodes)} nodes (not found)"
-                )
-            else:
-                log.warning(
-                    f"[Session {session}] No nodes available to stop (not found)"
-                )
+            match len(nodes):
+                case 0:
+                    log.warning(
+                        f"[Session {session}] No nodes available to stop (not found)"
+                    )
+                case _:
+                    await asyncio.gather(
+                        *(
+                            app.state.channel.publish_stop(node, str(session))
+                            for node in nodes
+                        ),
+                        return_exceptions=True,
+                    )
+                    log.info(
+                        f"[Session {session}] Published stop to {len(nodes)} nodes (not found)"
+                    )
         except Exception as e:
             log.error(
                 f"[Session {session}] Error broadcasting stop: {e}", exc_info=True
             )
         raise HTTPException(status_code=404, detail=f"Session {session} not found")
 
-    # broadcast stop before deleting
     try:
         nodes = [
             k.removesuffix(".json")
             for k in storage_kv_scan("node", "")
             if k.endswith(".json")
         ]
-        if nodes:
-            await asyncio.gather(
-                *(
-                    app.state.channel.publish_stop(node, str(session.uuid))
-                    for node in nodes
-                ),
-                return_exceptions=True,
-            )
-            log.info(f"[Session {session.uuid}] Published stop to {len(nodes)} nodes")
-        else:
-            log.warning(f"[Session {session.uuid}] No nodes available to stop")
+        match len(nodes):
+            case 0:
+                log.warning(f"[Session {session.uuid}] No nodes available to stop")
+            case _:
+                await asyncio.gather(
+                    *(
+                        app.state.channel.publish_stop(node, str(session.uuid))
+                        for node in nodes
+                    ),
+                    return_exceptions=True,
+                )
+                log.info(
+                    f"[Session {session.uuid}] Published stop to {len(nodes)} nodes"
+                )
     except Exception as e:
         log.error(
             f"[Session {session.uuid}] Error broadcasting stop: {e}", exc_info=True
         )
 
-    # best-effort delete of metadata
     try:
         storage_kv_del("session", f"{session.uuid}.json")
         log.info(f"[Session {session.uuid}] Metadata deleted")
@@ -318,13 +313,14 @@ async def session_play(session: UUID4) -> motion.session.SessionBaseModel:
         for k in storage_kv_scan("node", "")
         if k.endswith(".json")
     ]
-    if not nodes:
-        log.error(f"[Session {session.uuid}] No nodes available for play")
-        raise HTTPException(status_code=503, detail="no nodes available")
-
-    node = random.choice(nodes)
-    await app.state.channel.publish_play(node, str(session.uuid))
-    log.info(f"[Session {session.uuid}] Published play to node {node}")
+    match len(nodes):
+        case 0:
+            log.error(f"[Session {session.uuid}] No nodes available for play")
+            raise HTTPException(status_code=503, detail="no nodes available")
+        case _:
+            node = random.choice(nodes)
+            await app.state.channel.publish_play(node, str(session.uuid))
+            log.info(f"[Session {session.uuid}] Published play to node {node}")
 
     return session
 
@@ -358,7 +354,6 @@ async def session_stop(session: UUID4) -> motion.session.SessionBaseModel:
 
 @app.websocket("/session/{session:uuid}/step")
 async def session_step(ws: WebSocket, session: UUID4):
-    # Validate session exists
     try:
         storage_kv_get("session", f"{session}.json")
         log.info(f"[Session {session}] WS step requested")
@@ -384,7 +379,6 @@ async def session_step(ws: WebSocket, session: UUID4):
 
 @app.websocket("/session/{session:uuid}/data")
 async def session_data(ws: WebSocket, session: UUID4):
-    # Validate session exists
     try:
         storage_kv_get("session", f"{session}.json")
         log.info(f"[Session {session}] WS data requested")
@@ -393,14 +387,16 @@ async def session_data(ws: WebSocket, session: UUID4):
         await ws.close(code=1008)
         return
 
-    # Optional ?start= query parameter
     start = ws.query_params.get("start")
-    if start:
-        if not (start.isdigit() and int(start) > 0):
-            log.warning(f"[Session {session}] WS data invalid start={start!r}")
+    match start:
+        case None:
+            pass
+        case s if s.isdigit() and int(s) > 0:
+            start = int(s)
+        case other:
+            log.warning(f"[Session {session}] WS data invalid start={other!r}")
             await ws.close(code=1008)
             return
-        start = int(start)
 
     await ws.accept()
     log.info(f"[Session {session}] WS data connected (start={start})")
