@@ -59,22 +59,30 @@ async def run_rend(rend):
     import isaacsim.replicator.agent.core.data_generation.writers.rtsp
 
     omni.kit.app.get_app().update()
-    print(f"[motion.extension] xxxxxx - REGISTRY: {rep.WriterRegistry.get_writers().keys()}")
+    print(
+        f"[motion.extension] xxxxxx - REGISTRY: {rep.WriterRegistry.get_writers().keys()}"
+    )
 
     annotator = None
 
     if rend:
         print("[motion.extension] rend writer - 3")
         try:
-          writer = rep.WriterRegistry.get("RTSPWriter")
+            writer = rep.WriterRegistry.get("RTSPWriter")
         except Exception as e:
             print(f"[motion.extension] rend writer exception: {e}")
             raise
         print(f"[motion.extension] rend writer - 4 {writer}")
-        writer.initialize(
-            rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
-            rtsp_rgb=True,
-        )
+
+        try:
+            writer.initialize(
+                rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
+                rtsp_rgb=True,
+            )
+        except Exception as e:
+            print(f"[motion.extension] rend writer xxxx exception: {e}")
+            raise
+
         print(f"[motion.extension] rend 5 - writer={writer} attach{rend.values()}")
         writer.attach(list(rend.values()))
 
