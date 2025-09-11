@@ -155,8 +155,12 @@ async def main():
 
         print("[motion.extension] Stage loaded")
 
-        session = metadata["uuid"]
 
+        keys = omni.replicator.core.WriterRegistry.get_writers().keys()
+
+        print(f"[motion.extension] REGISTRY: {keys}")
+
+        session = metadata["uuid"]
         """
         async with run_http():
             async with run_link() as channel:
