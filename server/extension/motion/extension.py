@@ -183,8 +183,17 @@ async def main():
 
         print(f"[motion.extension] Writer attached")
 
-        omni.replicator.core.orchestrator.run(num_frames=-1)
 
+
+
+        def on_update(e):
+            print(f"[motion.extension] Writer on_update")
+            omni.replicator.core.orchestrator.step()
+
+        sub = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(on_update)
+
+        print(f"[motion.extension] Writer subscribe")
+        await asyncio.Future()
         print(f"[motion.extension] Writer complete")
 
         """
