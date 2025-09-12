@@ -168,8 +168,8 @@ async def main():
 
         camera = {
             "/World/Scene/CameraA": {
-                "width": 128,
-                "height": 128,
+                "width": 256,
+                "height": 256,
             }
         }
         print(f"[motion.extension] Camera rend: {camera}")
