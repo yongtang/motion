@@ -179,6 +179,8 @@ async def main():
         }
         print(f"[motion.extension] Camera rend: {render}")
 
+        await asyncio.sleep(20)
+
         writer.attach(list(render.values()))
 
         print(f"[motion.extension] Writer attached")
@@ -187,7 +189,7 @@ async def main():
 
 
         def on_update(e):
-            print(f"[motion.extension] Writer on_update")
+            # print(f"[motion.extension] Writer on_update")
             omni.kit.async_engine.run_coroutine(omni.replicator.core.orchestrator.step_async())
 
         sub = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(on_update)
