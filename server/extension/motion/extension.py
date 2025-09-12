@@ -155,15 +155,6 @@ async def main():
 
         print("[motion.extension] Stage loaded")
 
-        writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
-        print(f"[motion.extension] Writer {writer}")
-
-        writer.initialize(
-            rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
-            rtsp_rgb=True,
-        )
-        print(f"[motion.extension] Writer initialized")
-
         session = metadata["uuid"]
 
         camera = {
@@ -179,22 +170,37 @@ async def main():
         }
         print(f"[motion.extension] Camera rend: {render}")
 
-        writer.attach(list(render.values()))
+        annotator = omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
+        print(
+            f"[motion.extension] Annotator annotator={annotator} attach {rend.values()}"
+        )
+        annotator.attach(list(rend.values()))
 
-        print(f"[motion.extension] Writer attached")
+        # Let play drive captures
+        omni.replicator.core.orchestrator.set_capture_on_play(True)
 
-
-
+        print(f"[motion.extension] Annotator attached")
 
         def on_update(e):
-            print(f"[motion.extension] Writer on_update")
-            omni.kit.async_engine.run_coroutine(omni.replicator.core.orchestrator.step_async())
+            if not omni.timeline.get_timeline_interface().is_playing():
+                print(f"[motion.extension] Annotator on_update - no playing")
+                return
+            data = annotator.get_data()
+            print(f"[motion.extension] Annotator on_update - {data}")
 
-        sub = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(on_update)
+        print(f"[motion.extension] Annotator subscribe")
+        sub = (
+            omni.kit.app.get_app()
+            .get_update_event_stream()
+            .create_subscription_to_pop(on_update)
+        )
 
-        print(f"[motion.extension] Writer subscribe")
+        print(f"[motion.extension] Annotator play")
+        omni.timeline.get_timeline_interface().play()
+
+        print(f"[motion.extension] Annotator wait")
         await asyncio.Future()
-        print(f"[motion.extension] Writer complete")
+        print(f"[motion.extension] Annotator complete")
 
         """
         async with run_http():
