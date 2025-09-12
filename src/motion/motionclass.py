@@ -36,12 +36,13 @@ def motionclass(cls):
         return file
 
     async def __aenter__(self):
-        self._client_ = httpx.AsyncClient()
+        object.__setattr__(self, "_client_", httpx.AsyncClient())
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
         await self._client_.aclose()
-        del self._client_
+        object.__delattr__(self, "_client_")
+        return False
 
     cls.base = base
     cls.timeout = timeout

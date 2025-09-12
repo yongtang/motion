@@ -7,12 +7,14 @@ requires-python = ">=3.9"
 
 dependencies = [
     "pydantic",
+    "websockets",
     "httpx",
 ]
 
 [project.optional-dependencies]
 test = [
     "pytest",
+    "pytest-asyncio",
 ]
 
 [build-system]
