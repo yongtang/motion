@@ -36,6 +36,24 @@ def storage_kv_set(bucket: str, key: str, data: bytes) -> str | None:
                 log.error(f"[KV {bucket}] Bucket create failed: {code}")
                 raise
 
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        data.seek(0)
+        storage.upload_fileobj(
+            Fileobj=data,
+            Bucket=bucket,
+            Key=key,
+            ExtraArgs={"ContentType": "application/octet-stream"},
+        )
+        head = storage.head_object(Bucket=bucket, Key=key)
+        etag = head.get("ETag")
+        if isinstance(etag, str):
+            etag = etag.strip('"')
+        size = head.get("ContentLength")
+        log.info(
+            f"[KV {bucket}/{key}] Streamed upload complete ({size} bytes, ETag={etag})"
+        )
+        return etag
+
     resp = storage.put_object(
         Bucket=bucket,
         Key=key,

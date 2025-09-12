@@ -62,9 +62,8 @@ async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseMo
 
     scene = motion.scene.SceneBaseModel(uuid=uuid.uuid4())
 
-    data = await file.read()
-    storage_kv_set("scene", f"{scene.uuid}.zip", data)
-    log.info(f"[Scene {scene.uuid}] Stored archive {file.filename} ({len(data)} bytes)")
+    storage_kv_set("scene", f"{scene.uuid}.zip", file.file)
+    log.info(f"[Scene {scene.uuid}] Stored archive {file.filename}")
 
     storage_kv_set("scene", f"{scene.uuid}.json", scene.json().encode())
     log.info(f"[Scene {scene.uuid}] Stored metadata")
