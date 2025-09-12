@@ -50,12 +50,12 @@ class Channel:
         try:
             await self.js.add_stream(config=config)
             log.info(
-                f"[Channel.start] Created stream 'motion' with subjects {config.subjects}"
+                f"[Channel.start] Created stream 'motion' with subjects={config.subjects}"
             )
         except nats.js.errors.APIError:
             await self.js.update_stream(config=config)
             log.info(
-                f"[Channel.start] Updated stream 'motion' with subjects {config.subjects}"
+                f"[Channel.start] Updated stream 'motion' with subjects={config.subjects}"
             )
 
         log.info(f"[Channel.start] Connected to NATS at {self.servers}")
@@ -69,61 +69,84 @@ class Channel:
         self.nc = None
         self.js = None
 
-    async def publish_node(self, node: str, session: str, op: str) -> None:
-        log.info(f"[Channel.publish_node] node={node}, session={session}, op={op}")
-        assert self.nc is not None, "Channel not started"
-        match op:
-            case "play" | "stop":
-                subject = f"motion.node.{node}.{op}"
-                payload = session.encode()
-                log.info(f"[Channel.publish_node] Publish (core) {subject}: {session}")
-                await self.nc.publish(subject, payload)
-            case _:
-                log.error(f"[Channel.publish_node] Unsupported op={op}")
-                raise ValueError(f"Unsupported op: {op}")
-
-    async def subscribe_node(self, node: str, op: str):
-        log.info(f"[Channel.subscribe_node] node={node}, op={op}")
+    async def publish_play(self, session: str) -> None:
+        """Publish a persisted PLAY for this session."""
         assert self.js is not None, "Channel not started"
-        match op:
-            case "play" | "stop":
-                subject = f"motion.node.{node}.{op}"
-            case _:
-                log.error(f"[Channel.subscribe_node] Unsupported op={op}")
-                raise ValueError(f"Unsupported op: {op}")
+        subject = f"motion.node.{session}.play"
+        log.info(f"[Channel.publish_play] subject={subject}, session={session}")
+        data = await self.js.publish(subject, session.encode())  # persisted; PubAck
+        log.info(f"[Channel.publish_play] ack stream={data.stream}, seq={data.seq}")
 
-        durable = f"motion-node-{node}-{op}"
+    async def publish_stop(self, session: str) -> None:
+        """Publish a persisted STOP (rollup keeps only latest)."""
+        assert self.js is not None, "Channel not started"
+        subject = f"motion.node.{session}.stop"
+        log.info(f"[Channel.publish_stop] subject={subject}, session={session}")
+        data = await self.js.publish(
+            subject,
+            session.encode(),
+            headers={"Nats-Rollup": "sub"},
+        )
+        log.info(f"[Channel.publish_stop] ack stream={data.stream}, seq={data.seq}")
+
+    async def subscribe_play(self):
+        """
+        Pull-subscribe to ALL plays with a shared durable 'motion-node'.
+        - DeliverPolicy defaults to ALL (process backlog)
+        - 1-hour lease (ack_wait)
+        - one in-flight per worker (max_ack_pending=1)
+        - unlimited retries (max_deliver=-1)
+        """
+        assert self.js is not None, "Channel not started"
+
+        durable = "motion-node"
+        subject = "motion.node.*.play"
+        ack_wait = datetime.timedelta(hours=1).total_seconds()
+
+        log.info(
+            f"[Channel.subscribe_play] durable={durable}, filter={subject}, ack_wait={ack_wait}"
+        )
+
         config = nats.js.api.ConsumerConfig(
             durable_name=durable,
             filter_subject=subject,
             ack_policy=nats.js.api.AckPolicy.EXPLICIT,
-            max_ack_pending=1,
+            ack_wait=ack_wait,
+            max_ack_pending=-1,  # one in-flight per worker
+            max_deliver=-1,  # keep retrying until ACK
+            deliver_policy=nats.js.api.DeliverPolicy.ALL,  # deliver all
         )
         try:
             await self.js.add_consumer(stream="motion", config=config)
         except nats.js.errors.APIError:
             pass
+
         sub = await self.js.pull_subscribe(subject, durable=durable, stream="motion")
         log.info(
-            f"[Channel.subscribe_node] Subscribed (JS) to {subject} with durable {durable}"
+            f"[Channel.subscribe_play] subscribed pull durable={durable}, filter={subject}"
         )
         return sub
 
-    async def publish_play(self, node: str, session: str) -> None:
-        log.info(f"[Channel.publish_play] node={node}, session={session}")
-        await self.publish_node(node=node, session=session, op="play")
-
-    async def publish_stop(self, node: str, session: str) -> None:
-        log.info(f"[Channel.publish_stop] node={node}, session={session}")
-        await self.publish_node(node=node, session=session, op="stop")
-
-    async def subscribe_play(self, node: str):
-        log.info(f"[Channel.subscribe_play] node={node}")
-        return await self.subscribe_node(node=node, op="play")
-
-    async def subscribe_stop(self, node: str):
-        log.info(f"[Channel.subscribe_stop] node={node}")
-        return await self.subscribe_node(node=node, op="stop")
+    async def subscribe_stop(self, session: str, callback):
+        """
+        JS PUSH subscription to this session's STOP.
+        - LAST_PER_SUBJECT => delivers prior STOP immediately if it exists
+        - No inactive auto-deletion (we want the consumer to live as long as the job)
+        """
+        assert self.js is not None, "Channel not started"
+        subject = f"motion.node.{session}.stop"
+        log.info(f"[Channel.subscribe_stop] subject={subject}, policy=LAST_PER_SUBJECT")
+        config = nats.js.api.ConsumerConfig(
+            filter_subject=subject,
+            deliver_policy=nats.js.api.DeliverPolicy.LAST_PER_SUBJECT,
+            ack_policy=nats.js.api.AckPolicy.NONE,
+            # no inactive_threshold to ensure it never disappears mid-run
+        )
+        sub = await self.js.subscribe(
+            subject, config=config, stream="motion", cb=callback
+        )
+        log.info(f"[Channel.subscribe_stop] subscribed push subject={subject}")
+        return sub
 
     async def publish_data(self, session: str, payload: str) -> None:
         log.info(f"[Channel.publish_data] session={session}, size={len(payload)}")

@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import logging
-import random
 import tempfile
 import uuid
 import zipfile
@@ -21,7 +20,7 @@ from pydantic import UUID4
 import motion
 
 from .channel import Channel
-from .storage import storage_kv_del, storage_kv_get, storage_kv_scan, storage_kv_set
+from .storage import storage_kv_del, storage_kv_get, storage_kv_set
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -217,75 +216,14 @@ async def session_archive(session: UUID4):
 
 @app.delete("/session/{session:uuid}", response_model=motion.session.SessionBaseModel)
 async def session_delete(session: UUID4) -> motion.session.SessionBaseModel:
-    try:
-        session = motion.session.SessionBaseModel.parse_raw(
-            b"".join(storage_kv_get("session", f"{session}.json"))
-        )
-        log.info(f"[Session {session.uuid}] Deleting (scene={session.scene})")
-    except FileNotFoundError:
-        log.warning(
-            f"[Session {session}] Not found during delete; broadcasting stop anyway"
-        )
-        try:
-            nodes = [
-                k.removesuffix(".json")
-                for k in storage_kv_scan("node", "")
-                if k.endswith(".json")
-            ]
-            match len(nodes):
-                case 0:
-                    log.warning(
-                        f"[Session {session}] No nodes available to stop (not found)"
-                    )
-                case _:
-                    await asyncio.gather(
-                        *(
-                            app.state.channel.publish_stop(node, str(session))
-                            for node in nodes
-                        ),
-                        return_exceptions=True,
-                    )
-                    log.info(
-                        f"[Session {session}] Published stop to {len(nodes)} nodes (not found)"
-                    )
-        except Exception as e:
-            log.error(
-                f"[Session {session}] Error broadcasting stop: {e}", exc_info=True
-            )
-        raise HTTPException(status_code=404, detail=f"Session {session} not found")
-
-    try:
-        nodes = [
-            k.removesuffix(".json")
-            for k in storage_kv_scan("node", "")
-            if k.endswith(".json")
-        ]
-        match len(nodes):
-            case 0:
-                log.warning(f"[Session {session.uuid}] No nodes available to stop")
-            case _:
-                await asyncio.gather(
-                    *(
-                        app.state.channel.publish_stop(node, str(session.uuid))
-                        for node in nodes
-                    ),
-                    return_exceptions=True,
-                )
-                log.info(
-                    f"[Session {session.uuid}] Published stop to {len(nodes)} nodes"
-                )
-    except Exception as e:
-        log.error(
-            f"[Session {session.uuid}] Error broadcasting stop: {e}", exc_info=True
-        )
-
-    try:
-        storage_kv_del("session", f"{session.uuid}.json")
-        log.info(f"[Session {session.uuid}] Metadata deleted")
-    except Exception as e:
-        log.error(
-            f"[Session {session.uuid}] Error deleting metadata: {e}", exc_info=True
-        )
+    session = motion.session.SessionBaseModel.parse_raw(
+        b"".join(storage_kv_get("session", f"{session}.json"))
+    )
+    log.info(f"[Session {session.uuid}] Deleting (scene={session.scene})")
+    storage_kv_del("session", f"{session.uuid}.json")
+    log.info(f"[Session {session.uuid}] Metadata deleted")
+    await app.state.channel.publish_stop(str(session.uuid))
+    log.info(f"[Session {session.uuid}] Published stop")
 
     return session
 
@@ -303,19 +241,8 @@ async def session_play(session: UUID4) -> motion.session.SessionBaseModel:
         log.warning(f"[Session {session}] Not found for play")
         raise HTTPException(status_code=404, detail=f"Session {session} not found")
 
-    nodes = [
-        k.removesuffix(".json")
-        for k in storage_kv_scan("node", "")
-        if k.endswith(".json")
-    ]
-    match len(nodes):
-        case 0:
-            log.error(f"[Session {session.uuid}] No nodes available for play")
-            raise HTTPException(status_code=503, detail="no nodes available")
-        case _:
-            node = random.choice(nodes)
-            await app.state.channel.publish_play(node, str(session.uuid))
-            log.info(f"[Session {session.uuid}] Published play to node {node}")
+    await app.state.channel.publish_play(str(session.uuid))
+    log.info(f"[Session {session.uuid}] Published play")
 
     return session
 
@@ -333,16 +260,8 @@ async def session_stop(session: UUID4) -> motion.session.SessionBaseModel:
         log.warning(f"[Session {session}] Stop requested for nonexistent session")
         raise HTTPException(status_code=404, detail=f"Session {session} not found")
 
-    nodes = [
-        k.removesuffix(".json")
-        for k in storage_kv_scan("node", "")
-        if k.endswith(".json")
-    ]
-    await asyncio.gather(
-        *(app.state.channel.publish_stop(node, str(session.uuid)) for node in nodes),
-        return_exceptions=True,
-    )
-    log.info(f"[Session {session.uuid}] Published stop to {len(nodes)} nodes")
+    await app.state.channel.publish_stop(str(session.uuid))
+    log.info(f"[Session {session.uuid}] Published stop")
 
     return session
 

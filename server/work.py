@@ -1,12 +1,11 @@
-import argparse
 import asyncio
 import contextlib
+import functools
 import json
 import logging
 import os
 import shutil
 import tempfile
-import uuid
 import zipfile
 
 import aiohttp.web
@@ -171,79 +170,54 @@ async def run_http():
         log.info("HTTP server stopped")
 
 
-async def run_nats(node: str):
-    """
-    Subjects:
-      motion.node.<node>.play  (payload: "<session>")
-      motion.node.<node>.stop  (payload: "<session>")
-    """
+async def run_work():
     channel = Channel(servers="nats://127.0.0.1:4222")
     await channel.start()
 
-    sub_play = await channel.subscribe_play(node)
-    sub_stop = await channel.subscribe_stop(node)
-    log.info(f"NATS worker ready for node={node}")
+    async def f(session, msg):
+        assert msg.subject == f"motion.node.{session}.stop"
+        await session_stop(session)
+
+    sub_play = await channel.subscribe_play()
+    log.info(f"NATS work ready")
 
     try:
         while True:
-            log.info(f"[run_nats]: play fetch")
+            log.info(f"[run_work]: play fetch")
             try:
                 msg = (await sub_play.fetch(batch=1, timeout=60))[0]
             except (nats.errors.TimeoutError, IndexError):
                 continue
-            session = msg.data.decode(errors="ignore").strip()
-            log.info(f"[run_nats]: play session={session}")
-            if not session:
-                await msg.ack()
-                continue
-            task = asyncio.create_task(session_play(session), name=f"{session}")
-            await msg.ack()
-            log.info(f"[run_nats]: play session={session} ack")
+            log.info(f"[run_work]: play msg={msg}")
 
-            while True:
-                log.info(f"[run_nats]: task check")
-                if task.done():
-                    break
-                log.info(f"[run_nats]: stop fetch")
-                try:
-                    msg = (await sub_stop.fetch(batch=1, timeout=1))[0]
-                except (nats.errors.TimeoutError, IndexError):
-                    continue
-                session = msg.data.decode(errors="ignore").strip()
-                log.info(f"[run_nats]: stop session={session}")
-                if session != task.get_name():
-                    await msg.ack()
-                    continue
-                await session_stop(session)
-                await msg.ack()
-                break
+            assert msg.subject.startswith("motion.node.") and msg.subject.endswith(
+                ".play"
+            )
+            session = msg.subject.removeprefix("motion.node.").removesuffix(".play")
+            log.info(f"[run_work]: play session={session}")
 
-            # wait until task fully completed
+            sub_stop = await channel.subscribe_stop(
+                session, functools.partial(f, session)
+            )
             try:
-                await task
-            except Exception:
-                log.exception(f"[run_nats]: task session={session}")
-            log.info(f"[run_nats]: done session={session}")
+                log.info(f"[run_work]: play session={session}")
+                await session_play(session)
+                log.info(f"[run_work]: play session={session} ack")
+                await msg.ack()
+            except Exception as e:
+                log.info(f"[run_work]: play session={session} e={e}")
+                raise
+            finally:
+                await sub_stop.drain()
+            log.info(f"[run_work]: play session={session} done")
     finally:
+        await sub_play.unsubscribe()
         await channel.close()
 
 
 async def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--uuid", help="Node UUID")
-    args = parser.parse_args()
-
-    node = (
-        uuid.UUID(args.uuid)
-        if args.uuid
-        else uuid.UUID(open("/etc/machine-id").read().strip())
-    )
-
-    log.info(f"Registering node {node}")
-    storage_kv_set("node", f"{node}.json", "{}".encode("utf-8"))
-
     async with run_http():
-        await run_nats(str(node))
+        await run_work()
 
 
 if __name__ == "__main__":

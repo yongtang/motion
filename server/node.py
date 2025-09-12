@@ -54,4 +54,4 @@ async def run_step(session, channel, callback):
     finally:
         with contextlib.suppress(Exception):
             await subscribe.unsubscribe()
-        log.info(f"Uubscribed step for session={session}")
+        log.info(f"Ubscribed step for session={session}")

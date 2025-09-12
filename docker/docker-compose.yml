@@ -114,9 +114,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-  worker:
+  work:
     image: python:3.12-slim
-    container_name: ${SCOPE:-motion}-worker
+    container_name: ${SCOPE:-motion}-work
     restart: unless-stopped
     depends_on:
       - server
@@ -130,7 +130,7 @@ services:
     environment:
       - MOTION=${PWD}
       - SCOPE=${SCOPE}
-    command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install docker-cli docker-compose curl && pip install -r server/requirements.txt && pip install -e . && python -m server.worker"]
+    command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install docker-cli docker-compose curl && pip install -r server/requirements.txt && pip install -e . && python -m server.work"]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9999/health >/dev/null || exit 1"]
       interval: 10s
