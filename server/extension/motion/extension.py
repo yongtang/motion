@@ -183,6 +183,10 @@ async def main():
 
         print(f"[motion.extension] Writer attached")
 
+        omni.replicator.core.orchestrator.run(num_frame=-1)
+
+        print(f"[motion.extension] Writer complete")
+
         """
         async with run_http():
             async with run_link() as channel:
