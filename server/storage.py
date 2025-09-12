@@ -1,4 +1,5 @@
 import collections
+import contextlib
 import logging
 
 import boto3
@@ -67,13 +68,17 @@ def storage_kv_set(bucket: str, key: str, data: bytes) -> str | None:
     return etag
 
 
-def storage_kv_get(bucket: str, key: str) -> bytes:
+def storage_kv_get(bucket: str, key: str):
+    def f(body):
+        with contextlib.closing(body):
+            for chunk in body.iter_chunks(chunk_size=1024 * 1024):
+                yield chunk
+        log.info(f"[KV {bucket}/{key}] Stream closed")
+
     try:
         resp = storage.get_object(Bucket=bucket, Key=key)
-        with resp["Body"] as body:
-            data = body.read()
-        log.info(f"[KV {bucket}/{key}] Loaded {len(data)} bytes")
-        return data
+        log.info(f"[KV {bucket}/{key}] Stream start")
+        return f(resp["Body"])
     except ClientError as e:
         match str(((e.response or {}).get("Error") or {}).get("Code", "")):
             case "NoSuchKey" | "NoSuchBucket" | "NotFound" | "404":

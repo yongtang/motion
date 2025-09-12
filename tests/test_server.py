@@ -237,12 +237,11 @@ def test_server_session(scene_on_server):
     r = httpx.post(f"{base}/session/{session2}/play", timeout=5.0)
     assert r.status_code == 200
 
-    ws_url2_step = f"ws://{base.split('://',1)[1]}/session/{session2}/step"
-    ws_url2_data = f"ws://{base.split('://',1)[1]}/session/{session2}/data"
+    ws_url2_stream = f"ws://{base.split('://',1)[1]}/session/{session2}/stream"
 
     # Stream steps during the entire play window instead of sleeping 150s
     asyncio.run(
-        f_stream_steps_entire_run(ws_url2_step, duration=RUN_WINDOW, period=0.2)
+        f_stream_steps_entire_run(ws_url2_stream, duration=RUN_WINDOW, period=0.2)
     )
 
     # For consistency we still issue an explicit stop (even if node would finish naturally)

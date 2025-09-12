@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import contextlib
-import io
 import json
 import logging
 import os
@@ -25,14 +24,17 @@ async def run_done(session: str):
     shutil.rmtree("/storage/node", ignore_errors=True)
     os.makedirs("/storage/node/scene", exist_ok=True)
 
-    session = json.loads(storage_kv_get("session", f"{session}.json"))
+    session = json.loads(b"".join(storage_kv_get("session", f"{session}.json")))
     with open("/storage/node/session.json", "w") as f:
         f.write(json.dumps(session))
     log.info(f"[run_done]: session storage: {session}")
 
-    buffer = storage_kv_get("scene", f"{session['scene']}.zip")
-    with zipfile.ZipFile(io.BytesIO(buffer)) as zf:
-        zf.extractall("/storage/node/scene")
+    with tempfile.TemporaryFile() as f:
+        for chunk in storage_kv_get("scene", f"{session['scene']}.zip"):
+            f.write(chunk)
+        f.seek(0)
+        with zipfile.ZipFile(f) as z:
+            z.extractall("/storage/node/scene")
     log.info(f"[run_done]: uncompress scene")
 
     with open("/storage/node/scene/meta.json", "r") as f:

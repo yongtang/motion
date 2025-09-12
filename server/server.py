@@ -1,8 +1,8 @@
 import asyncio
 import contextlib
-import io
 import logging
 import random
+import tempfile
 import uuid
 import zipfile
 
@@ -11,12 +11,11 @@ from fastapi import (
     File,
     HTTPException,
     Query,
-    Response,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import UUID4
 
 import motion
@@ -75,7 +74,7 @@ async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseMo
 async def scene_lookup(scene: UUID4) -> motion.scene.SceneBaseModel:
     try:
         scene = motion.scene.SceneBaseModel.parse_raw(
-            storage_kv_get("scene", f"{scene}.json")
+            b"".join(storage_kv_get("scene", f"{scene}.json"))
         )
         log.info(f"[Scene {scene.uuid}] Found")
         return scene
@@ -85,10 +84,11 @@ async def scene_lookup(scene: UUID4) -> motion.scene.SceneBaseModel:
 
 
 @app.get("/scene/{scene:uuid}/archive")
+@app.get("/scene/{scene:uuid}/archive")
 async def scene_archive(scene: UUID4):
     try:
-        blob = storage_kv_get("scene", f"{scene}.zip")
-        log.info(f"[Scene {scene}] Archive retrieved ({len(blob)} bytes)")
+        stream = storage_kv_get("scene", f"{scene}.zip")
+        log.info(f"[Scene {scene}] Streaming archive")
     except FileNotFoundError:
         log.warning(f"[Scene {scene}] Archive not found")
         raise HTTPException(status_code=404, detail=f"Scene {scene} archive not found")
@@ -97,14 +97,14 @@ async def scene_archive(scene: UUID4):
         "Content-Disposition": f'inline; filename="{scene}.zip"',
         "Content-Type": "application/zip",
     }
-    return Response(content=blob, media_type="application/zip", headers=headers)
+    return StreamingResponse(stream, media_type="application/zip", headers=headers)
 
 
 @app.delete("/scene/{scene:uuid}", response_model=motion.scene.SceneBaseModel)
 async def scene_delete(scene: UUID4) -> motion.scene.SceneBaseModel:
     try:
         scene = motion.scene.SceneBaseModel.parse_raw(
-            storage_kv_get("scene", f"{scene}.json")
+            b"".join(storage_kv_get("scene", f"{scene}.json"))
         )
         log.info(f"[Scene {scene.uuid}] Deleting")
     except FileNotFoundError:
@@ -129,7 +129,7 @@ async def scene_delete(scene: UUID4) -> motion.scene.SceneBaseModel:
 async def scene_search(q: UUID4 = Query(..., description="exact scene uuid")):
     try:
         scene = motion.scene.SceneBaseModel.parse_raw(
-            storage_kv_get("scene", f"{q}.json")
+            b"".join(storage_kv_get("scene", f"{q}.json"))
         )
         log.info(f"[Scene {scene.uuid}] Search found")
         return [scene]
@@ -172,7 +172,7 @@ async def session_create(
 async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
     try:
         session = motion.session.SessionBaseModel.parse_raw(
-            storage_kv_get("session", f"{session}.json")
+            b"".join(storage_kv_get("session", f"{session}.json"))
         )
         log.info(f"[Session {session.uuid}] Found (scene={session.scene})")
         return session
@@ -183,47 +183,43 @@ async def session_lookup(session: UUID4) -> motion.session.SessionBaseModel:
 
 @app.get("/session/{session:uuid}/archive")
 async def session_archive(session: UUID4):
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as z:
-        try:
-            session = motion.session.SessionBaseModel.parse_raw(
-                storage_kv_get("session", f"{session}.json")
-            )
-            z.writestr("session.json", session.json())
-            log.info(f"[Session {session.uuid}] Added session.json to archive")
-        except FileNotFoundError:
-            log.warning(f"[Session {session}] Not found for archive")
-            raise HTTPException(status_code=404, detail=f"Session {session} not found")
+    try:
+        session = motion.session.SessionBaseModel.parse_raw(
+            b"".join(storage_kv_get("session", f"{session}.json"))
+        )
+    except FileNotFoundError:
+        log.warning(f"[Session {session}] Not found for archive")
+        raise HTTPException(status_code=404, detail=f"Session {session} not found")
 
-        try:
-            data_blob = storage_kv_get("data", f"{session.uuid}.json")
-            z.writestr("data.json", data_blob)
-            log.info(
-                f"[Session {session.uuid}] Added data.json to archive ({len(data_blob)} bytes)"
-            )
-        except FileNotFoundError:
-            log.info(
-                f"[Session {session.uuid}] No data; building archive with session.json only"
-            )
-
-    buffer.seek(0)
-    size = buffer.getbuffer().nbytes
-    log.info(f"[Session {session.uuid}] Archive built ({size} bytes)")
+    def stream():
+        with tempfile.TemporaryFile() as f:
+            with zipfile.ZipFile(f, "w", compression=zipfile.ZIP_DEFLATED) as z:
+                z.writestr("session.json", session.json())
+                try:
+                    with z.open("data.json", "w") as g:
+                        for chunk in storage_kv_get("data", f"{session.uuid}.json"):
+                            g.write(chunk)
+                except FileNotFoundError:
+                    pass
+            f.seek(0)
+            while True:
+                chunk = f.read(1024 * 1024)
+                if not chunk:
+                    break
+                yield chunk
 
     headers = {
         "Content-Disposition": f'inline; filename="{session.uuid}.zip"',
         "Content-Type": "application/zip",
     }
-    return Response(
-        content=buffer.read(), media_type="application/zip", headers=headers
-    )
+    return StreamingResponse(stream(), media_type="application/zip", headers=headers)
 
 
 @app.delete("/session/{session:uuid}", response_model=motion.session.SessionBaseModel)
 async def session_delete(session: UUID4) -> motion.session.SessionBaseModel:
     try:
         session = motion.session.SessionBaseModel.parse_raw(
-            storage_kv_get("session", f"{session}.json")
+            b"".join(storage_kv_get("session", f"{session}.json"))
         )
         log.info(f"[Session {session.uuid}] Deleting (scene={session.scene})")
     except FileNotFoundError:
@@ -300,7 +296,7 @@ async def session_delete(session: UUID4) -> motion.session.SessionBaseModel:
 async def session_play(session: UUID4) -> motion.session.SessionBaseModel:
     try:
         session = motion.session.SessionBaseModel.parse_raw(
-            storage_kv_get("session", f"{session}.json")
+            b"".join(storage_kv_get("session", f"{session}.json"))
         )
         log.info(f"[Session {session.uuid}] Play requested (scene={session.scene})")
     except FileNotFoundError:
@@ -330,7 +326,7 @@ async def session_play(session: UUID4) -> motion.session.SessionBaseModel:
 async def session_stop(session: UUID4) -> motion.session.SessionBaseModel:
     try:
         session = motion.session.SessionBaseModel.parse_raw(
-            storage_kv_get("session", f"{session}.json")
+            b"".join(storage_kv_get("session", f"{session}.json"))
         )
         log.info(f"[Session {session.uuid}] Stop requested (scene={session.scene})")
     except FileNotFoundError:
