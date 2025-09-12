@@ -183,7 +183,7 @@ async def main():
 
         print(f"[motion.extension] Writer attached")
 
-        omni.replicator.core.orchestrator.run(num_frame=-1)
+        omni.replicator.core.orchestrator.run(num_frames=-1)
 
         print(f"[motion.extension] Writer complete")
 
