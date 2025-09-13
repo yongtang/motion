@@ -18,8 +18,6 @@ def test_tool(docker_compose, tmp_path):
             "echo",
             "--base",
             base,
-            "--duration",
-            "150",
         ],
         stderr=subprocess.STDOUT,
         stdout=subprocess.PIPE,

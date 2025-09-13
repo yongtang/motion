@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 
 import httpx
@@ -49,13 +50,13 @@ class SessionStream:
             self._start_ = start
         else:
             self._start_ = None
+        self._socket_ = None
 
     async def __aenter__(self):
         ws_base = self._base_.replace("https://", "wss://").replace("http://", "ws://")
         url = f"{ws_base}/session/{self._uuid_}/stream" + (
             f"?start={self._start_}" if self._start_ is not None else ""
         )
-
         self._socket_ = await websockets.connect(
             url,
             open_timeout=self._timeout_,
@@ -69,23 +70,55 @@ class SessionStream:
         self._socket_ = None
         return False
 
+    async def _reconnect_(self):
+        with contextlib.suppress(Exception):
+            await self._socket_.close()
+        ws_base = self._base_.replace("https://", "wss://").replace("http://", "ws://")
+        url = f"{ws_base}/session/{self._uuid_}/stream" + (
+            f"?start={self._start_}" if self._start_ is not None else ""
+        )
+        self._socket_ = await websockets.connect(
+            url,
+            open_timeout=self._timeout_,
+            close_timeout=self._timeout_,
+            ping_interval=None,
+        )
+
     async def step(self, payload: dict) -> None:
         """Send one JSON step command."""
         await self._socket_.send(json.dumps(payload))
 
     async def data(self, *, timeout: float | None = None):
         """Receive one message; JSON-decode if possible."""
-        to = self._timeout_ if timeout is None else timeout
-        msg = await asyncio.wait_for(self._socket_.recv(), timeout=to)
-        if isinstance(msg, (bytes, bytearray)):
+        to = self._timeout_ if timeout is None else float(timeout)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + to
+
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise asyncio.TimeoutError()
+
             try:
-                return json.loads(msg)
-            except Exception:
-                return msg
-        try:
-            return json.loads(msg)
-        except Exception:
-            return msg
+                msg = await asyncio.wait_for(
+                    self._socket_.recv(), timeout=min(1.5, remaining)
+                )
+                if isinstance(msg, (bytes, bytearray)):
+                    try:
+                        return json.loads(msg)
+                    except Exception:
+                        return msg
+                try:
+                    return json.loads(msg)
+                except Exception:
+                    return msg
+
+            except (
+                websockets.exceptions.ConnectionClosedError,
+                websockets.exceptions.ConnectionClosedOK,
+            ):
+                await self._reconnect_()
+                continue
 
 
 @motionclass

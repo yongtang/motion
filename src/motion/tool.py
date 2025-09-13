@@ -14,7 +14,6 @@ async def main():
     parser.add_argument("file", help="Path to USD file")
     parser.add_argument("--base", default="http://127.0.0.1:8080")
     parser.add_argument("--runtime", default="isaac")
-    parser.add_argument("--duration", type=float, default=150.0)
     args = parser.parse_args()
 
     client = motion_client(args.base)
@@ -23,18 +22,22 @@ async def main():
     scene = client.scene.create(pathlib.Path(args.file), args.runtime)
     log.info(f"[Scene {scene.uuid}] Created")
 
-    log.info("[Session] Creating …")
-    session = client.session.create(scene)
-    log.info(f"[Session {session.uuid}] Created")
+    log.info("[Session] Creating...")
+    async with client.session.create(scene) as session:
+        log.info(f"[Session {session.uuid}] Starting playback...")
+        await session.play()
+        log.info(f"[Session {session.uuid}] Playing (stream-driven)")
 
-    log.info(f"[Session {session.uuid}] Starting playback …")
-    session.play()
-    log.info(f"[Session {session.uuid}] Playing for {args.duration:.1f}s")
-    await asyncio.sleep(args.duration)
+        async with session.stream(start=-1) as stream:
+            for seq in range(15):
+                data = await stream.data(timeout=300.0)
+                data["seq"] = seq
+                await stream.step(data)
+                log.info(f"[Session {session.uuid}] Sent step with seq={seq}")
 
-    log.info(f"[Session {session.uuid}] Stopping …")
-    session.stop()
-    log.info(f"[Session {session.uuid}] Stopped")
+        log.info(f"[Session {session.uuid}] Stopping …")
+        await session.stop()
+        log.info(f"[Session {session.uuid}] Stopped")
 
     log.info("[Tool] Done")
 
