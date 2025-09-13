@@ -2,41 +2,55 @@ import asyncio
 import json
 import logging
 
-from .node import run_http, run_link, run_step
+from .channel import Channel
+from .node import run_http
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("echo")
+log = logging.getLogger(__name__)
 
 
-def f_step(metadata, channel):
-    log.info(f"[echo] step: {metadata}")
-
+async def run_node():
+    with open("/storage/node/session.json", "r") as f:
+        metadata = json.loads(f.read())
     session = metadata["uuid"]
+    log.info(f"[run_node] Loaded session {session}")
 
-    async def run_echo(msg):
-        log.info(f"[echo] step session={session}: {msg}")
+    channel = Channel()
+    await channel.start()
+    log.info("[run_node] Channel started")
+
+    await channel.publish_data(session, json.dumps({"op": "none"}))
+    log.info(f"[run_node] Sent noop to {session}")
+
+    async def f(msg):
+        log.info(f"[callback] [Echo {session}] Step: {msg}")
         step = json.loads(msg.data)
         data = json.dumps(step)
-        log.info(f"[echo] step->data session={session}: {data}")
+        log.info(f"[callback] [Echo {session}] Step->data ({len(data)} bytes): {data}")
 
         await channel.publish_data(session, data)
+        log.info(f"[callback] [Echo {session}] Published")
 
-    return run_echo
+    subscribe = await channel.subscribe_step(session, f)
+    log.info(f"[run_node] Subscribed for {session}")
+
+    try:
+        log.info("[run_node] Waiting for events")
+        await asyncio.Future()
+    finally:
+        await subscribe.unsubscribe()
+        log.info(f"[run_node] Unsubscribed for {session}")
+        await channel.close()
+        log.info("[run_node] Channel closed")
 
 
 async def main():
-    with open("/storage/node/session.json", "r") as f:
-        metadata = json.loads(f.read())
-
-    session = metadata["uuid"]
-    async with run_http():
-        async with run_link() as channel:
-            async with run_step(
-                session=session,
-                channel=channel,
-                callback=f_step(metadata=metadata, channel=channel),
-            ) as subscribe:
-                await asyncio.Event().wait()
+    log.info("[main] [HTTP] Starting on :8899")
+    async with run_http(8899):
+        log.info("[main] [Node] Running")
+        await run_node()
+        log.info("[main] [Node] Stopped")
+    log.info("[main] [HTTP] Closed")
 
 
 if __name__ == "__main__":

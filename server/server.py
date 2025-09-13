@@ -331,7 +331,7 @@ async def session_stream(ws: WebSocket, session: UUID4):
         for e in pending:
             e.cancel()
             with contextlib.suppress(Exception):
-                await t
+                await e
         # surface any exception from the completed task
         for e in done:
             _ = e.result()

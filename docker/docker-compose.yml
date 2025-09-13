@@ -146,10 +146,8 @@ services:
     network_mode: "service:server"
     working_dir: /app
     volumes:
-      - ${MOTION:-$PWD}/server/node.py:/isaac-sim/exts/motion.extension/motion/node.py:ro
-      - ${MOTION:-$PWD}/server/channel.py:/isaac-sim/exts/motion.extension/motion/channel.py:ro
-      - ${MOTION:-$PWD}/server/extension/motion/extension.py:/isaac-sim/exts/motion.extension/motion/extension.py:ro
-      - ${MOTION:-$PWD}/server/extension/config/extension.toml:/isaac-sim/exts/motion.extension/config/extension.toml:ro
+      - ${MOTION:-$PWD}/server:/isaac-sim/exts/motion.extension/motion/extension:ro
+      - ${MOTION:-$PWD}/server/extension.toml:/isaac-sim/exts/motion.extension/config/extension.toml:ro
       - ${MOTION:-$PWD}:/app:ro
       - storage:/storage:ro
     environment:

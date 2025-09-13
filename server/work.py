@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import json
 import logging
 import os
@@ -7,10 +6,10 @@ import shutil
 import tempfile
 import zipfile
 
-import aiohttp.web
 import nats
 
 from .channel import Channel
+from .node import run_http
 from .storage import storage_kv_get, storage_kv_set
 
 logging.basicConfig(level=logging.INFO)
@@ -24,10 +23,10 @@ async def node_play(channel: Channel, session: str):
     data = json.loads(b"".join(storage_kv_get("session", f"{session}.json")))
     with open("/storage/node/session.json", "w") as f:
         f.write(json.dumps(data))
-    log.info(f"[node_play]: session storage: {data}")
+    log.info(f"[node_play] session storage: {data}")
 
     scene = data["scene"]
-    log.info(f"[node_play]: scene={scene}")
+    log.info(f"[node_play] scene={scene}")
 
     with tempfile.TemporaryFile() as f:
         for chunk in storage_kv_get("scene", f"{scene}.zip"):
@@ -35,12 +34,12 @@ async def node_play(channel: Channel, session: str):
         f.seek(0)
         with zipfile.ZipFile(f) as z:
             z.extractall("/storage/node/scene")
-    log.info(f"[node_play]: uncompress scene")
+    log.info("[node_play] uncompressed scene")
 
     with open("/storage/node/scene/meta.json", "r") as f:
         meta = json.loads(f.read())
     runtime = meta["runtime"]
-    log.info(f"[node_play]: runtime={runtime}")
+    log.info(f"[node_play] runtime={runtime}")
 
     scope = os.environ.get("SCOPE")
     project = f"{scope}-motion" if scope else "motion"
@@ -59,7 +58,7 @@ async def node_play(channel: Channel, session: str):
         "--force-recreate",
         "node",
     ]
-    log.info(f"[run_node]: node={node}")
+    log.info(f"[node_play] node cmd={node}")
     return await asyncio.create_subprocess_exec(*node, env={**os.environ})
 
 
@@ -77,13 +76,13 @@ async def node_stop(channel: Channel, session: str):
         "stop",
         "node",
     ]
-    log.info(f"[node_stop] stop={stop}")
+    log.info(f"[node_stop] stop cmd={stop}")
     proc = await asyncio.create_subprocess_exec(*stop, env={**os.environ})
 
     await proc.wait()
 
     with tempfile.NamedTemporaryFile(prefix=f"{session}-", suffix=".json") as f:
-        log.info(f"[node_stop] temp={f.name}")
+        log.info(f"[node_stop] temp file={f.name}")
         sub = await channel.subscribe_data(session, start=1)
         log.info(f"[node_stop] session={session} channel start")
 
@@ -101,30 +100,7 @@ async def node_stop(channel: Channel, session: str):
         log.info(f"[node_stop] uploaded s3://data/{session}.json")
 
     shutil.rmtree("/storage/node", ignore_errors=True)
-
     log.info(f"[node_stop] session={session} done")
-
-
-@contextlib.asynccontextmanager
-async def run_http():
-    app = aiohttp.web.Application()
-    app.add_routes(
-        [
-            aiohttp.web.get(
-                "/health", lambda _: aiohttp.web.json_response({"status": "ok"})
-            )
-        ]
-    )
-    runner = aiohttp.web.AppRunner(app)
-    await runner.setup()
-    site = aiohttp.web.TCPSite(runner, "0.0.0.0", 9999)
-    await site.start()
-    log.info("HTTP health at http://0.0.0.0:9999/health")
-    try:
-        yield
-    finally:
-        await runner.cleanup()
-        log.info("HTTP server stopped")
 
 
 async def run_work():
@@ -132,16 +108,16 @@ async def run_work():
     await channel.start()
 
     sub_play = await channel.subscribe_play()
-    log.info(f"NATS work ready")
+    log.info("[run_work] NATS ready")
 
     try:
         while True:
-            log.info(f"[run_work]: play fetch")
+            log.info("[run_work] play fetch")
             try:
                 msg_play = (await sub_play.fetch(batch=1, timeout=60))[0]
             except (nats.errors.TimeoutError, IndexError):
                 continue
-            log.info(f"[run_work]: play msg={msg_play}")
+            log.info(f"[run_work] play msg={msg_play}")
 
             assert msg_play.subject.startswith(
                 "motion.node.",
@@ -153,33 +129,35 @@ async def run_work():
             ).removesuffix(
                 ".play",
             )
-            log.info(f"[run_work]: play session={session}")
+            log.info(f"[run_work] session={session}")
+
             try:
                 sub_stop = await channel.subscribe_stop(session)
+                log.info(f"[run_work] stop subscription for {session}")
 
-                log.info(f"[run_work]: play session={session}")
+                log.info(f"[run_work] start node for {session}")
                 proc = await node_play(channel, session)
 
                 try:
                     msg_stop = await sub_stop.next_msg(timeout=3600)
                 except nats.errors.TimeoutError:
                     pass
-                await node_stop(channel, session)
 
+                await node_stop(channel, session)
                 await asyncio.wait_for(proc.wait(), timeout=300)
 
-                log.info(f"[run_work]: play session={session} ack")
+                log.info(f"[run_work] ack play for {session}")
                 await msg_play.ack()
             finally:
                 await sub_stop.unsubscribe()
-            log.info(f"[run_work]: play session={session} done")
+            log.info(f"[run_work] done {session}")
     finally:
         await sub_play.unsubscribe()
         await channel.close()
 
 
 async def main():
-    async with run_http():
+    async with run_http(9999):
         await run_work()
 
 
