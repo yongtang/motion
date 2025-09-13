@@ -1,3 +1,4 @@
+import concurrent
 import io
 import json
 import os
@@ -59,9 +60,7 @@ def docker_compose(scope, request):
             def f_service_ready(s: dict) -> bool:
                 state_ok = s.get("State", "").lower() == "running"
                 if s.get("Service", "").startswith("node-"):
-                    # Skip health requirement for node-* services
                     return state_ok
-                # For all other services, require healthy
                 return state_ok and (s.get("Health", "").lower() == "healthy")
 
             if all(f_service_ready(s) for s in services):
@@ -74,7 +73,8 @@ def docker_compose(scope, request):
             time.sleep(poll_every)
 
     env = {**os.environ, "SCOPE": scope}
-    for short, file in projects.items():
+
+    def _up(short: str, file: str) -> str:
         compose_project = f"{scope}-{short}"
         subprocess.run(
             [
@@ -91,7 +91,26 @@ def docker_compose(scope, request):
             check=True,
             env=env,
         )
-        ready(compose_project)
+        return compose_project
+
+    # 1) Start ALL stacks in parallel
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(projects)) as ex:
+        up_futs = {
+            ex.submit(_up, short, file): short for short, file in projects.items()
+        }
+        compose_projects: dict[str, str] = {}
+        for fut in concurrent.futures.as_completed(up_futs):
+            short = up_futs[fut]
+            compose_projects[short] = fut.result()  # propagate exceptions
+
+    # 2) Wait for ALL stacks to be ready in parallel
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(projects)) as ex:
+        ready_futs = {
+            ex.submit(ready, compose_projects[short]): short
+            for short in projects.keys()
+        }
+        for fut in concurrent.futures.as_completed(ready_futs):
+            fut.result()  # propagate exceptions
 
     try:
         entries: dict[str, str] = {}
@@ -113,7 +132,6 @@ def docker_compose(scope, request):
                 text=True,
             ).stdout
 
-            # build set of all non-empty container IPs
             uniq = {
                 subprocess.run(
                     [
@@ -130,7 +148,7 @@ def docker_compose(scope, request):
                 for ln in output.splitlines()
                 if ln.strip()
             }
-            uniq.discard("")  # drop empties
+            uniq.discard("")
 
             if len(uniq) != 1:
                 raise AssertionError(
