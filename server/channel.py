@@ -168,7 +168,17 @@ class Channel:
                     inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
                 )
                 note = "NEW"
-            case seq if isinstance(seq, int) and seq >= 0:
+            case -1:
+                # tail the last available message, then follow new ones
+                config = nats.js.api.ConsumerConfig(
+                    filter_subject=subject,
+                    deliver_policy=nats.js.api.DeliverPolicy.LAST,
+                    replay_policy=nats.js.api.ReplayPolicy.INSTANT,
+                    ack_policy=nats.js.api.AckPolicy.NONE,
+                    inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
+                )
+                note = "LAST"
+            case seq if isinstance(seq, int) and seq > 0:
                 config = nats.js.api.ConsumerConfig(
                     filter_subject=subject,
                     deliver_policy=nats.js.api.DeliverPolicy.BY_START_SEQUENCE,

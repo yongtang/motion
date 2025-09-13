@@ -15,6 +15,8 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
+
+# NOTE: Keep imports and structure intact
 from pydantic import UUID4
 
 import motion
@@ -277,12 +279,18 @@ async def session_stream(ws: WebSocket, session: UUID4):
         return
 
     # Optional backlog offset (?start=n)
-    start = ws.query_params.get("start")
-    match start:
+    start_q = ws.query_params.get("start")
+    match start_q:
         case None:
-            pass
-        case s if s.isdigit() and int(s) > 0:
-            start = int(s)
+            start = None
+        case s if s.lstrip("-").isdigit():
+            val = int(s)
+            if val == -1 or val > 0:
+                start = val
+            else:
+                log.warning(f"[Session {session}] WS stream invalid start={s!r}")
+                await ws.close(code=1008)
+                return
         case other:
             log.warning(f"[Session {session}] WS stream invalid start={other!r}")
             await ws.close(code=1008)

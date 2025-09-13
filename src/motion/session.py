@@ -44,7 +44,11 @@ class SessionStream:
         self._base_ = base.rstrip("/")
         self._uuid_ = session_uuid
         self._timeout_ = float(timeout)
-        self._start_ = start if (isinstance(start, int) and start > 0) else None
+        # allow -1 (tail: start from LAST) or any positive integer; else None => NEW
+        if isinstance(start, int) and (start == -1 or start > 0):
+            self._start_ = start
+        else:
+            self._start_ = None
 
     async def __aenter__(self):
         ws_base = self._base_.replace("https://", "wss://").replace("http://", "ws://")

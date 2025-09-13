@@ -65,6 +65,12 @@ async def test_session(session_on_server):
         # actively wait for readiness (from the beginning) instead of a fixed sleep
         await wait_for_play_ready(session, timeout=300.0)
 
+        # ADDITIONAL CHECK: tail the latest message (start=-1) and ensure we get something quickly.
+        # Note: if the stream were empty, -1 behaves like NEW and would wait for the first future message.
+        async with session.stream(start=-1) as tail:
+            tail_msg = await tail.data(timeout=30.0)
+            assert tail_msg is not None
+
         # open duplex stream, send one step, receive one data message
         async with session.stream(start=None) as stream:
             await stream.step({"k": "v", "i": 1})
