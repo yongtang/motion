@@ -127,7 +127,7 @@ class Channel:
         )
         return sub
 
-    async def subscribe_stop(self, session: str, callback):
+    async def subscribe_stop(self, session: str):
         """
         JS PUSH subscription to this session's STOP.
         - LAST_PER_SUBJECT => delivers prior STOP immediately if it exists
@@ -142,9 +142,7 @@ class Channel:
             ack_policy=nats.js.api.AckPolicy.NONE,
             # no inactive_threshold to ensure it never disappears mid-run
         )
-        sub = await self.js.subscribe(
-            subject, config=config, stream="motion", cb=callback
-        )
+        sub = await self.js.subscribe(subject, config=config, stream="motion")
         log.info(f"[Channel.subscribe_stop] subscribed push subject={subject}")
         return sub
 

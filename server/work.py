@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import functools
 import json
 import logging
 import os
@@ -112,17 +111,8 @@ async def run_data(session: str):
             log.info(f"[run_data] session={session} channel close")
 
 
-async def session_play(session: str):
-    log.info(f"[session_play] session={session} play")
-    async with run_done(session) as runtime:
-        async with run_data(session) as session:
-            async with run_node(runtime) as proc:
-                await proc.wait()
-    log.info(f"[session_play] session={session} done")
-
-
-async def session_stop(session: str):
-    log.info(f"[session_stop] session={session} stop")
+async def run_stop(session: str):
+    log.info(f"[run_stop] session={session} stop")
 
     with open("/storage/node/scene/meta.json", "r") as f:
         meta = json.loads(f.read())
@@ -139,13 +129,13 @@ async def session_stop(session: str):
         "stop",
         "node",
     ]
-    log.info(f"[session_stop] stop={stop}")
+    log.info(f"[run_stop] stop={stop}")
     proc = await asyncio.create_subprocess_exec(*stop, env={**os.environ})
 
     await proc.wait()
 
-    log.info(f"[session_stop] stop={stop}")
-    log.info(f"[session_stop] session={session} done")
+    log.info(f"[run_stop] stop={stop}")
+    log.info(f"[run_stop] session={session} done")
 
 
 @contextlib.asynccontextmanager
@@ -174,10 +164,6 @@ async def run_work():
     channel = Channel(servers="nats://127.0.0.1:4222")
     await channel.start()
 
-    async def f(session, msg):
-        assert msg.subject == f"motion.node.{session}.stop"
-        await session_stop(session)
-
     sub_play = await channel.subscribe_play()
     log.info(f"NATS work ready")
 
@@ -185,30 +171,39 @@ async def run_work():
         while True:
             log.info(f"[run_work]: play fetch")
             try:
-                msg = (await sub_play.fetch(batch=1, timeout=60))[0]
+                play_msg = (await sub_play.fetch(batch=1, timeout=60))[0]
             except (nats.errors.TimeoutError, IndexError):
                 continue
-            log.info(f"[run_work]: play msg={msg}")
+            log.info(f"[run_work]: play msg={play_msg}")
 
-            assert msg.subject.startswith("motion.node.") and msg.subject.endswith(
+            assert play_msg.subject.startswith(
+                "motion.node."
+            ) and play_msg.subject.endswith(".play")
+            session = play_msg.subject.removeprefix("motion.node.").removesuffix(
                 ".play"
             )
-            session = msg.subject.removeprefix("motion.node.").removesuffix(".play")
             log.info(f"[run_work]: play session={session}")
 
-            sub_stop = await channel.subscribe_stop(
-                session, functools.partial(f, session)
-            )
+            sub_stop = await channel.subscribe_stop(session)
+
             try:
                 log.info(f"[run_work]: play session={session}")
-                await session_play(session)
+                async with run_done(session) as runtime:
+                    async with run_data(session):
+                        async with run_node(runtime) as proc:
+                            try:
+                                stop_msg = await sub_stop.next_msg(timeout=3600)
+                            except nats.errors.TimeoutError:
+                                pass
+                            await run_stop(session)
+                            await asyncio.wait_for(proc.wait(), timeout=300)
                 log.info(f"[run_work]: play session={session} ack")
-                await msg.ack()
+                await play_msg.ack()
             except Exception as e:
                 log.info(f"[run_work]: play session={session} e={e}")
                 raise
             finally:
-                await sub_stop.drain()
+                await sub_stop.unsubscribe()
             log.info(f"[run_work]: play session={session} done")
     finally:
         await sub_play.unsubscribe()
