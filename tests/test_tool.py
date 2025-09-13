@@ -2,7 +2,9 @@ import subprocess
 import sys
 
 
-def test_tool(docker_compose, tmp_path):
+def test_tool(docker_compose, monkeypatch, tmp_path):
+    monkeypatch.setenv("PYTHONPATH", "src")
+
     base = f"http://{docker_compose['motion']}:8080"
 
     file = tmp_path.joinpath("scene.usd")
@@ -12,7 +14,7 @@ def test_tool(docker_compose, tmp_path):
         [
             sys.executable,
             "-m",
-            "src.motion.tool",
+            "motion.tool",
             str(file),
             "--runtime",
             "echo",

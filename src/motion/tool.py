@@ -3,7 +3,7 @@ import asyncio
 import logging
 import pathlib
 
-from .client import client as motion_client
+import motion
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ async def main():
     parser.add_argument("--runtime", default="isaac")
     args = parser.parse_args()
 
-    client = motion_client(args.base)
+    client = motion.client(args.base)
 
     log.info(f"[Scene] Creating from {args.file} (runtime={args.runtime!r}) …")
     scene = client.scene.create(pathlib.Path(args.file), args.runtime)
@@ -38,6 +38,10 @@ async def main():
         log.info(f"[Session {session.uuid}] Stopping …")
         await session.stop()
         log.info(f"[Session {session.uuid}] Stopped")
+
+        client.session.delete(session)
+
+    client.scene.delete(scene)
 
     log.info("[Tool] Done")
 
