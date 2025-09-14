@@ -8,7 +8,7 @@ import pytest
     "mode, timeout, iteration, runner",
     [
         pytest.param("read", 150.0, 1, "echo", id="read"),
-        pytest.param("incr", 300.0, 15, "echo", id="indr"),
+        pytest.param("tick", 300.0, 15, "echo", id="tick"),
     ],
 )
 def test_tool(docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, runner):
@@ -24,19 +24,27 @@ def test_tool(docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, r
             sys.executable,
             "-m",
             "motion.tool",
-            "--mode",
             str(mode),
+            "--file",
+            str(file),
+            "--base",
+            str(base),
         ]
         + ([] if timeout is None else ["--timeout", str(timeout)])
         + [
             "--iteration",
             str(iteration),
-            "--base",
-            str(base),
             "--runner",
             str(runner),
-            str(file),
         ]
+        + (
+            []
+            if mode == "read"
+            else [
+                "--model",
+                'import sys,json;[sys.stdout.write(json.dumps(dict(json.loads(l),seq=i))+"\n") for i,l in enumerate(sys.stdin) if l.strip()]',
+            ]
+        )
     )
     proc = subprocess.run(
         node,
