@@ -34,7 +34,7 @@ class BaseClient:
 
 
 class SceneClient(BaseClient):
-    def create(self, file: str | pathlib.Path, runtime: str) -> Scene:
+    def create(self, file: str | pathlib.Path, runner: str) -> Scene:
         file = pathlib.Path(file)
         if not file.is_file():
             raise FileNotFoundError(f"Input file not found: {file}")
@@ -45,7 +45,7 @@ class SceneClient(BaseClient):
             meta = directory.joinpath("meta.json")
 
             with meta.open("w", encoding="utf-8") as mf:
-                json.dump({"runtime": runtime}, mf, ensure_ascii=False)
+                json.dump({"runner": runner}, mf, ensure_ascii=False)
 
             with zipfile.ZipFile(zipf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
                 zf.write(file, arcname="scene.usd")

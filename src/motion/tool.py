@@ -16,13 +16,13 @@ async def main():
     parser.add_argument("--mode", choices=("incr", "read"), default="incr")
     parser.add_argument("--timeout", type=float, default=None)
     parser.add_argument("--iteration", type=int, default=15)
-    parser.add_argument("--runtime", default="isaac")
+    parser.add_argument("--runner", default="isaac")
     args = parser.parse_args()
 
     client = motion.client(args.base)
 
-    log.info(f"[Scene] Creating from {args.file} (runtime={args.runtime!r}) …")
-    scene = client.scene.create(pathlib.Path(args.file), args.runtime)
+    log.info(f"[Scene] Creating from {args.file} (runner={args.runner!r}) …")
+    scene = client.scene.create(pathlib.Path(args.file), args.runner)
     log.info(f"[Scene {scene.uuid}] Created")
 
     log.info("[Session] Creating...")

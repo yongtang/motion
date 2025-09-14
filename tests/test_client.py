@@ -15,15 +15,15 @@ def test_client_scene(docker_compose):
     base = f"http://{docker_compose['motion']}:8080"
     client = motion.client(base=base, timeout=5.0)
 
-    # create from USD + runtime (client zips internally and uploads)
+    # create from USD + runner (client zips internally and uploads)
     with tempfile.TemporaryDirectory() as tdir:
         tdir = pathlib.Path(tdir)
         usd_path = tdir / "scene.usd"
         usd_contents = "#usda 1.0\ndef X {\n}\n"
         usd_path.write_text(usd_contents, encoding="utf-8")
 
-        runtime = "echo"
-        scene = client.scene.create(usd_path, runtime)
+        runner = "echo"
+        scene = client.scene.create(usd_path, runner)
     assert scene
 
     # search should find the scene
@@ -65,7 +65,7 @@ def test_client_session(scene_on_server):
     async def f_wait_for_play_ready(ws_url: str, timeout: float = 300.0):
         """
         After POST /play, connect to the session WS and wait until we see the initial
-        readiness message from the runtime, typically {"op":"none"}.
+        readiness message from the runner, typically {"op":"none"}.
         Returns early once ready; retries/reconnects until `timeout`.
         """
         loop = asyncio.get_running_loop()

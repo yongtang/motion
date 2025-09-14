@@ -5,13 +5,13 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    "mode, timeout, iteration, runtime",
+    "mode, timeout, iteration, runner",
     [
         pytest.param("read", 150.0, 1, "echo", id="read"),
         pytest.param("incr", 300.0, 15, "echo", id="indr"),
     ],
 )
-def test_tool(docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, runtime):
+def test_tool(docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, runner):
     monkeypatch.setenv("PYTHONPATH", "src")
 
     base = f"http://{docker_compose['motion']}:8080"
@@ -33,8 +33,8 @@ def test_tool(docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, r
             str(iteration),
             "--base",
             str(base),
-            "--runtime",
-            str(runtime),
+            "--runner",
+            str(runner),
             str(file),
         ]
     )

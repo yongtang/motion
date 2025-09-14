@@ -24,7 +24,7 @@ def test_server_scene(docker_compose):
     with zipfile.ZipFile(buf, "w") as z:
         usd_contents = "#usda 1.0\ndef X {\n}\n"
         z.writestr("scene.usd", usd_contents)
-        z.writestr("meta.json", json.dumps({"runtime": "echo"}))
+        z.writestr("meta.json", json.dumps({"runner": "echo"}))
     buf.seek(0)
     files = {"file": ("scene.zip", buf, "application/zip")}
     r = httpx.post(f"{base}/scene", files=files, timeout=5.0)
@@ -52,7 +52,7 @@ def test_server_scene(docker_compose):
 
         with z.open("meta.json") as f:
             meta = json.loads(f.read().decode("utf-8"))
-            assert meta.get("runtime") in ("isaac", "echo")  # accept either
+            assert meta.get("runner") in ("isaac", "echo")  # accept either
 
         with z.open("scene.usd") as f:
             assert f.read().decode("utf-8") == usd_contents
@@ -176,7 +176,7 @@ def test_server_session(scene_on_server):
     async def f_wait_for_play_ready(ws_url: str, timeout: float = 300.0):
         """
         After POST /play, connect to the session WS and wait until we see the initial
-        readiness message from the runtime, typically {"op":"none"}.
+        readiness message from the runner, typically {"op":"none"}.
         Retries/reconnects until `timeout`.
         """
         loop = asyncio.get_running_loop()
@@ -221,7 +221,7 @@ def test_server_session(scene_on_server):
     ws_url_stream = f"ws://{base.split('://',1)[1]}/session/{session}/stream"  # live
     ws_url_stream_begin = f"{ws_url_stream}?start=1"  # from beginning
 
-    # Wait until the runtime signals it's ready ({"op":"none"}) from the beginning
+    # Wait until the runner signals it's ready ({"op":"none"}) from the beginning
     asyncio.run(f_wait_for_play_ready(ws_url_stream_begin, timeout=300.0))
 
     # Stream steps during the entire play window

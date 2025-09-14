@@ -38,8 +38,8 @@ async def node_play(channel: Channel, session: str):
 
     with open("/storage/node/scene/meta.json", "r") as f:
         meta = json.loads(f.read())
-    runtime = meta["runtime"]
-    log.info(f"[node_play] runtime={runtime}")
+    runner = meta["runner"]
+    log.info(f"[node_play] runner={runner}")
 
     scope = os.environ.get("SCOPE")
     project = f"{scope}-motion" if scope else "motion"
@@ -52,7 +52,7 @@ async def node_play(channel: Channel, session: str):
         "-f",
         f"/app/docker/docker-compose.yml",
         "-f",
-        f"/app/docker/docker-compose-{runtime}.yml",
+        f"/app/docker/docker-compose-{runner}.yml",
         "up",
         "--no-deps",
         "--force-recreate",

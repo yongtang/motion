@@ -19,7 +19,7 @@ async def test_session(session_on_server):
 
         async def wait_for_play_ready(sess: motion.Session, timeout: float = 300.0):
             """
-            Wait until the runtime signals readiness after play.
+            Wait until the runner signals readiness after play.
             IMPORTANT: subscribe from the beginning (start=1) so we don't miss the initial {"op":"none"}.
             Returns early once ready; retries until `timeout`.
             """
