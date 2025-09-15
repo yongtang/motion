@@ -34,7 +34,7 @@ async def main():
     asyncio.create_task(asyncio.to_thread(drain))
 
     # Start producing after the first line
-    for i in itertools.count():
+    for i in range(15):
         print(json.dumps({"seq": i}), flush=True)
         await asyncio.sleep(1.0)
 
@@ -67,11 +67,20 @@ async def f_producer(stream, proc, iteration, timeout):
 async def f_consumer(proc, stream):
     for i in itertools.count():
         line = await proc.stdout.readline()
-        log.info(f"[Consumer] Iteration {i}: {line.strip().decode()}")
         if not line:
             log.info(f"[Consumer] EOF")
             return
+        log.info(f"[Consumer] Iteration {i}: {line.rstrip().decode()}")
         await stream.step(json.loads(line))
+
+
+async def f_observer(proc):
+    while True:
+        line = await proc.stderr.readline()
+        if not line:
+            log.info(f"[Observer] EOF")
+            return
+        log.info(f"[Observer] {line.rstrip().decode()}")
 
 
 async def main():
@@ -134,6 +143,11 @@ async def main():
                 stderr=asyncio.subprocess.PIPE,
             )
             log.info(f"[Session {session.uuid}] Process model {model}")
+            observer = asyncio.create_task(
+                f_observer(
+                    proc,
+                )
+            )
             producer = asyncio.create_task(
                 f_producer(
                     stream,
@@ -154,13 +168,15 @@ async def main():
             proc.stdin.close()
             log.info(f"[Session {session.uuid}] Process close")
 
-            with contextlib.suppress(Exception):
-                await consumer
+            await consumer
             log.info(f"[Session {session.uuid}] Consumer done")
+
+            await observer
+            log.info(f"[Session {session.uuid}] Observer done")
 
             with contextlib.suppress(Exception):
                 try:
-                    await asyncio.wait_for(proc.wait(), timeout=1.0)
+                    await asyncio.wait_for(proc.wait(), timeout=2.0)
                 except asyncio.TimeoutError:
                     proc.kill()
                     await proc.wait()
