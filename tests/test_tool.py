@@ -8,7 +8,7 @@ import pytest
     "mode, timeout, iteration, runner",
     [
         pytest.param("read", 150.0, 1, "echo", id="read"),
-        pytest.param("read", 150.0, 15, "echo", id="sink"),
+        pytest.param("sink", 150.0, 15, "echo", id="sink"),
         pytest.param("tick", 300.0, 15, "echo", id="tick"),
     ],
 )
@@ -39,12 +39,12 @@ def test_tool(docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, r
             str(runner),
         ]
         + (
-            []
-            if mode == "read"
-            else [
+            [
                 "--model",
-                r'import sys,json;[print(json.dumps({"seq":i,**json.loads(l)}), flush=True) for i,l in enumerate(sys.stdin) if l.strip()]',
+                r'import sys,json;[print(json.dumps({**json.loads(l),"seq":i}),flush=True) for i,l in enumerate(sys.stdin) if l.strip()]',
             ]
+            if mode == "tick"
+            else []
         )
     )
     proc = subprocess.run(

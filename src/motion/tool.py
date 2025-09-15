@@ -31,8 +31,7 @@ async def main():
     asyncio.create_task(asyncio.to_thread(drain))
 
     for i in itertools.count():
-        sys.stdout.write(json.dumps({"seq": i}) + "\\n")
-        sys.stdout.flush()
+        print(json.dumps({"seq": i}), flush=True)
         await asyncio.sleep(1.0)
 
 
@@ -64,7 +63,7 @@ async def f_producer(stream, proc, iteration, timeout):
 async def f_consumer(proc, stream):
     for i in itertools.count():
         line = await proc.stdout.readline()
-        log.info(f"[Consumer] Iteration {i}: {line}")
+        log.info(f"[Consumer] Iteration {i}: {line.strip().decode()}")
         if not line:
             log.info(f"[Consumer] EOF")
             return
@@ -131,40 +130,37 @@ async def main():
                 stderr=asyncio.subprocess.PIPE,
             )
             log.info(f"[Session {session.uuid}] Process model {model}")
-            try:
-                producer = asyncio.create_task(
-                    f_producer(
-                        stream,
-                        proc,
-                        args.iteration,
-                        args.timeout,
-                    )
+            producer = asyncio.create_task(
+                f_producer(
+                    stream,
+                    proc,
+                    args.iteration,
+                    args.timeout,
                 )
-                consumer = asyncio.create_task(
-                    f_consumer(
-                        proc,
-                        stream,
-                    )
+            )
+            consumer = asyncio.create_task(
+                f_consumer(
+                    proc,
+                    stream,
                 )
-                await producer
-                log.info(f"[Session {session.uuid}] Producer done")
+            )
+            await producer
+            log.info(f"[Session {session.uuid}] Producer done")
 
-                proc.stdin.close()
-                log.info(f"[Session {session.uuid}] Process close")
+            proc.stdin.close()
+            log.info(f"[Session {session.uuid}] Process close")
 
+            with contextlib.suppress(Exception):
                 await consumer
-                log.info(f"[Session {session.uuid}] Consumer done")
+            log.info(f"[Session {session.uuid}] Consumer done")
 
-            finally:
-                log.info(f"[Session {session.uuid}] Process done")
-                with contextlib.suppress(Exception):
-                    if proc.stdin and not proc.stdin.is_closing():
-                        proc.stdin.close()
-                    try:
-                        await asyncio.wait_for(proc.wait(), timeout=1.0)
-                    except asyncio.TimeoutError:
-                        proc.kill()
-                        await proc.wait()
+            with contextlib.suppress(Exception):
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+            log.info(f"[Session {session.uuid}] Process done")
 
         log.info(f"[Session {session.uuid}] Stopping …")
         await session.stop()
