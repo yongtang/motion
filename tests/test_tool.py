@@ -8,6 +8,7 @@ import pytest
     "mode, timeout, iteration, runner",
     [
         pytest.param("read", 150.0, 1, "echo", id="read"),
+        pytest.param("read", 150.0, 15, "echo", id="sink"),
         pytest.param("tick", 300.0, 15, "echo", id="tick"),
     ],
 )

@@ -13,8 +13,30 @@ log = logging.getLogger(__name__)
 
 model_read = """
 import sys
+
 for _ in sys.stdin:
     pass
+"""
+
+model_sink = r"""
+import sys, json, asyncio, itertools
+
+
+async def main():
+    def drain():
+        for _ in sys.stdin:
+            pass  # consume forever
+
+    # run the blocking drain in a thread forever
+    asyncio.create_task(asyncio.to_thread(_drain))
+
+    for i in itertools.count():
+        sys.stdout.write(json.dumps({"seq": i}) + "\\n")
+        sys.stdout.flush()
+        await asyncio.sleep(1.0)
+
+
+asyncio.run(main())
 """
 
 
@@ -50,6 +72,8 @@ async def main():
 
     read_parser = mode.add_parser("read", parents=[mode_parser], help="read data only")
 
+    snik_parser = mode.add_parser("sink", parents=[mode_parser], help="sink step only")
+
     # example: 'import sys,json;[sys.stdout.write(json.dumps(dict(json.loads(l),seq=i))+"\n") for i,l in enumerate(sys.stdin) if l.strip()]'
     tick_parser = mode.add_parser(
         "tick", parents=[mode_parser], help="read data and transform to step"
@@ -75,8 +99,15 @@ async def main():
         log.info(f"[Session {session.uuid}] Playing (stream-driven)")
 
         async with session.stream(start=-1) as stream:
-
-            model = model_read if args.mode == "read" else args.model
+            match args.mode:
+                case "tick":
+                    model = args.model
+                case "read":
+                    model = model_read
+                case "sink":
+                    model = model_sink
+                case _:
+                    raise ValueError(f"Unknown mode {args.mode!r}")
             proc = await asyncio.create_subprocess_exec(
                 "python3",
                 "-u",
