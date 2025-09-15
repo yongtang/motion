@@ -23,13 +23,17 @@ import sys, json, asyncio, itertools
 
 
 async def main():
-    def drain():
-        for _ in sys.stdin:
-            pass  # consume forever
+    # Block until one line is read
+    sys.stdin.readline()
 
-    # run the blocking drain in a thread forever
+    # Background task to consume and discard the rest forever
+    async def drain():
+        for _ in sys.stdin:
+            pass
+
     asyncio.create_task(asyncio.to_thread(drain))
 
+    # Start producing after the first line
     for i in itertools.count():
         print(json.dumps({"seq": i}), flush=True)
         await asyncio.sleep(1.0)
