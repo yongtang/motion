@@ -28,7 +28,7 @@ async def main():
             pass  # consume forever
 
     # run the blocking drain in a thread forever
-    asyncio.create_task(asyncio.to_thread(_drain))
+    asyncio.create_task(asyncio.to_thread(drain))
 
     for i in itertools.count():
         sys.stdout.write(json.dumps({"seq": i}) + "\\n")
@@ -41,17 +41,30 @@ asyncio.run(main())
 
 
 async def f_producer(stream, proc, iteration, timeout):
+    loop = asyncio.get_running_loop()
+    deadline = None if timeout is None else loop.time() + timeout
+
     for i in range(iteration):
-        log.info(f"[Producer] Iteration {i}")
-        data = await stream.data(timeout=timeout)
+
+        # compute remaining total budget
+        if deadline is not None:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                log.info("[Producer] Total timeout reached; stopping producer")
+                break
+        else:
+            remaining = None  # unlimited
+
+        data = await stream.data(timeout=remaining)
+        log.info(f"[Producer] Iteration {i}: {json.dumps(data)}")
         proc.stdin.write((json.dumps(data) + "\n").encode())
         await proc.stdin.drain()
 
 
 async def f_consumer(proc, stream):
     for i in itertools.count():
-        log.info(f"[Consumer] Iteration {i}")
         line = await proc.stdout.readline()
+        log.info(f"[Consumer] Iteration {i}: {line}")
         if not line:
             log.info(f"[Consumer] EOF")
             return
