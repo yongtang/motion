@@ -15,6 +15,27 @@ class CameraSpec(pydantic.BaseModel):
     height: pydantic.PositiveInt
 
 
+class Vector3Spec(pydantic.BaseModel):
+    x: float
+    y: float
+    z: float
+
+
+class TwistSpec(pydantic.BaseModel):
+    linear: Vector3Spec
+    angular: Vector3Spec
+
+
+class SessionStepModel(pydantic.BaseModel):
+    twist: dict[str, TwistSpec] | None = None
+    joint: dict[str, float] | None = None
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if (self.twist is None) == (self.joint is None):
+            raise ValueError("Must define exactly one of 'twist' or 'joint'")
+
+
 class SessionSpecModel(pydantic.BaseModel):
     scene: pydantic.UUID4
     joint: list[str] = pydantic.Field(default_factory=lambda: ["*"])

@@ -42,7 +42,7 @@ def test_tool(docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, r
             if mode == "read"
             else [
                 "--model",
-                'import sys,json;[sys.stdout.write(json.dumps(dict(json.loads(l),seq=i))+"\n") for i,l in enumerate(sys.stdin) if l.strip()]',
+                r'import sys,json;[print(json.dumps({"seq":i,**json.loads(l)}), flush=True) for i,l in enumerate(sys.stdin) if l.strip()]',
             ]
         )
     )
