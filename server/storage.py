@@ -25,6 +25,25 @@ storage = boto3.client(
 )
 
 
+def storage_kv_head(bucket: str, key: str) -> dict | None:
+    try:
+        resp = storage.head_object(Bucket=bucket, Key=key)
+        log.info(
+            f"[KV {bucket}/{key}] Head success "
+            f"(size={resp.get('ContentLength')}, etag={resp.get('ETag')})"
+        )
+        return resp
+    except ClientError as e:
+        code = str(((e.response or {}).get("Error") or {}).get("Code", ""))
+        match code:
+            case "NoSuchKey" | "NoSuchBucket" | "NotFound" | "404":
+                log.debug(f"[KV {bucket}/{key}] Head not found")
+                return None
+            case _:
+                log.error(f"[KV {bucket}/{key}] Head failed: {code}")
+                raise
+
+
 def storage_kv_set(bucket: str, key: str, data: bytes) -> str | None:
     try:
         storage.create_bucket(Bucket=bucket)

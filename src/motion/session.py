@@ -1,5 +1,7 @@
 import asyncio
 import contextlib
+import datetime
+import enum
 import json
 
 import httpx
@@ -8,6 +10,18 @@ import websockets
 
 from .motionclass import motionclass
 from .scene import Scene
+
+
+class SessionStatusSpec(str, enum.Enum):
+    pending = "pending"
+    play = "play"
+    stop = "stop"
+
+
+class SessionStatusModel(pydantic.BaseModel):
+    uuid: pydantic.UUID4
+    state: SessionStatusSpec
+    update: datetime.datetime
 
 
 class CameraSpec(pydantic.BaseModel):
