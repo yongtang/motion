@@ -11,6 +11,12 @@ import motion
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
+model_read = """
+import sys
+for _ in sys.stdin:
+    pass
+"""
+
 
 async def f_producer(stream, proc, iteration, timeout):
     for i in range(iteration):
@@ -70,11 +76,7 @@ async def main():
 
         async with session.stream(start=-1) as stream:
 
-            model = (
-                args.model
-                if args.mode == "tick"
-                else "import sys\nfor _ in sys.stdin:\n    pass\n"
-            )
+            model = model_read if args.mode == "read" else args.model
             proc = await asyncio.create_subprocess_exec(
                 "python3",
                 "-u",
