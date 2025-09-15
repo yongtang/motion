@@ -84,38 +84,49 @@ def test_server_session(scene_on_server):
 
     # ---- helpers ----
 
-    def f_archive_lines_if_ready(session: str):
+    def f_wait_status(
+        session: str, want: str, timeout_s: float = 60.0, interval_s: float = 0.25
+    ):
+        """
+        Poll /session/{id}/status until state==want or timeout.
+        want must be 'play' or 'stop'.
+        Raises AssertionError on timeout or impossible transition (waiting for play after stop).
+        """
+        assert want in ("play", "stop")
+        deadline = time.monotonic() + timeout_s
+        last = None
+        while time.monotonic() < deadline:
+            r = httpx.get(f"{base}/session/{session}/status", timeout=5.0)
+            assert r.status_code == 200, r.text
+            state = r.json()["state"]
+            last = state
+            if want == "play":
+                if state == "stop":
+                    raise AssertionError(
+                        "cannot wait for play: session already stopped"
+                    )
+                if state == "play":
+                    return
+            else:
+                if state == "stop":
+                    return
+            time.sleep(interval_s)
+        raise AssertionError(f"Timed out waiting for state={want}. last_state={last}")
+
+    def f_archive_lines(session: str):
         r = httpx.get(f"{base}/session/{session}/archive", timeout=10.0)
-        if r.status_code != 200:
-            return None
+        assert r.status_code == 200, r.text
         with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-            if "data.json" not in set(z.namelist()):
-                return None
+            names = set(z.namelist())
+            assert "session.json" in names, "archive missing session.json"
+            assert "data.json" in names, "archive missing data.json"
             with z.open("data.json") as f:
                 content = f.read().decode("utf-8", errors="ignore")
                 lines = [ln for ln in content.splitlines() if ln.strip()]
-                if not lines:
-                    return None
+                assert lines, "data.json empty"
                 for ln in lines:
-                    json.loads(ln)  # validate JSON
+                    json.loads(ln)  # validate each line is JSON
                 return lines
-
-    def f_wait_for_data_json(
-        session: str, timeout_s: float = 60.0, interval_s: float = 1.0
-    ):
-        deadline = time.monotonic() + timeout_s
-        last_err = None
-        while time.monotonic() < deadline:
-            try:
-                lines = f_archive_lines_if_ready(session)
-                if lines:
-                    return lines
-            except Exception as e:
-                last_err = e
-            time.sleep(interval_s)
-        raise AssertionError(
-            f"Timed out waiting for data.json for session={session}. Last error={last_err!r}"
-        )
 
     async def f_stream_steps_entire_run(
         ws_url: str,
@@ -173,37 +184,6 @@ def test_server_session(scene_on_server):
                 await asyncio.sleep(remaining)
         return results
 
-    async def f_wait_for_play_ready(ws_url: str, timeout: float = 300.0):
-        """
-        After POST /play, connect to the session WS and wait until we see the initial
-        readiness message from the runner, typically {"op":"none"}.
-        Retries/reconnects until `timeout`.
-        """
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + timeout
-        last_err = None
-        while loop.time() < deadline:
-            try:
-                async with websockets.connect(ws_url, ping_interval=None) as ws:
-                    while loop.time() < deadline:
-                        try:
-                            msg = await asyncio.wait_for(ws.recv(), timeout=1.5)
-                        except asyncio.TimeoutError:
-                            continue
-                        try:
-                            data = json.loads(msg)
-                        except Exception:
-                            # Non-JSON or noise; ignore and continue waiting.
-                            continue
-                        if data.get("op") == "none" or data:
-                            return True
-            except Exception as e:
-                last_err = e
-                await asyncio.sleep(0.5)
-        raise AssertionError(
-            f"Timed out waiting for play readiness via WS. Last error={last_err!r}"
-        )
-
     # 1) ARCHIVE before session exists -> 404
     bogus_session = str(uuid.uuid4())
     r = httpx.get(f"{base}/session/{bogus_session}/archive", timeout=5.0)
@@ -217,28 +197,24 @@ def test_server_session(scene_on_server):
     r = httpx.post(f"{base}/session/{session}/play", timeout=5.0)
     assert r.status_code == 200
 
-    # Build WS URLs:
-    ws_url_stream = f"ws://{base.split('://',1)[1]}/session/{session}/stream"  # live
-    ws_url_stream_begin = f"{ws_url_stream}?start=1"  # from beginning
+    # Wait for play via status API (no WS needed just to check readiness)
+    f_wait_status(session, want="play", timeout_s=300.0, interval_s=0.25)
 
-    # Wait until the runner signals it's ready ({"op":"none"}) from the beginning
-    asyncio.run(f_wait_for_play_ready(ws_url_stream_begin, timeout=300.0))
-
-    # Stream steps during the entire play window
+    # While playing, drive steps over WS
+    ws_url_stream = f"ws://{base.split('://',1)[1]}/session/{session}/stream"
     RUN_WINDOW = 15.0
     asyncio.run(
         f_stream_steps_entire_run(ws_url_stream, duration=RUN_WINDOW, period=0.2)
     )
 
-    # Stop and allow archiver to flush (active archive wait)
+    # Stop
     r = httpx.post(f"{base}/session/{session}/stop", timeout=5.0)
     assert r.status_code == 200
-    lines = f_wait_for_data_json(session, timeout_s=60.0, interval_s=1.0)
-    assert lines
 
-    # archive must contain valid JSONL (validate the lines we just waited for)
-    for ln in lines:
-        json.loads(ln)
+    # Wait until stopped via status API, then fetch archive and validate data.json
+    f_wait_status(session, want="stop", timeout_s=60.0, interval_s=0.5)
+    lines = f_archive_lines(session)
+    assert lines
 
     # After stop: NEW subscription should see nothing within the flush window (30s)
     ws_url_stream_new_after = f"ws://{base.split('://',1)[1]}/session/{session}/stream"
@@ -265,24 +241,22 @@ def test_server_session(scene_on_server):
     r = httpx.post(f"{base}/session/{session2}/play", timeout=5.0)
     assert r.status_code == 200
 
-    # Build WS URLs for session2
-    ws_url2_stream = f"ws://{base.split('://',1)[1]}/session/{session2}/stream"  # live
-    ws_url2_stream_begin = f"{ws_url2_stream}?start=1"  # from beginning
+    # Wait for play via status API
+    f_wait_status(session2, want="play", timeout_s=300.0, interval_s=0.25)
 
-    # Wait for play readiness for the second session as well (from the beginning)
-    asyncio.run(f_wait_for_play_ready(ws_url2_stream_begin, timeout=300.0))
-
-    # Stream steps during the entire play window
+    # Drive steps
+    ws_url2_stream = f"ws://{base.split('://',1)[1]}/session/{session2}/stream"
     asyncio.run(
         f_stream_steps_entire_run(ws_url2_stream, duration=RUN_WINDOW, period=0.2)
     )
 
-    # For consistency we still issue an explicit stop (even if node would finish naturally)
+    # For consistency issue explicit stop (even if node might finish naturally)
     r = httpx.post(f"{base}/session/{session2}/stop", timeout=5.0)
     assert r.status_code == 200
 
-    # Wait for archive population instead of fixed sleep
-    _ = f_wait_for_data_json(session2, timeout_s=60.0, interval_s=1.0)
+    # Wait for stop, then fetch archive and validate
+    f_wait_status(session2, want="stop", timeout_s=60.0, interval_s=0.5)
+    _ = f_archive_lines(session2)
 
     r = httpx.delete(f"{base}/session/{session2}", timeout=5.0)
     assert r.status_code == 200

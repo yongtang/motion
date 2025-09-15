@@ -19,7 +19,8 @@ def motionclass(cls):
 
     async def _request_(self, method: str, path: str, **kwargs) -> httpx.Response:
         url = f"{self._base_}/{path.lstrip('/')}"
-        r = await self._client_.request(method, url, timeout=self._timeout_, **kwargs)
+        timeout = kwargs.pop("timeout", self._timeout_)
+        r = await self._client_.request(method, url, timeout=timeout, **kwargs)
         r.raise_for_status()
         return r
 

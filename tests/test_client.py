@@ -1,12 +1,12 @@
-import asyncio
+import io
 import json
 import pathlib
 import tempfile
 import time
 import uuid
+import zipfile
 
 import httpx
-import websockets
 
 import motion
 
@@ -30,6 +30,7 @@ def test_client_scene(docker_compose):
     assert client.scene.search(str(scene.uuid)) == [scene]
 
     # direct REST check for minimal metadata
+    base = f"http://{docker_compose['motion']}:8080"
     r = httpx.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
     assert r.status_code == 200
     assert r.json() == {"uuid": str(scene.uuid)}
@@ -60,88 +61,75 @@ def test_client_session(scene_on_server):
     client = motion.client(base=base, timeout=5.0)
     scene_obj = motion.Scene(base, scene, timeout=5.0)
 
-    # ---- helpers ----
+    # --- helpers using /status and archive (no websockets) ---
 
-    async def f_wait_for_play_ready(ws_url: str, timeout: float = 300.0):
-        """
-        After POST /play, connect to the session WS and wait until we see the initial
-        readiness message from the runner, typically {"op":"none"}.
-        Returns early once ready; retries/reconnects until `timeout`.
-        """
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + timeout
-        last_err = None
-        while loop.time() < deadline:
-            try:
-                async with websockets.connect(ws_url, ping_interval=None) as ws:
-                    while loop.time() < deadline:
-                        try:
-                            msg = await asyncio.wait_for(ws.recv(), timeout=1.5)
-                        except asyncio.TimeoutError:
-                            continue
-                        try:
-                            data = json.loads(msg)
-                        except Exception:
-                            # Non-JSON or noise; ignore and continue waiting.
-                            continue
-                        if data.get("op") == "none" or data:
-                            return True
-            except Exception as e:
-                last_err = e
-                await asyncio.sleep(0.5)
-        raise AssertionError(
-            f"Timed out waiting for play readiness via WS. Last error={last_err!r}"
-        )
-
-    def f_wait_client_archive_nonempty(
-        session_obj, out_path, timeout_s: float = 60.0, interval_s: float = 1.0
+    def f_wait_status(
+        session_id: str, want: str, timeout_s: float = 60.0, interval_s: float = 0.25
     ):
         """
-        Poll client.session.archive until the written file exists and is non-empty.
-        Returns the path once ready.
+        Poll /session/{id}/status until state==want or timeout.
+        want must be 'play' or 'stop'.
+        Raises AssertionError on timeout or impossible transition (waiting for play after stop).
         """
+        assert want in ("play", "stop")
         deadline = time.monotonic() + timeout_s
-        last_err = None
-        out_path = pathlib.Path(out_path)
+        last = None
         while time.monotonic() < deadline:
-            try:
-                if out_path.exists():
-                    try:
-                        out_path.unlink()
-                    except Exception:
-                        pass
-                client.session.archive(session_obj, out_path)
-                if out_path.exists() and out_path.stat().st_size > 0:
-                    return out_path
-            except Exception as e:
-                last_err = e
+            r = httpx.get(f"{base}/session/{session_id}/status", timeout=5.0)
+            assert r.status_code == 200, r.text
+            state = r.json()["state"]
+            last = state
+            if want == "play":
+                if state == "stop":
+                    raise AssertionError(
+                        "cannot wait for play: session already stopped"
+                    )
+                if state == "play":
+                    return
+            else:  # want == "stop"
+                if state == "stop":
+                    return
             time.sleep(interval_s)
-        raise AssertionError(
-            f"Timed out waiting for non-empty archive for session={session_obj.uuid}. Last error={last_err!r}"
-        )
+        raise AssertionError(f"Timed out waiting for state={want}. last_state={last}")
 
-    # explicit stop flow with active readiness + archive waits
+    def f_archive_contains_data_json(session_obj) -> list[str]:
+        """Download archive once and return non-empty JSONL lines from data.json."""
+        with tempfile.TemporaryDirectory() as tdir:
+            out = pathlib.Path(tdir) / f"{session_obj.uuid}.zip"
+            client.session.archive(session_obj, out)
+            assert out.exists() and out.stat().st_size > 0
+
+            with zipfile.ZipFile(out, "r") as z:
+                names = set(z.namelist())
+                assert "session.json" in names, "archive missing session.json"
+                assert "data.json" in names, "archive missing data.json"
+                with z.open("data.json") as f:
+                    content = f.read().decode("utf-8", errors="ignore")
+                    lines = [ln for ln in content.splitlines() if ln.strip()]
+                    assert lines, "data.json empty"
+                    for ln in lines:
+                        json.loads(ln)
+                    return lines
+
+    # explicit stop flow with status-based readiness + stop waits
     session = client.session.create(scene_obj)
     assert isinstance(session, motion.Session)
 
-    # play -> wait until WS readiness ({"op":"none"}) -> stop
+    # play
     r = httpx.post(f"{base}/session/{session.uuid}/play", timeout=5.0)
     assert r.status_code == 200
 
-    # Use start=1 so we don't miss the initial readiness event
-    ws_url_stream_begin = (
-        f"ws://{base.split('://',1)[1]}/session/{session.uuid}/stream?start=1"
-    )
-    asyncio.run(f_wait_for_play_ready(ws_url_stream_begin, timeout=300.0))
+    # wait for play using /status
+    f_wait_status(str(session.uuid), want="play", timeout_s=300.0, interval_s=0.25)
 
+    # stop
     r = httpx.post(f"{base}/session/{session.uuid}/stop", timeout=5.0)
     assert r.status_code == 200
 
-    # archive via client API, but wait actively until non-empty
-    with tempfile.TemporaryDirectory() as tdir:
-        out = pathlib.Path(tdir) / f"{session.uuid}.zip"
-        f_wait_client_archive_nonempty(session, out, timeout_s=60.0, interval_s=1.0)
-        assert out.exists() and out.stat().st_size > 0
+    # wait for stop using /status, then download archive once and validate data.json
+    f_wait_status(str(session.uuid), want="stop", timeout_s=60.0, interval_s=0.5)
+    lines = f_archive_contains_data_json(session)
+    assert lines
 
     # cleanup
     assert client.session.delete(session) is None

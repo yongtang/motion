@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import motion
 
 from .channel import Channel
-from .storage import storage_kv_del, storage_kv_get, storage_kv_set
+from .storage import storage_kv_del, storage_kv_get, storage_kv_head, storage_kv_set
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -230,10 +230,12 @@ async def session_delete(session: pydantic.UUID4) -> motion.session.SessionBaseM
     return session
 
 
-@app.get("/session/{session:uuid}/status", response_model=motion.session.SessionStatusModel)
+@app.get(
+    "/session/{session:uuid}/status", response_model=motion.session.SessionStatusModel
+)
 async def session_status(
     session: pydantic.UUID4, response: Response
-) -> SessionStatusModel:
+) -> motion.session.SessionStatusModel:
     response.headers["Cache-Control"] = "no-store"
 
     # 1) session must exist

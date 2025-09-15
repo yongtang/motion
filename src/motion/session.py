@@ -3,6 +3,7 @@ import contextlib
 import datetime
 import enum
 import json
+import random
 
 import httpx
 import pydantic
@@ -203,3 +204,63 @@ class Session(SessionBaseModel):
     async def stop(self):
         r = await self._request_("POST", f"session/{self.uuid}/stop")
         return r.json()
+
+    async def wait(self, status: str, timeout: float) -> None:
+        """
+        Block until the session reaches the requested status.
+        Valid targets: "play" or "stop".
+
+        Returns:
+          None on success.
+        Raises:
+          ValueError for invalid status values
+          RuntimeError if waiting for "play" but the session is already stopped
+          asyncio.TimeoutError on timeout
+        """
+        status = (status or "").strip().lower()
+        if status not in ("play", "stop"):
+            raise ValueError("wait(status, ...) supports only 'play' or 'stop'")
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + float(timeout)
+
+        # fast path
+        r = await self._request_("GET", f"session/{self.uuid}/status")
+        state = SessionStatusModel.parse_obj(r.json())
+        if status == "play":
+            if state.state is SessionStatusSpec.stop:
+                raise RuntimeError("cannot wait for play: session already stopped")
+            if state.state is SessionStatusSpec.play:
+                return None
+        else:  # status == "stop"
+            if state.state is SessionStatusSpec.stop:
+                return None
+
+        # poll with exponential backoff and jitter
+        delay = 0.1
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise asyncio.TimeoutError()
+
+            r = await self._request_(
+                "GET",
+                f"session/{self.uuid}/status",
+                timeout=min(self._timeout_, remaining),
+            )
+            state = SessionStatusModel.parse_obj(r.json())
+            if status == "play":
+                if state.state is SessionStatusSpec.stop:
+                    raise RuntimeError(
+                        "cannot wait for play: session stopped during wait"
+                    )
+                if state.state is SessionStatusSpec.play:
+                    return None
+            else:  # status == "stop"
+                if state.state is SessionStatusSpec.stop:
+                    return None
+
+            await asyncio.sleep(
+                min(delay * (0.75 + 0.5 * random.random()), 2.0, remaining)
+            )
+            delay = min(delay * 2.0, 2.0)

@@ -96,8 +96,7 @@ async def main():
     mode_parser.add_argument("--runner", default="isaac")
 
     read_parser = mode.add_parser("read", parents=[mode_parser], help="read data only")
-
-    snik_parser = mode.add_parser("sink", parents=[mode_parser], help="sink step only")
+    sink_parser = mode.add_parser("sink", parents=[mode_parser], help="sink step only")
 
     # example: 'import sys,json;[sys.stdout.write(json.dumps(dict(json.loads(l),seq=i))+"\n") for i,l in enumerate(sys.stdin) if l.strip()]'
     tick_parser = mode.add_parser(
@@ -106,14 +105,14 @@ async def main():
     tick_parser.add_argument(
         "--model",
         required=True,
-        help="""python one-liner with stdin json and stdout json""",
+        help="python one-liner with stdin json and stdout json",
     )
 
     args = parser.parse_args()
 
     client = motion.client(args.base)
 
-    log.info(f"[Scene] Creating from {args.file} (runner={args.runner!r}) …")
+    log.info(f"[Scene] Creating from {args.file} (runner={args.runner!r}) ...")
     scene = client.scene.create(pathlib.Path(args.file), args.runner)
     log.info(f"[Scene {scene.uuid}] Created")
 
@@ -121,7 +120,10 @@ async def main():
     async with client.session.create(scene) as session:
         log.info(f"[Session {session.uuid}] Starting playback...")
         await session.play()
-        log.info(f"[Session {session.uuid}] Playing (stream-driven)")
+
+        log.info(f"[Session {session.uuid}] Waiting for play ...")
+        await session.wait("play", timeout=300.0)
+        log.info(f"[Session {session.uuid}] Playing (status-confirmed)")
 
         async with session.stream(start=-1) as stream:
             match args.mode:
@@ -143,25 +145,12 @@ async def main():
                 stderr=asyncio.subprocess.PIPE,
             )
             log.info(f"[Session {session.uuid}] Process model {model}")
-            observer = asyncio.create_task(
-                f_observer(
-                    proc,
-                )
-            )
+            observer = asyncio.create_task(f_observer(proc))
             producer = asyncio.create_task(
-                f_producer(
-                    stream,
-                    proc,
-                    args.iteration,
-                    args.timeout,
-                )
+                f_producer(stream, proc, args.iteration, args.timeout)
             )
-            consumer = asyncio.create_task(
-                f_consumer(
-                    proc,
-                    stream,
-                )
-            )
+            consumer = asyncio.create_task(f_consumer(proc, stream))
+
             await producer
             log.info(f"[Session {session.uuid}] Producer done")
 
@@ -182,9 +171,12 @@ async def main():
                     await proc.wait()
             log.info(f"[Session {session.uuid}] Process done")
 
-        log.info(f"[Session {session.uuid}] Stopping …")
+        log.info(f"[Session {session.uuid}] Stopping ...")
         await session.stop()
-        log.info(f"[Session {session.uuid}] Stopped")
+
+        log.info(f"[Session {session.uuid}] Waiting for stop ...")
+        await session.wait("stop", timeout=60.0)
+        log.info(f"[Session {session.uuid}] Stopped (status-confirmed)")
 
         client.session.delete(session)
 
