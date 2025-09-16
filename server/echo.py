@@ -3,7 +3,6 @@ import json
 import logging
 
 from .channel import Channel
-from .node import run_http
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -46,12 +45,9 @@ async def run_node():
 
 async def main():
     try:
-        log.info("[main] [HTTP] Starting on :8899")
-        async with run_http(8899):
-            log.info("[main] [Node] Running")
-            await run_node()
-            log.info("[main] [Node] Stopped")
-        log.info("[main] [HTTP] Closed")
+        log.info("[main] [Node] Running")
+        await run_node()
+        log.info("[main] [Node] Stopped")
     except Exception as e:
         log.execption(f"[main] [Exception]")
 

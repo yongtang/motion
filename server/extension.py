@@ -1,6 +1,5 @@
 import asyncio
 import json
-import sys
 import traceback
 
 import omni.ext
@@ -8,10 +7,13 @@ import omni.kit
 import omni.usd
 
 from .channel import Channel
-from .node import run_http
 
 
 async def run_node():
+    await asyncio.Future()
+
+
+async def main():
     print("[motion.extension] Loading stage")
     with open("/storage/node/session.json", "r") as f:
         metadata = json.loads(f.read())
@@ -44,16 +46,10 @@ async def run_node():
     assert stage
 
     print("[motion.extension] Stage loaded")
-
-
-async def main():
     try:
-        print("[motion.extension] [HTTP] Starting on :8899")
-        async with run_http(8899):
-            print("[motion.extension] [Node] Running")
-            await run_node()
-            print("[motion.extension] [Node] Stopped")
-        print("[motion.extension] [HTTP] Closed")
+        print("[motion.extension] [Node] Running")
+        await run_node()
+        print("[motion.extension] [Node] Stopped")
     except Exception as e:
         print(f"[motion.extension] [Exception]: {e}")
         traceback.print_exec()
