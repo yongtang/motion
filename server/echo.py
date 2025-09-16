@@ -45,12 +45,15 @@ async def run_node():
 
 
 async def main():
-    log.info("[main] [HTTP] Starting on :8899")
-    async with run_http(8899):
-        log.info("[main] [Node] Running")
-        await run_node()
-        log.info("[main] [Node] Stopped")
-    log.info("[main] [HTTP] Closed")
+    try:
+        log.info("[main] [HTTP] Starting on :8899")
+        async with run_http(8899):
+            log.info("[main] [Node] Running")
+            await run_node()
+            log.info("[main] [Node] Stopped")
+        log.info("[main] [HTTP] Closed")
+    except Exception as e:
+        log.execption(f"[main] [Exception]")
 
 
 if __name__ == "__main__":

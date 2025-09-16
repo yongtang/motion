@@ -1,13 +1,17 @@
 import asyncio
 import json
 import sys
+import traceback
 
 import omni.ext
 import omni.kit
 import omni.usd
 
+from .channel import Channel
+from .node import run_http
 
-async def main():
+
+async def run_node():
     print("[motion.extension] Loading stage")
     with open("/storage/node/session.json", "r") as f:
         metadata = json.loads(f.read())
@@ -42,6 +46,19 @@ async def main():
     print("[motion.extension] Stage loaded")
 
 
+async def main():
+    try:
+        print("[motion.extension] [HTTP] Starting on :8899")
+        async with run_http(8899):
+            print("[motion.extension] [Node] Running")
+            await run_node()
+            print("[motion.extension] [Node] Stopped")
+        print("[motion.extension] [HTTP] Closed")
+    except Exception as e:
+        print(f"[motion.extension] [Exception]: {e}")
+        traceback.print_exec()
+
+
 class MotionExtension(omni.ext.IExt):
     def __init__(self):
         self.task = None
@@ -51,13 +68,6 @@ class MotionExtension(omni.ext.IExt):
         print(f"[motion.extension] Startup [{ext_id}]")
 
         self.task = asyncio.create_task(main())
-
-        def f_done(e: asyncio.Task):
-            if e.exception() is not None:
-                print(f"[motion.extension] Task failed: {e.exception()}")
-                sys.exit(1)
-
-        self.task.add_done_callback(f_done)
 
     def on_shutdown(self):
         print("[motion.extension] Shutdown")
