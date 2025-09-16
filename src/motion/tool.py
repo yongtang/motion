@@ -127,6 +127,7 @@ async def main():
     mode_parser.add_argument("--timeout", type=float, default=None)
     mode_parser.add_argument("--iteration", type=int, default=15)
     mode_parser.add_argument("--runner", default="isaac")
+    mode_parser.add_argument("--camera", nargs="+", metavar="camera:width:height")
 
     read_parser = mode.add_parser("read", parents=[mode_parser], help="read data only")
 
@@ -144,6 +145,15 @@ async def main():
 
     args = parser.parse_args()
 
+    def f_camera(camera):
+        entries = list(set(camera if camera else []))
+        entries = list(e.split(":", maxsplit=2) for e in entries)
+        entries = list(
+            (e[0], {"width": int(e[1]), "height": int(e[2])}) for e in entries
+        )
+        assert len([e for e, v in entries]) == len(entries), camera
+        return dict(entries)
+
     client = motion.client(args.base)
 
     log.info(f"[Scene] Creating from {args.file} (runner={args.runner!r}) ...")
@@ -151,7 +161,7 @@ async def main():
     log.info(f"[Scene {scene.uuid}] Created")
 
     log.info("[Session] Creating...")
-    async with client.session.create(scene) as session:
+    async with client.session.create(scene, camera=f_camera(args.camera)) as session:
         log.info(f"[Session {session.uuid}] Starting playback...")
         await session.play()
 

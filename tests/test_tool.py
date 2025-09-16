@@ -69,6 +69,9 @@ async def test_tool(
             str(iteration),
             "--runner",
             str(runner),
+            "--camera",
+            "/world/camera_A:1024:768",
+            "/world/camera_B:1280:720",
         ]
         + (
             [
