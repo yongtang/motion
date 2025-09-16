@@ -14,7 +14,7 @@ async def run_node(session):
     log.info("[run_node] Channel started")
 
     await channel.publish_data(session, json.dumps({"op": "none"}))
-    log.info(f"[run_node] Sent noop to {session}")
+    log.info(f"[run_node] Sent none to {session}")
 
     async def f(msg):
         log.info(f"[callback] [Echo {session}] Step: {msg}")

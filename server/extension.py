@@ -1,16 +1,46 @@
 import asyncio
+import contextlib
 import json
 import traceback
 
+import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
 import omni.ext
 import omni.kit
+import omni.replicator.core
 import omni.usd
+import pxr
 
 from .channel import Channel
 
 
 async def run_node(session):
-    await asyncio.Future()
+    channel = Channel()
+    await channel.start()
+    print("[run_node] Channel started")
+
+    await channel.publish_data(session, json.dumps({"op": "none"}))
+    print(f"[run_node] Sent none to {session}")
+
+    async def f(msg):
+        print(f"[callback] [Echo {session}] Step: {msg}")
+        step = json.loads(msg.data)
+        data = json.dumps(step)
+        print(f"[callback] [Echo {session}] Step->data ({len(data)} bytes): {data}")
+
+        await channel.publish_data(session, data)
+        print(f"[callback] [Echo {session}] Published")
+
+    subscribe = await channel.subscribe_step(session, f)
+    print(f"[run_node] Subscribed for {session}")
+
+    try:
+        print("[run_node] Waiting for events")
+        await asyncio.Future()
+    finally:
+        await subscribe.unsubscribe()
+        print(f"[run_node] Unsubscribed for {session}")
+        await channel.close()
+        print("[run_node] Channel closed")
 
 
 async def main():
@@ -46,7 +76,36 @@ async def main():
         stage = ctx.get_stage()
     assert stage
 
-    print("[motion.extension] Stage loaded")
+    print(f"[motion.extension] Stage loaded")
+
+    camera = (
+        {
+            str(pxr.UsdGeom.Camera(e).GetPath()): camera["*"]
+            for e in stage.Traverse()
+            if e.IsA(pxr.UsdGeom.Camera) and e.IsActive()
+        }
+        if "*" in camera
+        else camera
+    )
+    print(f"[motion.extension] Camera: {camera}")
+
+    camera = {
+        e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
+        for e, v in camera.items()
+    }
+
+    writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
+    writer.initialize(
+        rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
+        rtsp_rgb=True,
+    )
+    writer.attach(list(camera.values()))
+    print(f"[motion.extension] Camera attached")
+
+    annotator = omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
+    print(f"[motion.extension] Camera annotator attached")
+    annotator.attach(list(camera.values()))
+
     try:
         print("[motion.extension] [Node] Running")
         await run_node(session)
@@ -54,6 +113,13 @@ async def main():
     except Exception as e:
         print(f"[motion.extension] [Exception]: {e}")
         traceback.print_exec()
+    finally:
+        with contextlib.suppress(Exception):
+            annotator.detach(list(camera.values()))
+        print(f"[motion.extension] Camera annotator detached")
+        with contextlib.suppress(Exception):
+            writer.detach(list(camera.values()))
+        print(f"[motion.extension] Camera detached")
 
 
 class MotionExtension(omni.ext.IExt):
