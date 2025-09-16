@@ -19,27 +19,54 @@ for _ in sys.stdin:
 """
 
 model_sink = r"""
-import sys, json, asyncio, itertools
+import sys, json, asyncio, os, termios, tty, time
+
+
+async def drain_stdin():
+    for line in sys.stdin:
+        print(f"This goes to stderr: {line}", file=sys.stderr)
+
+
+def iter_keys_from_tty(tty_path: str):
+    fd = os.open(tty_path, os.O_RDONLY)
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        while True:
+            b = os.read(fd, 1)
+            if not b:
+                break
+            yield b
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        os.close(fd)
 
 
 async def main():
-    # Block until one line is read
-    sys.stdin.readline()
+    # Wait for sync line from stdin (ignore EOF)
+    line = sys.stdin.readline()
+    print(f"[Sink] Ready: {line.strip()}", file=sys.stderr)
 
-    # Background task to consume and discard the rest forever
-    async def drain():
-        for _ in sys.stdin:
-            pass
+    # Drain rest of stdin so parent won’t block
+    asyncio.create_task(asyncio.to_thread(drain_stdin))
 
-    asyncio.create_task(asyncio.to_thread(drain))
+    # In tests we inject a pseudo-tty path; otherwise use the real tty
+    tty_path = os.environ.get("SINK_TTY_PATH") or "/dev/tty"
 
-    # Start producing after the first line
-    for i in range(15):
-        print(json.dumps({"seq": i}), flush=True)
-        await asyncio.sleep(1.0)
+    for b in iter_keys_from_tty(tty_path):
+        s = b.decode("utf-8", errors="replace")
+        print(f"This goes to stderr e: {s}", file=sys.stderr)
+        payload = {"ts": time.time(), "key": s}
+        if len(b) == 1:
+            payload["code"] = b[0]
+        print(json.dumps(payload), flush=True)
+
+        if s.upper() == "Q":  # stop cleanly on Q/q
+            break
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 """
 
 
@@ -96,6 +123,7 @@ async def main():
     mode_parser.add_argument("--runner", default="isaac")
 
     read_parser = mode.add_parser("read", parents=[mode_parser], help="read data only")
+
     sink_parser = mode.add_parser("sink", parents=[mode_parser], help="sink step only")
 
     # example: 'import sys,json;[sys.stdout.write(json.dumps(dict(json.loads(l),seq=i))+"\n") for i,l in enumerate(sys.stdin) if l.strip()]'
