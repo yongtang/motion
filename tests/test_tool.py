@@ -1,4 +1,5 @@
-import subprocess
+import asyncio
+import contextlib
 import sys
 
 import pytest
@@ -42,7 +43,8 @@ import pytest
         ),
     ],
 )
-def test_tool(
+@pytest.mark.asyncio
+async def test_tool(
     docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, runner, entries
 ):
     monkeypatch.setenv("PYTHONPATH", "src")
@@ -79,24 +81,39 @@ def test_tool(
             else []
         )
     )
-    try:
-        proc = subprocess.run(
-            node,
-            stderr=subprocess.STDOUT,
-            stdout=subprocess.PIPE,
-            text=True,
-            timeout=300,
-        )
-    except subprocess.TimeoutExpired as e:
-        proc = e
+    print(f"\n==== {' '.join(node)} ====")
 
-    print(
-        f"\n==== {' '.join(node)} ===="
-        + (f"\n{proc.stdout}" if proc.stdout else "")
-        + (f"\n{proc.stderr}" if proc.stderr else "")
-        + f"==== {' '.join(node)} ===="
+    proc = await asyncio.create_subprocess_exec(
+        *node,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    assert not isinstance(proc, subprocess.TimeoutExpired), proc
-    assert proc.returncode == 0, proc.stdout
+
+    proc_stdout: list[str] = []
+    proc_stderr: list[str] = []
+
+    async def f_task(stream, sink):
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            text = line.decode(errors="replace")
+            print(text, end="", flush=True)
+            sink.append(text)
+
+    task_stdout = asyncio.create_task(f_task(proc.stdout, proc_stdout))
+    task_stderr = asyncio.create_task(f_task(proc.stderr, proc_stderr))
+
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=300)
+    finally:
+        with contextlib.suppress(Exception):
+            proc.kill()
+        with contextlib.suppress(Exception):
+            await asyncio.gather(task_stdout, task_stderr)
+
+    text = "".join(proc_stdout + proc_stderr)
+
+    assert proc.returncode == 0, text
     for entry in entries:
-        assert entry in proc.stdout, f"{entry} vs. {proc.stdout} - {proc.stderr}"
+        assert entry in text, f"{entry} vs. {text}"
