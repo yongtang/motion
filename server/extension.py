@@ -9,7 +9,7 @@ import omni.usd
 from .channel import Channel
 
 
-async def run_node():
+async def run_node(session):
     await asyncio.Future()
 
 
@@ -17,7 +17,8 @@ async def main():
     print("[motion.extension] Loading stage")
     with open("/storage/node/session.json", "r") as f:
         metadata = json.loads(f.read())
-    print(f"[motion.extension] Loaded metadata: {metadata}")
+    session = metadata["uuid"]
+    print(f"[motion.extension] Loaded session {session}")
 
     ctx = omni.usd.get_context()
     if ctx.get_stage():
@@ -48,7 +49,7 @@ async def main():
     print("[motion.extension] Stage loaded")
     try:
         print("[motion.extension] [Node] Running")
-        await run_node()
+        await run_node(session)
         print("[motion.extension] [Node] Stopped")
     except Exception as e:
         print(f"[motion.extension] [Exception]: {e}")

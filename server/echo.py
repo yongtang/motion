@@ -8,12 +8,7 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
-async def run_node():
-    with open("/storage/node/session.json", "r") as f:
-        metadata = json.loads(f.read())
-    session = metadata["uuid"]
-    log.info(f"[run_node] Loaded session {session}")
-
+async def run_node(session):
     channel = Channel()
     await channel.start()
     log.info("[run_node] Channel started")
@@ -44,9 +39,14 @@ async def run_node():
 
 
 async def main():
+    with open("/storage/node/session.json", "r") as f:
+        metadata = json.loads(f.read())
+    session = metadata["uuid"]
+    log.info(f"[main] Loaded session {session}")
+
     try:
         log.info("[main] [Node] Running")
-        await run_node()
+        await run_node(session)
         log.info("[main] [Node] Stopped")
     except Exception as e:
         log.execption(f"[main] [Exception]")
