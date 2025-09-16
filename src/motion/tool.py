@@ -19,10 +19,11 @@ for _ in sys.stdin:
 """
 
 model_sink = r"""
-import sys, json, asyncio, os, termios, tty, time
+import sys, json, asyncio, os, termios, tty, time, contextlib
 
 
-async def drain_stdin():
+def drain_stdin():
+    # Synchronous drain so it can run in a thread via asyncio.to_thread
     for line in sys.stdin:
         print(f"This goes to stderr: {line}", file=sys.stderr)
 
@@ -47,22 +48,27 @@ async def main():
     line = sys.stdin.readline()
     print(f"[Sink] Ready: {line.strip()}", file=sys.stderr)
 
-    # Drain rest of stdin so parent won’t block
-    asyncio.create_task(asyncio.to_thread(drain_stdin))
+    # Drain the rest of stdin in a background thread and keep a handle to await later
+    drain_task = asyncio.create_task(asyncio.to_thread(drain_stdin))
 
     # In tests we inject a pseudo-tty path; otherwise use the real tty
     tty_path = os.environ.get("SINK_TTY_PATH") or "/dev/tty"
 
-    for b in iter_keys_from_tty(tty_path):
-        s = b.decode("utf-8", errors="replace")
-        print(f"This goes to stderr e: {s}", file=sys.stderr)
-        payload = {"ts": time.time(), "key": s}
-        if len(b) == 1:
-            payload["code"] = b[0]
-        print(json.dumps(payload), flush=True)
+    try:
+        for b in iter_keys_from_tty(tty_path):
+            s = b.decode("utf-8", errors="replace")
+            print(f"This goes to stderr e: {s}", file=sys.stderr)
+            payload = {"ts": time.time(), "key": s}
+            if len(b) == 1:
+                payload["code"] = b[0]
+            print(json.dumps(payload), flush=True)
 
-        if s.upper() == "Q":  # stop cleanly on Q/q
-            break
+            if s.upper() == "Q":  # stop cleanly on Q/q
+                break
+    finally:
+        # Wait until producer closes stdin, so parent never writes to a closed pipe
+        with contextlib.suppress(Exception):
+            await drain_task
 
 
 if __name__ == "__main__":
