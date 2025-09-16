@@ -248,7 +248,7 @@ def session_on_server(scene_on_server):
         "uuid": session,
         "scene": scene,
         "joint": ["*"],
-        "camera": {"*": {"width": 1280, "height": 720}},
+        "camera": {},
         "link": ["*"],
     }
 

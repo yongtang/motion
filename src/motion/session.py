@@ -54,9 +54,7 @@ class SessionStepModel(pydantic.BaseModel):
 class SessionSpecModel(pydantic.BaseModel):
     scene: pydantic.UUID4
     joint: list[str] = pydantic.Field(default_factory=lambda: ["*"])
-    camera: dict[str, CameraSpec] = pydantic.Field(
-        default_factory=lambda: {"*": CameraSpec(width=1280, height=720)}
-    )
+    camera: dict[str, CameraSpec] = pydantic.Field(default_factory=dict)
     link: list[str] = pydantic.Field(default_factory=lambda: ["*"])
 
 
