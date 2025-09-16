@@ -89,7 +89,7 @@ async def main():
     mode = parser.add_subparsers(dest="mode", required=True)
 
     mode_parser = argparse.ArgumentParser(add_help=False)
-    mode_parser.add_argument("--file", help="path to USD file")
+    mode_parser.add_argument("--file", help="path to USD file", required=True)
     mode_parser.add_argument("--base", default="http://127.0.0.1:8080")
     mode_parser.add_argument("--timeout", type=float, default=None)
     mode_parser.add_argument("--iteration", type=int, default=15)

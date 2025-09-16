@@ -5,14 +5,46 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    "mode, timeout, iteration, runner",
+    "mode, timeout, iteration, runner, entries",
     [
-        pytest.param("read", 150.0, 1, "echo", id="read"),
-        pytest.param("sink", 150.0, 15, "echo", id="sink"),
-        pytest.param("tick", 300.0, 15, "echo", id="tick"),
+        pytest.param(
+            "read",
+            150.0,
+            1,
+            "echo",
+            [
+                "[Tool] Done",
+                '[Producer] Iteration 0: {"op": "none"}',
+            ],
+            id="read",
+        ),
+        pytest.param(
+            "sink",
+            150.0,
+            15,
+            "echo",
+            [
+                "[Tool] Done",
+                '[Consumer] Iteration 14: {"seq": 14}',
+            ],
+            id="sink",
+        ),
+        pytest.param(
+            "tick",
+            300.0,
+            15,
+            "echo",
+            [
+                "[Tool] Done",
+                '[Consumer] Iteration 14: {"op": "none", "seq": 14}',
+            ],
+            id="tick",
+        ),
     ],
 )
-def test_tool(docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, runner):
+def test_tool(
+    docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, runner, entries
+):
     monkeypatch.setenv("PYTHONPATH", "src")
 
     base = f"http://{docker_compose['motion']}:8080"
@@ -47,14 +79,24 @@ def test_tool(docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, r
             else []
         )
     )
-    proc = subprocess.run(
-        node,
-        stderr=subprocess.STDOUT,
-        stdout=subprocess.PIPE,
-        text=True,
-        timeout=300,
-    )
-    print(f"\n==== {' '.join(node)} ====\n{proc.stdout}\n==== {' '.join(node)} ====")
+    try:
+        proc = subprocess.run(
+            node,
+            stderr=subprocess.STDOUT,
+            stdout=subprocess.PIPE,
+            text=True,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired as e:
+        proc = e
 
+    print(
+        f"\n==== {' '.join(node)} ===="
+        + (f"\n{proc.stdout}" if proc.stdout else "")
+        + (f"\n{proc.stderr}" if proc.stderr else "")
+        + f"==== {' '.join(node)} ===="
+    )
+    assert not isinstance(proc, subprocess.TimeoutExpired), proc
     assert proc.returncode == 0, proc.stdout
-    assert "[Tool] Done" in proc.stdout
+    for entry in entries:
+        assert entry in proc.stdout, f"{entry} vs. {proc.stdout} - {proc.stderr}"
