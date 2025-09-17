@@ -78,6 +78,9 @@ async def main():
 
     print(f"[motion.extension] Stage loaded")
 
+    camera = metadata["camera"]
+    print(f"[motion.extension] Camera: {camera}")
+
     camera = (
         {
             str(pxr.UsdGeom.Camera(e).GetPath()): camera["*"]
