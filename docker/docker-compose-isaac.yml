@@ -8,6 +8,8 @@ services:
           echo "MOTION not set, exiting";
           exit 0;
         fi
+        apt -y -qq update
+        apt -y -qq install curl ffmpeg
         /isaac-sim/python.sh -m pip install aiohttp nats-py boto3
         sleep infinity
         /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers
