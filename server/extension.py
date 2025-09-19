@@ -5,7 +5,8 @@ import traceback
 
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
 from . import rtsp
-#from . import rtsp_orig
+
+# from . import rtsp_orig
 import omni.ext
 import omni.kit
 import omni.replicator.core
@@ -34,11 +35,18 @@ async def run_node(session):
 
     subscribe = await channel.subscribe_step(session, f)
     print(f"[run_node] Subscribed for {session}")
+
     def on_update(e):
         # print(f"[motion.extension] Writer on_update")
-        omni.kit.async_engine.run_coroutine(omni.replicator.core.orchestrator.step_async())
+        omni.kit.async_engine.run_coroutine(
+            omni.replicator.core.orchestrator.step_async()
+        )
 
-    sub = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(on_update)
+    sub = (
+        omni.kit.app.get_app()
+        .get_update_event_stream()
+        .create_subscription_to_pop(on_update)
+    )
 
     try:
         print("[run_node] Waiting for events")
@@ -87,7 +95,7 @@ async def main():
 
     camera = metadata["camera"]
     print(f"[motion.extension] Camera: {camera}")
-    '''
+    """
     camera = (
         {
             str(pxr.UsdGeom.Camera(e).GetPath()): camera["*"]
@@ -97,15 +105,24 @@ async def main():
         if "*" in camera
         else camera
     )
-    '''
+    """
     camera = {
-            "/World/Scene/CameraA": {
-                "width": 512,
-                "height": 512,
-            }
+        "/World/Scene/CameraA": {
+            "width": 512,
+            "height": 512,
+        }
     }
 
     # gst-launch-1.0 -e   rtspsrc location="rtsp://127.0.0.1:8554/RTSPWriter_World_Scene_CameraA_rgb" protocols=tcp latency=200 name=src     src. ! application/x-rtp,media=video,encoding-name=H265 !       rtph265depay ! h265parse config-interval=-1 !       mp4mux faststart=true streamable=true !       filesink location=out_hevc.mp4
+    # gst-launch-1.0 -e \
+    # rtspsrc location="rtsp://127.0.0.1:8554/RTSPWriter_World_Scene_CameraA_rgb" \
+    #      protocols=tcp latency=200 retry=TRUE tcp-timeout=0 name=src \
+    # src. ! application/x-rtp,media=video,encoding-name=H265 ! \
+    #  rtph265depay ! h265parse config-interval=-1 ! \
+    #  mp4mux faststart=true streamable=true ! \
+    #  filesink location=out_hevc.mp4
+    #
+    # timeout in ms
 
     print(f"[motion.extension] Camera: {camera}")
 
@@ -114,22 +131,22 @@ async def main():
         for e, v in camera.items()
     }
 
-    #writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
+    # writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
     writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter2")
-    '''
+    """
     writer.initialize(
         rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
         rtsp_rgb=True,
     )
-    '''
+    """
     writer2.initialize(
         rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
         rtsp_rgb=True,
     )
-    '''
-    '''
-    print('xxxx ', writer2, ' camera ', list(camera.values()))
-    #writer.attach(list(camera.values()))
+    """
+    """
+    print("xxxx ", writer2, " camera ", list(camera.values()))
+    # writer.attach(list(camera.values()))
     writer2.attach(list(camera.values()))
     print(f"[motion.extension] Camera attached")
 
