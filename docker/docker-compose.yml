@@ -147,7 +147,7 @@ services:
     working_dir: /app
     volumes:
       - ${MOTION:-$PWD}/server/channel.py:/isaac-sim/exts/motion.extension/motion/channel.py
-      - ${MOTION:-$PWD}/server/rstp.py:/isaac-sim/exts/motion.extension/motion/rstp.py
+      - ${MOTION:-$PWD}/server/rtsp.py:/isaac-sim/exts/motion.extension/motion/rtsp.py
       - ${MOTION:-$PWD}/server/extension.py:/isaac-sim/exts/motion.extension/motion/extension.py
       - ${MOTION:-$PWD}/server/extension.toml:/isaac-sim/exts/motion.extension/config/extension.toml
       - ${MOTION:-$PWD}:/app
