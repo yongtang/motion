@@ -7,6 +7,7 @@ import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: di
 import omni.ext
 import omni.kit
 import omni.replicator.core
+import omni.timeline
 import omni.usd
 import pxr
 
@@ -105,6 +106,13 @@ async def main():
     annotator = omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
     print(f"[motion.extension] Camera annotator attached")
     annotator.attach(list(camera.values()))
+
+    print(f"[motion.extension] Timeline play")
+    omni.timeline.get_timeline_interface().play()
+
+    print(f"[motion.extension] Wait")
+    await asyncio.Future()
+    print(f"[motion.extension] Wait")
 
     try:
         print("[motion.extension] [Node] Running")
