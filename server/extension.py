@@ -105,6 +105,8 @@ async def main():
             }
     }
 
+    # gst-launch-1.0 -e   rtspsrc location="rtsp://127.0.0.1:8554/RTSPWriter_World_Scene_CameraA_rgb" protocols=tcp latency=200 name=src     src. ! application/x-rtp,media=video,encoding-name=H265 !       rtph265depay ! h265parse config-interval=-1 !       mp4mux faststart=true streamable=true !       filesink location=out_hevc.mp4
+
     print(f"[motion.extension] Camera: {camera}")
 
     camera = {
