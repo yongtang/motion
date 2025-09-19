@@ -146,11 +146,12 @@ services:
     network_mode: "service:server"
     working_dir: /app
     volumes:
-      - ${MOTION:-$PWD}/server/channel.py:/isaac-sim/exts/motion.extension/motion/channel.py:ro
-      - ${MOTION:-$PWD}/server/extension.py:/isaac-sim/exts/motion.extension/motion/extension.py:ro
-      - ${MOTION:-$PWD}/server/extension.toml:/isaac-sim/exts/motion.extension/config/extension.toml:ro
-      - ${MOTION:-$PWD}:/app:ro
-      - storage:/storage:ro
+      - ${MOTION:-$PWD}/server/channel.py:/isaac-sim/exts/motion.extension/motion/channel.py
+      - ${MOTION:-$PWD}/server/rstp.py:/isaac-sim/exts/motion.extension/motion/rstp.py
+      - ${MOTION:-$PWD}/server/extension.py:/isaac-sim/exts/motion.extension/motion/extension.py
+      - ${MOTION:-$PWD}/server/extension.toml:/isaac-sim/exts/motion.extension/config/extension.toml
+      - ${MOTION:-$PWD}:/app
+      - storage:/storage
     environment:
       - MOTION=${MOTION}
       - SCOPE=${SCOPE}
@@ -165,7 +166,7 @@ services:
           exit 0;
         fi
         apt -y -qq update
-        apt -y -qq install curl ffmpeg
+        apt -y -qq install curl ffmpeg vim
         pip install aiohttp nats-py boto3
         python -m server.echo
 volumes:

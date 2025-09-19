@@ -12,7 +12,7 @@ import omni.usd
 import pxr
 
 from .channel import Channel
-
+from . import rtsp
 
 async def run_node(session):
     channel = Channel()
@@ -95,7 +95,7 @@ async def main():
         for e, v in camera.items()
     }
 
-    writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
+    writer = omni.replicator.core.WriterRegistry.get("RTSPWriter2")
     writer.initialize(
         rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
         rtsp_rgb=True,
