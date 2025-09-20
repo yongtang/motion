@@ -134,17 +134,17 @@ async def main():
     print(f"[motion.extension] Camera 2: {camera}")
     omni.timeline.get_timeline_interface().play()
 
-    f = omni.timeline.get_timeline_interface().is_play()
+    f = omni.timeline.get_timeline_interface().is_playing()
     print(f"[motion.extension] PLAY 1: {f}")
 
 
     omni.kit.app.get_app().update()
 
-    f = omni.timeline.get_timeline_interface().is_play()
+    f = omni.timeline.get_timeline_interface().is_playing()
     print(f"[motion.extension] PLAY 2: {f}")
     omni.kit.app.get_app().update()
 
-    f = omni.timeline.get_timeline_interface().is_play()
+    f = omni.timeline.get_timeline_interface().is_playing()
     print(f"[motion.extension] PLAY 3: {f}")
 
 
