@@ -43,11 +43,13 @@ async def run_node(session):
             omni.replicator.core.orchestrator.step_async()
         )
 
+    """
     sub = (
         omni.kit.app.get_app()
         .get_update_event_stream()
         .create_subscription_to_pop(on_update)
     )
+    """
 
     try:
         print("[run_node] Waiting for events")
@@ -164,13 +166,18 @@ async def main():
     """
     """
     print("xxxx ", writer2, " camera ", list(camera.values()))
+    print("XXXXXXX - ATTACH ")
     # writer.attach(list(camera.values()))
     writer2.attach(list(camera.values()))
     print(f"[motion.extension] Camera attached")
+    print("XXXXXXX - ATTACH2 ")
 
+    print("XXXXXXX - ATTACH3 ")
     annotator = omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
+    print("XXXXXXX - ATTACH4 ")
     print(f"[motion.extension] Camera annotator attached")
     annotator.attach(list(camera.values()))
+    print("XXXXXXX - ATTACH5 ")
 
     try:
         print("[motion.extension] [Node] Running")
