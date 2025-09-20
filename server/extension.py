@@ -166,7 +166,7 @@ async def main():
     """
     """
     print("xxxx ", writer2, " camera ", list(camera.values()))
-    print("XXXXXXX - ATTACH ")
+    print("XXXXXXX - ATTACH  ---- {list(camera.values())}")
     # writer.attach(list(camera.values()))
     writer2.attach(list(camera.values()))
     print(f"[motion.extension] Camera attached")
