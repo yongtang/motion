@@ -86,7 +86,8 @@ services:
             gstreamer-plugins-ugly \
             gstreamer-plugins-rs \
             gstreamer-devel \
-            gstreamer-libnice
+            gstreamer-libnice \
+            gnu_parallel
         sleep infinity
     healthcheck:
       test: ["CMD-SHELL", "echo success"]
