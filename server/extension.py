@@ -131,6 +131,7 @@ async def main():
         e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
         for e, v in camera.items()
     }
+    print(f"[motion.extension] Camera 2: {camera}")
     omni.timeline.get_timeline_interface().play()
 
     f = omni.timeline.get_timeline_interface().is_play()
