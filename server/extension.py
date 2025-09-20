@@ -81,7 +81,7 @@ async def main():
 
     camera = (
         {
-            str(pxr.UsdGeom.Camera(e).GetPath()): camera["*"]
+            str(pxr.UsdGeom.Camera(e).GetPrim().GetPath()): camera["*"]
             for e in stage.Traverse()
             if e.IsA(pxr.UsdGeom.Camera) and e.IsActive()
         }
