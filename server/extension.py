@@ -134,7 +134,6 @@ async def main():
         for e, v in camera.items()
     }
     print(f"[motion.extension] Camera 2: {camera}")
-    omni.timeline.get_timeline_interface().play()
 
     f = omni.timeline.get_timeline_interface().is_playing()
     print(f"[motion.extension] PLAY 1: {f}")
@@ -179,6 +178,8 @@ async def main():
     annotator.attach(list(camera.values()))
     print("XXXXXXX - ATTACH5 ")
 
+    omni.timeline.get_timeline_interface().play()
+    print("XXXXXXX - PLAY ")
     try:
         print("[motion.extension] [Node] Running")
         await run_node(session)
