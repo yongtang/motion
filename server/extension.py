@@ -134,8 +134,8 @@ async def main():
     omni.timeline.get_timeline_interface().play()
 
 
-    # writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
-    writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter2")
+    writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter")
+    #writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter2")
     """
     writer.initialize(
         rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
