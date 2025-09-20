@@ -12,6 +12,7 @@ import omni.kit
 import omni.replicator.core
 import omni.usd
 import pxr
+import omni.timeline
 
 from .channel import Channel
 
@@ -130,6 +131,8 @@ async def main():
         e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
         for e, v in camera.items()
     }
+    omni.timeline.get_timeline_interface().play()
+
 
     # writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
     writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter2")
