@@ -133,6 +133,20 @@ async def main():
     }
     omni.timeline.get_timeline_interface().play()
 
+    f = omni.timeline.get_timeline_interface().is_play()
+    print(f"[motion.extension] PLAY 1: {f}")
+
+
+    omni.kit.app.get_app().update()
+
+    f = omni.timeline.get_timeline_interface().is_play()
+    print(f"[motion.extension] PLAY 2: {f}")
+    omni.kit.app.get_app().update()
+
+    f = omni.timeline.get_timeline_interface().is_play()
+    print(f"[motion.extension] PLAY 3: {f}")
+
+
 
     writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter")
     #writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter2")
