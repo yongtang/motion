@@ -52,7 +52,7 @@ async def run_node(session, annotator):
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"output_{ts}.png"
 
-            img = PIL.Image.fromarray(arr, mode="RGBA")
+            img = PIL.Image.fromarray(data, mode="RGBA")
 
             # Save into an in-memory buffer
             buf = io.BytesIO()
