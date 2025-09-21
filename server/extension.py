@@ -111,13 +111,13 @@ async def main():
         if "*" in camera
         else camera
     )
-    """
     camera = {
         "/World/Scene/CameraA": {
             "width": 512,
             "height": 512,
         }
     }
+    """
 
     # gst-launch-1.0 -e   rtspsrc location="rtsp://127.0.0.1:8554/RTSPWriter_World_Scene_CameraA_rgb" protocols=tcp latency=200 name=src     src. ! application/x-rtp,media=video,encoding-name=H265 !       rtph265depay ! h265parse config-interval=-1 !       mp4mux faststart=true streamable=true !       filesink location=out_hevc.mp4
     # gst-launch-1.0 -e \
