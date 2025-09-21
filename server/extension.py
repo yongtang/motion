@@ -38,11 +38,12 @@ async def run_node(session, annotator):
     subscribe = await channel.subscribe_step(session, f)
     print(f"[run_node] Subscribed for {session}")
 
+    os.makedirs("/storage/node/image", exist_ok=True)
     def on_update(e):
         print(f"[motion.extension] Writer on_update")
         for k, v in annotator.items():
             data = v.get_data()
-            print(f"[motion.extension] Writer on_update data - {k} - {data.shape}")
+            print(f"[motion.extension] Writer on_update data - {k} - {data.shape} - {data.dtype}")
 
         # omni.kit.async_engine.run_coroutine(
         #    omni.replicator.core.orchestrator.step_async()
