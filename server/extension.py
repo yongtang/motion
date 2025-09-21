@@ -17,7 +17,7 @@ import omni.timeline
 from .channel import Channel
 
 
-async def run_node(session):
+async def run_node(session, annotator):
     channel = Channel()
     await channel.start()
     print("[run_node] Channel started")
@@ -39,6 +39,9 @@ async def run_node(session):
 
     def on_update(e):
         print(f"[motion.extension] Writer on_update")
+        data = annotator.get_data()
+        print(f"[motion.extension] Writer on_update data- {data}")
+
         #omni.kit.async_engine.run_coroutine(
         #    omni.replicator.core.orchestrator.step_async()
         #)
