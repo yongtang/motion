@@ -179,7 +179,7 @@ async def main():
     annotator = omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
     print("XXXXXXX - ATTACH4 ")
     print(f"[motion.extension] Camera annotator attached")
-    annotator.attach(list(camera.values()))
+    annotator.attach(list(camera.values())[0])
     print("XXXXXXX - ATTACH5 ")
 
     #omni.kit.app.get_app().update()
