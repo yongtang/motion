@@ -40,7 +40,7 @@ async def run_node(session, annotator):
     def on_update(e):
         print(f"[motion.extension] Writer on_update")
         data = annotator.get_data()
-        print(f"[motion.extension] Writer on_update data- {data}")
+        print(f"[motion.extension] Writer on_update data- {type(data)}")
 
         #omni.kit.async_engine.run_coroutine(
         #    omni.replicator.core.orchestrator.step_async()
