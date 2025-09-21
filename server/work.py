@@ -52,7 +52,7 @@ async def node_play(channel: Channel, session: str):
         "-f",
         f"/app/docker/docker-compose.yml",
         "-f",
-        f"/app/docker/docker-compose-{runner}.yml",
+        f"/app/docker/docker-compose.runner.{runner}.yml",
         "up",
         "--no-deps",
         "--force-recreate",

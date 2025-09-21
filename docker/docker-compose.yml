@@ -119,12 +119,14 @@ services:
   live:
     image: opensuse/tumbleweed
     container_name: ${SCOPE:-motion}-live
-    restart: unless-stopped
+    restart: no
     depends_on:
       - server
     network_mode: "service:server"
+    working_dir: /app
     volumes:
-      - storage:/storage
+      - ${MOTION:-$PWD}:/app:ro
+      - storage:/storage:ro
     environment:
       - MOTION=${MOTION}
       - SCOPE=${SCOPE}
