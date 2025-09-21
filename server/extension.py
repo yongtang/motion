@@ -38,18 +38,18 @@ async def run_node(session):
     print(f"[run_node] Subscribed for {session}")
 
     def on_update(e):
-        # print(f"[motion.extension] Writer on_update")
-        omni.kit.async_engine.run_coroutine(
-            omni.replicator.core.orchestrator.step_async()
-        )
+        print(f"[motion.extension] Writer on_update")
+        #omni.kit.async_engine.run_coroutine(
+        #    omni.replicator.core.orchestrator.step_async()
+        #)
 
-    """
+   
     sub = (
         omni.kit.app.get_app()
         .get_update_event_stream()
         .create_subscription_to_pop(on_update)
     )
-    """
+   
 
     try:
         print("[run_node] Waiting for events")
