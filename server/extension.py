@@ -49,8 +49,10 @@ async def run_node(session, annotator):
             data = v.get_data()
             print(f"[motion.extension] Writer on_update data - {k} - {data.shape} - {data.dtype}")
 
+            kk = k.replace("/", "_")
+
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"output_{ts}.png"
+            filename = f"output_{kk}_{ts}.png"
 
             img = PIL.Image.fromarray(data, mode="RGBA")
 
