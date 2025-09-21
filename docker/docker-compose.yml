@@ -65,36 +65,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-  gstreamer:
-    image: opensuse/tumbleweed
-    container_name: ${SCOPE:-motion}-gstreamer
-    restart: unless-stopped
-    depends_on:
-      - server
-    network_mode: "service:server"
-    volumes:
-      - storage:/storage
-    entrypoint: ["/bin/bash"]
-    command:
-      - -lc
-      - |
-        zypper install -y \
-            gstreamer \
-            gstreamer-plugins-base \
-            gstreamer-plugins-good \
-            gstreamer-plugins-bad \
-            gstreamer-plugins-ugly \
-            gstreamer-plugins-rs \
-            gstreamer-devel \
-            gstreamer-libnice \
-            gnu_parallel
-        sleep infinity
-    healthcheck:
-      test: ["CMD-SHELL", "echo success"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 120s
   minio:
     image: minio/minio:latest
     container_name: ${SCOPE:-motion}-minio
@@ -131,13 +101,52 @@ services:
     environment:
       - MOTION=${PWD}
       - SCOPE=${SCOPE}
-    command: ["/bin/sh", "-lc", "apt -y -qq update && apt -y -qq install docker-cli docker-compose curl && pip install -r server/requirements.txt && pip install -e . && python -m server.work"]
+    entrypoint: ["/bin/bash"]
+    command:
+      - -lc
+      - |
+        apt -y -qq update
+        apt -y -qq install docker-cli docker-compose curl
+        pip install -r server/requirements.txt
+        pip install -e .
+        python -m server.work
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9999/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
       start_period: 120s
+  live:
+    image: opensuse/tumbleweed
+    container_name: ${SCOPE:-motion}-live
+    restart: unless-stopped
+    depends_on:
+      - server
+    network_mode: "service:server"
+    volumes:
+      - storage:/storage
+    environment:
+      - MOTION=${MOTION}
+      - SCOPE=${SCOPE}
+    entrypoint: ["/bin/bash"]
+    command:
+      - -lc
+      - |
+        if [ -z "${MOTION}" ]; then
+          echo "MOTION not set, exiting";
+          exit 0;
+        fi
+        zypper install -y \
+            gstreamer \
+            gstreamer-plugins-base \
+            gstreamer-plugins-good \
+            gstreamer-plugins-bad \
+            gstreamer-plugins-ugly \
+            gstreamer-plugins-rs \
+            gstreamer-devel \
+            gstreamer-libnice \
+            gnu_parallel
+        sleep infinity
   node:
     image: python:3.12-slim
     container_name: ${SCOPE:-motion}-node
