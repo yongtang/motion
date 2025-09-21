@@ -101,16 +101,16 @@ async def main():
 
     camera = metadata["camera"]
     print(f"[motion.extension] Camera: {camera}")
-    """
     camera = (
         {
-            str(pxr.UsdGeom.Camera(e).GetPath()): camera["*"]
+            str(pxr.UsdGeom.Camera(e).GetPrim().GetPath()): camera["*"]
             for e in stage.Traverse()
             if e.IsA(pxr.UsdGeom.Camera) and e.IsActive()
         }
         if "*" in camera
         else camera
     )
+    """
     camera = {
         "/World/Scene/CameraA": {
             "width": 512,
