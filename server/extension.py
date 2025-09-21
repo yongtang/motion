@@ -1,6 +1,9 @@
 import asyncio
 import contextlib
+import datetime
+import io
 import json
+import os
 import traceback
 
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
@@ -9,12 +12,14 @@ import omni.kit
 import omni.replicator.core
 import omni.timeline
 import omni.usd
+import PIL.Image
 import pxr
 
 from .channel import Channel
+from .storage import storage_kv_set
 
 
-async def run_node(session):
+async def run_node(session, annotator):
     channel = Channel()
     await channel.start()
     print("[run_node] Channel started")
@@ -34,6 +39,37 @@ async def run_node(session):
     subscribe = await channel.subscribe_step(session, f)
     print(f"[run_node] Subscribed for {session}")
 
+    os.makedirs("/tmp/image", exist_ok=True)
+
+    def on_update(e):
+        print(f"[motion.extension] Writer on_update")
+        for k, v in annotator.items():
+            data = v.get_data()
+            print(
+                f"[motion.extension] Writer on_update data - {k} - {data.shape} - {data.dtype}"
+            )
+
+            kk = k.replace("/", "_")
+
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{session}_{kk}_{ts}.png"
+
+            img = PIL.Image.fromarray(data, mode="RGBA")
+
+            # Save into an in-memory buffer
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")  # PNG keeps the alpha channel
+            image_bytes = buf.getvalue()
+            with open(os.path.join("/tmp/image", filename), "wb") as g:
+                g.write(image_bytes)
+            storage_kv_set("image", f"{session}_{k}_{ts}", image_bytes)
+
+    sub = (
+        omni.kit.app.get_app()
+        .get_update_event_stream()
+        .create_subscription_to_pop(on_update)
+    )
+
     try:
         print("[run_node] Waiting for events")
         await asyncio.Future()
@@ -48,6 +84,8 @@ async def main():
     print("[motion.extension] Loading stage")
     with open("/storage/node/session.json", "r") as f:
         metadata = json.loads(f.read())
+    print(f"[motion.extension] Loaded metadata {metadata}")
+
     session = metadata["uuid"]
     print(f"[motion.extension] Loaded session {session}")
 
@@ -79,6 +117,7 @@ async def main():
 
     print(f"[motion.extension] Stage loaded")
 
+    camera = metadata["camera"]
     camera = (
         {
             str(pxr.UsdGeom.Camera(e).GetPrim().GetPath()): camera["*"]
@@ -90,40 +129,56 @@ async def main():
     )
     print(f"[motion.extension] Camera: {camera}")
 
-    camera = {
+    # gst-launch-1.0 -e   rtspsrc location="rtsp://127.0.0.1:8554/RTSPWriter_World_Scene_CameraA_rgb" protocols=tcp latency=200 name=src     src. ! application/x-rtp,media=video,encoding-name=H265 !       rtph265depay ! h265parse config-interval=-1 !       mp4mux faststart=true streamable=true !       filesink location=out_hevc.mp4
+    # gst-launch-1.0 -e \
+    # rtspsrc location="rtsp://127.0.0.1:8554/RTSPWriter_World_Scene_CameraA_rgb" \
+    #      protocols=tcp latency=200 retry=TRUE tcp-timeout=0 name=src \
+    # src. ! application/x-rtp,media=video,encoding-name=H265 ! \
+    #  rtph265depay ! h265parse config-interval=-1 ! \
+    #  mp4mux faststart=true streamable=true ! \
+    #  filesink location=out_hevc.mp4
+    #
+    # timeout in ms
+
+    render = {
         e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
         for e, v in camera.items()
     }
+    print(f"[motion.extension] Render: {render}")
 
     writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
     writer.initialize(
         rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
         rtsp_rgb=True,
     )
-    writer.attach(list(camera.values()))
-    print(f"[motion.extension] Camera attached")
+    print(f"[motion.extension] Writer: {writer}")
 
-    annotator = omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
-    print(f"[motion.extension] Camera annotator attached")
-    annotator.attach(list(camera.values()))
+    writer.attach(list(render.values()))
+    print(f"[motion.extension] Writer attached")
 
-    print(f"[motion.extension] Timeline play")
+    annotator = {
+        e: omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
+        for e, v in camera.items()
+    }
+    print(f"[motion.extension] Annotator: {annotator}")
+
+    for k, v in render.items():
+        annotator[k].attach(v)
+    print(f"[motion.extension] Annotator attached")
+
     omni.timeline.get_timeline_interface().play()
-
-    print(f"[motion.extension] Wait")
-    await asyncio.Future()
-    print(f"[motion.extension] Wait")
 
     try:
         print("[motion.extension] [Node] Running")
-        await run_node(session)
+        await run_node(session, annotator)
         print("[motion.extension] [Node] Stopped")
     except Exception as e:
         print(f"[motion.extension] [Exception]: {e}")
         traceback.print_exec()
     finally:
         with contextlib.suppress(Exception):
-            annotator.detach(list(camera.values()))
+            for k, v in camera.items():
+                annotator[k].detach(v)
         print(f"[motion.extension] Camera annotator detached")
         with contextlib.suppress(Exception):
             writer.detach(list(camera.values()))
