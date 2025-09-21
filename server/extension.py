@@ -40,7 +40,7 @@ async def run_node(session, annotator):
 
     def on_update(e):
         print(f"[motion.extension] Writer on_update")
-        for k, v in annotator:
+        for k, v in annotator.items():
             data = v.get_data()
             print(f"[motion.extension] Writer on_update data - {k} - {v.shape}")
 
