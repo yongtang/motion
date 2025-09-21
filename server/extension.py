@@ -149,7 +149,7 @@ async def main():
     #print(f"[motion.extension] PLAY 3: {f}")
 
 
-    omni.kit.app.get_app().update()
+    #omni.kit.app.get_app().update()
 
     #writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter")
     writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter2")
@@ -179,7 +179,7 @@ async def main():
     annotator.attach(list(camera.values()))
     print("XXXXXXX - ATTACH5 ")
 
-    omni.kit.app.get_app().update()
+    #omni.kit.app.get_app().update()
 
     print("XXXXXXX - PLAY --- ")
 
