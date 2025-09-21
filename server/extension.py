@@ -190,7 +190,7 @@ async def main():
     print("XXXXXXX - PLAY ")
     try:
         print("[motion.extension] [Node] Running")
-        await run_node(session)
+        await run_node(session, annotator)
         print("[motion.extension] [Node] Stopped")
     except Exception as e:
         print(f"[motion.extension] [Exception]: {e}")
