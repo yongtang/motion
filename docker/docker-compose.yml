@@ -15,23 +15,6 @@ services:
       timeout: 3s
       retries: 3
       start_period: 120s
-  react:
-    image: node:alpine
-    container_name: ${SCOPE:-motion}-react
-    restart: unless-stopped
-    depends_on:
-      - server
-    network_mode: "service:server"
-    working_dir: /app/react
-    volumes:
-      - ${PWD}:/app
-    command: ["/bin/sh", "-lc", "npm ci --no-audit --no-fund && npm run dev -- --host"]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173 > /dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 120s
   nats:
     image: nats:alpine
     container_name: ${SCOPE:-motion}-nats
@@ -85,6 +68,23 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+  react:
+    image: node:alpine
+    container_name: ${SCOPE:-motion}-react
+    restart: unless-stopped
+    depends_on:
+      - server
+    network_mode: "service:server"
+    working_dir: /app/react
+    volumes:
+      - ${PWD}:/app
+    command: ["/bin/sh", "-lc", "npm ci --no-audit --no-fund && npm run dev -- --host"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173 > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
   work:
     image: python:3.12-slim
     container_name: ${SCOPE:-motion}-work
