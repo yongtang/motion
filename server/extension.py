@@ -2,6 +2,9 @@ import asyncio
 import contextlib
 import json
 import os
+import PIL.Image
+import datetime
+import io
 import traceback
 
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
@@ -45,6 +48,20 @@ async def run_node(session, annotator):
         for k, v in annotator.items():
             data = v.get_data()
             print(f"[motion.extension] Writer on_update data - {k} - {data.shape} - {data.dtype}")
+
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"output_{ts}.png"
+
+            img = PIL.Image.fromarray(arr, mode="RGBA")
+
+            # Save into an in-memory buffer
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")  # PNG keeps the alpha channel
+            image_bytes = buf.getvalue()
+            with open(os.path.join("/storage/node/image", filename), "wb") as g:
+                g.write(image_bytes)
+
+
 
         # omni.kit.async_engine.run_coroutine(
         #    omni.replicator.core.orchestrator.step_async()
