@@ -4,7 +4,8 @@ import json
 import traceback
 
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
-#from . import rtsp
+
+# from . import rtsp
 
 # from . import rtsp_orig
 import omni.ext
@@ -39,20 +40,19 @@ async def run_node(session, annotator):
 
     def on_update(e):
         print(f"[motion.extension] Writer on_update")
-        data = annotator.get_data()
-        print(f"[motion.extension] Writer on_update data- {data.shape}")
+        for k, v in annotator:
+            data = v.get_data()
+            print(f"[motion.extension] Writer on_update data - {k} - {v.shape}")
 
-        #omni.kit.async_engine.run_coroutine(
+        # omni.kit.async_engine.run_coroutine(
         #    omni.replicator.core.orchestrator.step_async()
-        #)
+        # )
 
-   
     sub = (
         omni.kit.app.get_app()
         .get_update_event_stream()
         .create_subscription_to_pop(on_update)
     )
-   
 
     try:
         print("[run_node] Waiting for events")
@@ -138,23 +138,21 @@ async def main():
     }
     print(f"[motion.extension] Camera 2: {camera}")
 
-    #f = omni.timeline.get_timeline_interface().is_playing()
-    #print(f"[motion.extension] PLAY 1: {f}")
+    # f = omni.timeline.get_timeline_interface().is_playing()
+    # print(f"[motion.extension] PLAY 1: {f}")
 
+    # omni.kit.app.get_app().update()
 
-    #omni.kit.app.get_app().update()
+    # f = omni.timeline.get_timeline_interface().is_playing()
+    # print(f"[motion.extension] PLAY 2: {f}")
+    # omni.kit.app.get_app().update()
 
-    #f = omni.timeline.get_timeline_interface().is_playing()
-    #print(f"[motion.extension] PLAY 2: {f}")
-    #omni.kit.app.get_app().update()
+    # f = omni.timeline.get_timeline_interface().is_playing()
+    # print(f"[motion.extension] PLAY 3: {f}")
 
-    #f = omni.timeline.get_timeline_interface().is_playing()
-    #print(f"[motion.extension] PLAY 3: {f}")
+    # omni.kit.app.get_app().update()
 
-
-    #omni.kit.app.get_app().update()
-
-    #writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter")
+    # writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter")
     writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter")
     """
     writer.initialize(
@@ -176,13 +174,17 @@ async def main():
     print("XXXXXXX - ATTACH2 ")
 
     print("XXXXXXX - ATTACH3 ")
-    annotator = omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
+    annotator = {}
+
+    for k, v in camera.items():
+        annotator[k] = omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
+        annotator[k].attach(v)
     print("XXXXXXX - ATTACH4 ")
     print(f"[motion.extension] Camera annotator attached")
-    annotator.attach(list(camera.values())[0])
+
     print("XXXXXXX - ATTACH5 ")
 
-    #omni.kit.app.get_app().update()
+    # omni.kit.app.get_app().update()
 
     print("XXXXXXX - PLAY --- ")
 
@@ -197,7 +199,8 @@ async def main():
         traceback.print_exec()
     finally:
         with contextlib.suppress(Exception):
-            annotator.detach(list(camera.values()))
+            for k, v in camera.items():
+                annotator[k].detach(v)
         print(f"[motion.extension] Camera annotator detached")
         with contextlib.suppress(Exception):
             writer.detach(list(camera.values()))
