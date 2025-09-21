@@ -4,7 +4,7 @@ import json
 import traceback
 
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
-from . import rtsp
+#from . import rtsp
 
 # from . import rtsp_orig
 import omni.ext
@@ -152,7 +152,7 @@ async def main():
     #omni.kit.app.get_app().update()
 
     #writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter")
-    writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter2")
+    writer2 = omni.replicator.core.WriterRegistry.get("RTSPWriter")
     """
     writer.initialize(
         rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
