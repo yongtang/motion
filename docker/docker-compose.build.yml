@@ -132,10 +132,8 @@ services:
         RUN apt -y -qq update && \
             apt -y -qq install curl ffmpeg
         COPY LICENSE /app/LICENSE
-        COPY pyproject.toml /app/pyproject.toml
-        COPY src /app/src
-        COPY server /app/server
         COPY server/channel.py /isaac-sim/exts/motion.extension/motion/channel.py
+        COPY server/storage.py /isaac-sim/exts/motion.extension/motion/storage.py
         COPY server/extension.py /isaac-sim/exts/motion.extension/motion/extension.py
         COPY server/extension.toml /isaac-sim/exts/motion.extension/config/extension.toml
         WORKDIR /app
