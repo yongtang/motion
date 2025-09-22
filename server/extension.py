@@ -14,6 +14,7 @@ import omni.timeline
 import omni.usd
 import PIL.Image
 import pxr
+import numpy as np
 
 from .channel import Channel
 from .storage import storage_kv_set
