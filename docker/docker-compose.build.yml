@@ -94,7 +94,8 @@ services:
         COPY src /app/src
         COPY server /app/server
         WORKDIR /app
-        CMD ["/bin/bash", "-c", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; sleep infinity"]
+        ENTRYPOINT ["/bin/bash"]
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; sleep infinity"]
   node:
     image: motion/motion-node
     build:
@@ -103,7 +104,8 @@ services:
         FROM python:3.12-slim
         COPY LICENSE /app/LICENSE
         WORKDIR /app
-        CMD ["/bin/bash", "-c", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; exit 1"]
+        ENTRYPOINT ["/bin/bash"]
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; exit 1"]
   node-echo:
     image: motion/motion-node-echo
     build:
@@ -119,7 +121,8 @@ services:
         WORKDIR /app
         RUN pip install -e . && \
             pip install -r server/requirements.txt
-        CMD ["/bin/bash", "-c", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 1; fi; python -m server.echo"]
+        ENTRYPOINT ["/bin/bash"]
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 1; fi; python -m server.echo"]
   node-isaac:
     image: motion/motion-node-isaac
     build:
@@ -139,4 +142,5 @@ services:
         RUN /isaac-sim/python.sh -m pip install aiohttp nats-py boto3
         ENV ACCEPT_EULA=Y
         ENV PRIVACY_CONSENT=Y
-        CMD ["/bin/bash", "-c", "if [ -z \"$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 1; fi; sleep infinity; echo /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers"]
+        ENTRYPOINT ["/bin/bash"]
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 1; fi; sleep infinity; echo /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers"]
