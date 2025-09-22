@@ -53,7 +53,8 @@ async def run_node(session, annotator):
 
             # Basic validation
             if arr.ndim != 3 or arr.shape[2] not in (3, 4):
-                raise ValueError(f"Unexpected image shape {arr.shape}; expected (H, W, 3/4)")
+                print(f"Unexpected image shape {arr.shape}; expected (H, W, 3/4)")
+                continue
 
             # Ensure uint8
             if arr.dtype != np.uint8:
@@ -83,7 +84,7 @@ async def run_node(session, annotator):
             kk = k.replace("/", "_")
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{session}_{kk}_{ts}.png"
-            path = os.path.join(out_dir, filename)
+            path = os.path.join("/tmp/image", filename)
 
             # Construct via fromarray (avoids raw/stride pitfalls)
             Image.fromarray(arr, mode).save(path)
