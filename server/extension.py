@@ -60,9 +60,9 @@ async def run_node(session, annotator):
             buf = io.BytesIO()
             img.save(buf, format="PNG")  # PNG keeps the alpha channel
             image_bytes = buf.getvalue()
-            #with open(os.path.join("/tmp/image", filename), "wb") as g:
-            #    g.write(image_bytes)
-            storage_kv_set("image", f"{session}_{k}_{ts}", image_bytes)
+            with open(os.path.join("/tmp/image", filename), "wb") as g:
+                g.write(image_bytes)
+            #storage_kv_set("image", f"{session}_{k}_{ts}", image_bytes)
 
     sub = (
         omni.kit.app.get_app()
