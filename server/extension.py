@@ -45,23 +45,49 @@ async def run_node(session, annotator):
         print(f"[motion.extension] Writer on_update")
         for k, v in annotator.items():
             data = v.get_data()
-            print(
-                f"[motion.extension] Writer on_update data - {k} - {data.shape} - {data.dtype}"
-            )
+            print(f"[motion.extension] Writer on_update data - {k} - {getattr(data, 'shape', None)} - {getattr(data, 'dtype', None)}")
+
+            # Ensure numpy array
+            arr = np.asarray(data)
+
+            # Basic validation
+            if arr.ndim != 3 or arr.shape[2] not in (3, 4):
+                raise ValueError(f"Unexpected image shape {arr.shape}; expected (H, W, 3/4)")
+
+            # Ensure uint8
+            if arr.dtype != np.uint8:
+                # If it’s float in [0,1] or [0,255], this keeps it safe
+                if np.issubdtype(arr.dtype, np.floating):
+                    arr = np.clip(arr * (255.0 if arr.max() <= 1.0 else 1.0), 0, 255).astype(np.uint8)
+                else:
+                    arr = np.clip(arr, 0, 255).astype(np.uint8)
+
+            # Make memory C-contiguous to avoid stride/tile issues
+            arr = np.ascontiguousarray(arr)
+
+            # Channel order: many Omniverse/Isaac feeds are BGRA/BGR
+            if arr.shape[2] == 4:
+                # Treat input as BGRA → convert to RGBA
+                arr = arr[..., [2, 1, 0, 3]]
+                mode = "RGBA"
+            else:  # 3 channels
+                # Treat input as BGR → convert to RGB
+                arr = arr[..., ::-1]
+                mode = "RGB"
+
+            H, W = arr.shape[:2]
+            if H <= 0 or W <= 0:
+                raise ValueError(f"Bad size: W={W}, H={H}")
 
             kk = k.replace("/", "_")
-
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{session}_{kk}_{ts}.png"
+            path = os.path.join(out_dir, filename)
 
-            img = PIL.Image.fromarray(data, mode="RGBA")
+            # Construct via fromarray (avoids raw/stride pitfalls)
+            Image.fromarray(arr, mode).save(path)
+            print(f"[motion.extension] Saved {path} ({W}x{H}, {mode})")
 
-            # Save into an in-memory buffer
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")  # PNG keeps the alpha channel
-            image_bytes = buf.getvalue()
-            with open(os.path.join("/tmp/image", filename), "wb") as g:
-                g.write(image_bytes)
             #storage_kv_set("image", f"{session}_{k}_{ts}", image_bytes)
 
     sub = (
