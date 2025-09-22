@@ -1,19 +1,6 @@
 services:
   node:
-    image: nvcr.io/nvidia/isaac-sim:5.0.0
-    command:
-      - -lc
-      - |
-        if [ -z "${MOTION}" ]; then
-          echo "MOTION not set, exiting";
-          exit 0;
-        fi
-        apt -y -qq update
-        apt -y -qq install curl ffmpeg
-        /isaac-sim/python.sh -m pip install aiohttp nats-py boto3
-        sleep infinity
-        /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers
-    profiles: ["gpu"]
+    image: motion/motion-node-isaac
     deploy:
       resources:
         reservations:
@@ -21,5 +8,3 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-volumes:
-  storage: {}

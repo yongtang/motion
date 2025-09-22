@@ -93,6 +93,18 @@ def docker_compose(scope, request):
         )
         return compose_project
 
+    subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            "docker/docker-compose.build.yml",
+            "build",
+        ],
+        check=True,
+        env=env,
+    )
+
     # 1) Start ALL stacks in parallel
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(projects)) as ex:
         up_futs = {

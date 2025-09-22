@@ -1,0 +1,142 @@
+services:
+  server:
+    image: motion/motion-server
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        RUN apt -y -qq update && \
+            apt -y -qq install curl
+        COPY LICENSE /app/LICENSE
+        COPY pyproject.toml /app/pyproject.toml
+        COPY src /app/src
+        COPY server /app/server
+        WORKDIR /app
+        RUN pip install -e . && \
+            pip install -r server/requirements.txt
+        CMD ["/bin/bash", "-lc", "uvicorn server.server:app --host 0.0.0.0 --port 8080"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl","-fsS","http://127.0.0.1:8080/health"]
+  nats:
+    image: motion/motion-nats
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM nats:alpine
+        CMD ["-a", "127.0.0.1", "-m", "8222", "-js", "-sd", "/storage/nats"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=30s CMD ["wget", "-qO", "/dev/null", "http://127.0.0.1:8222/healthz"]
+  rtsp:
+    image: motion/motion-rtsp
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM bluenviron/mediamtx:latest-ffmpeg
+        ENV MTX_API=yes
+        HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s CMD ["wget", "-qO-", "http://localhost:9997/v3/paths/list"]
+  minio:
+    image: motion/motion-minio
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM minio/minio:latest
+        ENV MINIO_ROOT_USER=username
+        ENV MINIO_ROOT_PASSWORD=password
+        ENV MINIO_REGION=us-east-1
+        CMD ["server", "/storage/minio"]
+        HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=30s CMD ["curl", "-fsS", "http://127.0.0.1:9000/minio/health/ready", "-o", "/dev/null"]
+  react:
+    image: motion/motion-react
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM node:alpine
+        COPY LICENSE /app/LICENSE
+        COPY react /app/react
+        WORKDIR /app/react
+        RUN npm ci --no-audit --no-fund
+        CMD ["npm", "run", "dev", "--", "--host"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["wget", "-qO", "/dev/null", "http://127.0.0.1:5173"]
+  work:
+    image: motion/motion-work
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        RUN apt -y -qq update && \
+            apt -y -qq install docker-cli docker-compose curl
+        COPY LICENSE /app/LICENSE
+        COPY pyproject.toml /app/pyproject.toml
+        COPY src /app/src
+        COPY server /app/server
+        COPY docker /app/docker
+        WORKDIR /app
+        RUN pip install -e . && \
+            pip install -r server/requirements.txt
+        CMD ["python3", "-m", "server.work"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
+  live:
+    image: motion/motion-live
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM opensuse/tumbleweed
+        RUN zypper install -y \
+            gstreamer \
+            gstreamer-plugins-base \
+            gstreamer-plugins-good \
+            gstreamer-plugins-bad \
+            gstreamer-plugins-ugly \
+            gstreamer-plugins-rs \
+            gstreamer-devel \
+            gstreamer-libnice \
+            gnu_parallel
+        COPY LICENSE /app/LICENSE
+        COPY pyproject.toml /app/pyproject.toml
+        COPY src /app/src
+        COPY server /app/server
+        WORKDIR /app
+        CMD ["/bin/bash", "-c", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; sleep infinity"]
+  node:
+    image: motion/motion-node
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        COPY LICENSE /app/LICENSE
+        WORKDIR /app
+        CMD ["/bin/bash", "-c", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; exit 1"]
+  node-echo:
+    image: motion/motion-node-echo
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        RUN apt -y -qq update && \
+            apt -y -qq install curl
+        COPY LICENSE /app/LICENSE
+        COPY pyproject.toml /app/pyproject.toml
+        COPY src /app/src
+        COPY server /app/server
+        WORKDIR /app
+        RUN pip install -e . && \
+            pip install -r server/requirements.txt
+        CMD ["/bin/bash", "-c", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 1; fi; python -m server.echo"]
+  node-isaac:
+    image: motion/motion-node-isaac
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM nvcr.io/nvidia/isaac-sim:5.0.0
+        RUN apt -y -qq update && \
+            apt -y -qq install curl ffmpeg
+        COPY LICENSE /app/LICENSE
+        COPY pyproject.toml /app/pyproject.toml
+        COPY src /app/src
+        COPY server /app/server
+        COPY server/channel.py /isaac-sim/exts/motion.extension/motion/channel.py
+        COPY server/extension.py /isaac-sim/exts/motion.extension/motion/extension.py
+        COPY server/extension.toml /isaac-sim/exts/motion.extension/config/extension.toml
+        WORKDIR /app
+        RUN /isaac-sim/python.sh -m pip install aiohttp nats-py boto3
+        ENV ACCEPT_EULA=Y
+        ENV PRIVACY_CONSENT=Y
+        CMD ["/bin/bash", "-c", "if [ -z \"$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 1; fi; sleep infinity; echo /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers"]

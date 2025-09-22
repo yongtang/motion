@@ -1,15 +1,16 @@
 services:
   browser:
-    image: mcr.microsoft.com/playwright:v1.54.2-jammy
+    image: motion/motion-browser
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM mcr.microsoft.com/playwright:v1.54.2-jammy
+        COPY LICENSE /app/LICENSE
+        COPY tests /app/tests
+        WORKDIR /app/tests
+        RUN npm ci --no-audit --no-fund
+        RUN npx playwright install --with-deps
+        CMD ["/bin/bash", "-lc", "python3 -m http.server 9999 --bind 0.0.0.0"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=10s CMD ["wget", "-qO", "/dev/null", "http://127.0.0.1:9999"]
     container_name: ${SCOPE:-motion}-browser
-    working_dir: /app/tests
-    volumes:
-      - ${PWD}:/app
     network_mode: bridge
-    command: ["/bin/bash", "-lc", "npm ci --no-audit --no-fund && npx playwright install --with-deps && python3 -m http.server 9999 --bind 0.0.0.0"]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9999 > /dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
