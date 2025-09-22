@@ -87,7 +87,7 @@ async def run_node(session, annotator):
             path = os.path.join("/tmp/image", filename)
 
             # Construct via fromarray (avoids raw/stride pitfalls)
-            Image.fromarray(arr, mode).save(path)
+            PIL>Image.fromarray(arr, mode).save(path)
             print(f"[motion.extension] Saved {path} ({W}x{H}, {mode})")
 
             #storage_kv_set("image", f"{session}_{k}_{ts}", image_bytes)
