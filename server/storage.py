@@ -1,6 +1,7 @@
 import collections
 import contextlib
 import logging
+import time
 
 import boto3
 import botocore
@@ -149,3 +150,118 @@ def storage_kv_scan(
             case code:
                 log.error(f"[KV {bucket}/{prefix}] Scan failed: {code}")
                 raise
+
+
+def storage_kv_acquire(bucket: str, key: str, *, ttl: int = 300) -> bool:
+    """
+    Fixed-TTL acquire:
+      - Try to create marker with If-None-Match:* (header injected via botocore event).
+      - If exists and expired, CAS overwrite with If-Match:<etag>.
+      - Return True if acquired, False if busy.
+    """
+    deadline = str(int(time.time()) + ttl)
+
+    # --- fast path: create only if absent (inject If-None-Match: *) ---
+    def _h_if_none_match(**kwargs):
+        kwargs["params"]["headers"]["If-None-Match"] = "*"
+
+    storage.meta.events.register("before-call.s3.PutObject", _h_if_none_match)
+    try:
+        try:
+            storage.put_object(
+                Bucket=bucket,
+                Key=key,
+                Body=b"",
+                ContentType="application/octet-stream",
+                Metadata={"deadline": deadline},
+            )
+            log.info(f"[KV {bucket}/{key}] Acquired (deadline={deadline})")
+            return True
+        except ClientError as e:
+            http = (e.response or {}).get("ResponseMetadata", {}).get("HTTPStatusCode")
+            code = str(((e.response or {}).get("Error") or {}).get("Code", ""))
+            if http not in (412,) and code not in {"PreconditionFailed", "412"}:
+                log.error(f"[KV {bucket}/{key}] Acquire failed: {code or http}")
+                raise
+    finally:
+        storage.meta.events.unregister("before-call.s3.PutObject", _h_if_none_match)
+
+    # --- slow path: object exists — check expiry ---
+    head = storage_kv_head(bucket, key)
+    if head is None:
+        # raced with a delete; retry once with If-None-Match: *
+        storage.meta.events.register("before-call.s3.PutObject", _h_if_none_match)
+        try:
+            try:
+                storage.put_object(
+                    Bucket=bucket,
+                    Key=key,
+                    Body=b"",
+                    ContentType="application/octet-stream",
+                    Metadata={"deadline": deadline},
+                )
+                log.info(
+                    f"[KV {bucket}/{key}] Acquired after race (deadline={deadline})"
+                )
+                return True
+            except ClientError:
+                log.info(f"[KV {bucket}/{key}] Busy after race")
+                return False
+        finally:
+            storage.meta.events.unregister("before-call.s3.PutObject", _h_if_none_match)
+
+    etag = head.get("ETag")
+    if isinstance(etag, str):
+        etag = etag.strip('"')
+    metadata = head.get("Metadata") or {}
+    try:
+        existing_deadline = int(metadata.get("deadline", "0"))
+    except Exception:
+        existing_deadline = 0
+    now = int(time.time())
+
+    if existing_deadline > 0 and existing_deadline <= now:
+        # expired → reclaim with CAS (inject If-Match: <etag>)
+        def _h_if_match(**kwargs):
+            kwargs["params"]["headers"]["If-Match"] = etag
+
+        new_deadline = str(now + ttl)
+        storage.meta.events.register("before-call.s3.PutObject", _h_if_match)
+        try:
+            try:
+                storage.put_object(
+                    Bucket=bucket,
+                    Key=key,
+                    Body=b"",
+                    ContentType="application/octet-stream",
+                    Metadata={"deadline": new_deadline},
+                )
+                log.info(
+                    f"[KV {bucket}/{key}] Reclaimed expired "
+                    f"(old={existing_deadline}, new={new_deadline})"
+                )
+                return True
+            except ClientError as e:
+                http = (
+                    (e.response or {}).get("ResponseMetadata", {}).get("HTTPStatusCode")
+                )
+                code = str(((e.response or {}).get("Error") or {}).get("Code", ""))
+                if http in (412, 404) or code in {
+                    "PreconditionFailed",
+                    "NoSuchKey",
+                    "NotFound",
+                }:
+                    log.info(f"[KV {bucket}/{key}] Reclaim CAS lost ({code or http})")
+                    return False
+                log.error(f"[KV {bucket}/{key}] Reclaim failed: {code or http}")
+                raise
+        finally:
+            storage.meta.events.unregister("before-call.s3.PutObject", _h_if_match)
+
+    log.info(f"[KV {bucket}/{key}] Busy (deadline={existing_deadline}, now={now})")
+    return False
+
+
+def storage_kv_release(bucket: str, key: str) -> None:
+    """Idempotent release (delete lease marker)."""
+    storage_kv_del(bucket, key)
