@@ -137,7 +137,7 @@ services:
         COPY server/extension.py /isaac-sim/exts/motion.extension/motion/extension.py
         COPY server/extension.toml /isaac-sim/exts/motion.extension/config/extension.toml
         WORKDIR /app
-        RUN /isaac-sim/python.sh -m pip install aiohttp nats-py boto3
+        RUN /isaac-sim/python.sh -m pip install nats-py
         ENV ACCEPT_EULA=Y
         ENV PRIVACY_CONSENT=Y
         ENTRYPOINT ["/bin/bash"]
