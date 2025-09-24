@@ -1,10 +1,10 @@
 import asyncio
-import time
 import json
 import logging
 import os
 import shutil
 import tempfile
+import time
 import uuid
 import zipfile
 
@@ -105,7 +105,7 @@ async def node_stop(channel: Channel, session: str):
     log.info(f"[node_stop] session={session} done")
 
 
-async def run_work():
+async def run_work(node):
     channel = Channel(servers="nats://127.0.0.1:4222")
     await channel.start()
 
@@ -166,18 +166,14 @@ async def run_beat(node: str):
         await asyncio.sleep(15)  # Update every 15s
 
 
-async def run_node(node: str):
-    async with run_http(9999):
-        await run_work()
-
-
 async def main():
     with open("/etc/machine-id") as f:
         node = str(uuid.UUID(f.read().strip()))
 
     async with asyncio.TaskGroup() as g:
+        g.create_task(run_http(9999), name="http")
         g.create_task(run_beat(node), name="beat")
-        g.create_task(run_node(node), name="node")
+        g.create_task(run_work(node), name="work")
 
 
 if __name__ == "__main__":

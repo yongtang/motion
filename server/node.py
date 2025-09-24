@@ -1,4 +1,4 @@
-import contextlib
+import asyncio
 import logging
 
 import aiohttp.web
@@ -7,7 +7,6 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
-@contextlib.asynccontextmanager
 async def run_http(port: int):
     log.info("[run_http] Start")
     app = aiohttp.web.Application()
@@ -27,7 +26,7 @@ async def run_http(port: int):
     log.info(f"[run_http] Health: http://0.0.0.0:{port}/health")
 
     try:
-        yield
+        await asyncio.Future()
     finally:
         await runner.cleanup()
         log.info("[run_http] Stopped")
