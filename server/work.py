@@ -1,4 +1,5 @@
 import asyncio
+import time
 import json
 import logging
 import os
@@ -157,13 +158,26 @@ async def run_work():
         await channel.close()
 
 
+async def run_beat(node: str):
+    while True:
+        deadline = str(int(time.time()) + 60)  # Valid for 1 min
+        storage_kv_set("node", f"meta/{node}.json", b"{}")
+        log.info(f"[run_beat] node={node} deadline={deadline}")
+        await asyncio.sleep(15)  # Update every 15s
+
+
+async def run_node(node: str):
+    async with run_http(9999):
+        await run_work()
+
+
 async def main():
     with open("/etc/machine-id") as f:
         node = str(uuid.UUID(f.read().strip()))
-    storage_kv_set("node", f"meta/{node}.json", b"{}")
 
-    async with run_http(9999):
-        await run_work()
+    async with asyncio.TaskGroup() as g:
+        g.create_task(run_beat(node), name="beat")
+        g.create_task(run_node(node), name="node")
 
 
 if __name__ == "__main__":
