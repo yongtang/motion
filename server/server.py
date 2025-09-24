@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import datetime
+import json
 import logging
 import random
 import tempfile
@@ -233,8 +234,6 @@ async def session_delete(session: pydantic.UUID4) -> motion.session.SessionBaseM
     log.info(f"[Session {session.uuid}] Deleting (scene={session.scene})")
     storage_kv_del("session", f"{session.uuid}.json")
     log.info(f"[Session {session.uuid}] Metadata deleted")
-    await app.state.channel.publish_stop(str(session.uuid))
-    log.info(f"[Session {session.uuid}] Published stop")
 
     return session
 
@@ -324,8 +323,9 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBaseMod
     log.debug(f"[Session {session.uuid}] Allocation order: {entries}")
 
     chosen = None
+    data = json.dumps({"session": str(session.uuid)}, sort_keys=True).encode()
     for node in entries:
-        if storage_kv_acquire("node", f"node/{node}.json", ttl=ttl):
+        if storage_kv_acquire("node", f"node/{node}.json", data, ttl=ttl):
             chosen = node
             log.info(f"[Session {session.uuid}] Lease acquired on node={chosen}")
             break
@@ -337,12 +337,13 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBaseMod
         raise HTTPException(status_code=503, detail="No capacity")
 
     # 4) record assignment so /stop can free correctly
-    storage_kv_set("node", f"work/{session.uuid}.json", chosen.encode())
+    storage_kv_set(
+        "node",
+        f"work/{session.uuid}.json",
+        json.dumps({"node": chosen}, sort_keys=True).encode(),
+    )
     log.info(f"[Session {session.uuid}] Assigned node={chosen}")
 
-    # 5) publish play
-    await app.state.channel.publish_play(str(session.uuid))
-    log.info(f"[Session {session.uuid}] Published play")
     return session
 
 
@@ -362,7 +363,9 @@ async def session_stop(session: pydantic.UUID4) -> motion.session.SessionBaseMod
 
     # 2) read assignment and release lease (idempotent)
     try:
-        chosen = b"".join(storage_kv_get("node", f"work/{session.uuid}.json")).decode()
+        chosen = json.loads(
+            b"".join(storage_kv_get("node", f"work/{session.uuid}.json"))
+        )["node"]
         log.info(f"[Session {session.uuid}] Releasing lease (node={chosen})")
         storage_kv_release("node", f"node/{chosen}.json")
         with contextlib.suppress(Exception):
@@ -371,9 +374,6 @@ async def session_stop(session: pydantic.UUID4) -> motion.session.SessionBaseMod
     except FileNotFoundError:
         log.info(f"[Session {session.uuid}] No assignment to release (maybe expired)")
 
-    # 3) publish stop
-    await app.state.channel.publish_stop(str(session.uuid))
-    log.info(f"[Session {session.uuid}] Published stop")
     return session
 
 

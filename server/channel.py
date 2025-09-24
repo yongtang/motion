@@ -36,8 +36,6 @@ class Channel:
         config = nats.js.api.StreamConfig(
             name="motion",
             subjects=[
-                "motion.node.*.play",
-                "motion.node.*.stop",
                 "motion.data.*",
                 "motion.step.*",
             ],
@@ -68,83 +66,6 @@ class Channel:
             log.info("[Channel.close] NATS connection closed")
         self.nc = None
         self.js = None
-
-    async def publish_play(self, session: str) -> None:
-        """Publish a persisted PLAY for this session."""
-        assert self.js is not None, "Channel not started"
-        subject = f"motion.node.{session}.play"
-        log.info(f"[Channel.publish_play] subject={subject}, session={session}")
-        data = await self.js.publish(subject, session.encode())  # persisted; PubAck
-        log.info(f"[Channel.publish_play] ack stream={data.stream}, seq={data.seq}")
-
-    async def publish_stop(self, session: str) -> None:
-        """Publish a persisted STOP (rollup keeps only latest)."""
-        assert self.js is not None, "Channel not started"
-        subject = f"motion.node.{session}.stop"
-        log.info(f"[Channel.publish_stop] subject={subject}, session={session}")
-        data = await self.js.publish(
-            subject,
-            session.encode(),
-            headers={"Nats-Rollup": "sub"},
-        )
-        log.info(f"[Channel.publish_stop] ack stream={data.stream}, seq={data.seq}")
-
-    async def subscribe_play(self):
-        """
-        Pull-subscribe to ALL plays with a shared durable 'motion-node'.
-        - DeliverPolicy defaults to ALL (process backlog)
-        - 1-hour lease (ack_wait)
-        - one in-flight per worker (max_ack_pending=1)
-        - unlimited retries (max_deliver=-1)
-        """
-        assert self.js is not None, "Channel not started"
-
-        durable = "motion-node"
-        subject = "motion.node.*.play"
-        ack_wait = datetime.timedelta(hours=1).total_seconds()
-
-        log.info(
-            f"[Channel.subscribe_play] durable={durable}, filter={subject}, ack_wait={ack_wait}"
-        )
-
-        config = nats.js.api.ConsumerConfig(
-            durable_name=durable,
-            filter_subject=subject,
-            ack_policy=nats.js.api.AckPolicy.EXPLICIT,
-            ack_wait=ack_wait,
-            max_ack_pending=-1,  # one in-flight per worker
-            max_deliver=-1,  # keep retrying until ACK
-            deliver_policy=nats.js.api.DeliverPolicy.ALL,  # deliver all
-        )
-        try:
-            await self.js.add_consumer(stream="motion", config=config)
-        except nats.js.errors.APIError:
-            pass
-
-        sub = await self.js.pull_subscribe(subject, durable=durable, stream="motion")
-        log.info(
-            f"[Channel.subscribe_play] subscribed pull durable={durable}, filter={subject}"
-        )
-        return sub
-
-    async def subscribe_stop(self, session: str):
-        """
-        JS PUSH subscription to this session's STOP.
-        - LAST_PER_SUBJECT => delivers prior STOP immediately if it exists
-        - No inactive auto-deletion (we want the consumer to live as long as the job)
-        """
-        assert self.js is not None, "Channel not started"
-        subject = f"motion.node.{session}.stop"
-        log.info(f"[Channel.subscribe_stop] subject={subject}, policy=LAST_PER_SUBJECT")
-        config = nats.js.api.ConsumerConfig(
-            filter_subject=subject,
-            deliver_policy=nats.js.api.DeliverPolicy.LAST_PER_SUBJECT,
-            ack_policy=nats.js.api.AckPolicy.NONE,
-            # no inactive_threshold to ensure it never disappears mid-run
-        )
-        sub = await self.js.subscribe(subject, config=config, stream="motion")
-        log.info(f"[Channel.subscribe_stop] subscribed push subject={subject}")
-        return sub
 
     async def publish_data(self, session: str, payload: str) -> None:
         log.info(f"[Channel.publish_data] session={session}, size={len(payload)}")

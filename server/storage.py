@@ -152,7 +152,7 @@ def storage_kv_scan(
                 raise
 
 
-def storage_kv_acquire(bucket: str, key: str, *, ttl: int = 300) -> bool:
+def storage_kv_acquire(bucket: str, key: str, data: bytes, *, ttl: int = 300) -> bool:
     """
     Fixed-TTL acquire:
       - Try to create marker with If-None-Match:* (header injected via botocore event).
@@ -171,7 +171,7 @@ def storage_kv_acquire(bucket: str, key: str, *, ttl: int = 300) -> bool:
             storage.put_object(
                 Bucket=bucket,
                 Key=key,
-                Body=b"",
+                Body=data,  # write provided content
                 ContentType="application/octet-stream",
                 Metadata={"deadline": deadline},
             )
@@ -196,7 +196,7 @@ def storage_kv_acquire(bucket: str, key: str, *, ttl: int = 300) -> bool:
                 storage.put_object(
                     Bucket=bucket,
                     Key=key,
-                    Body=b"",
+                    Body=data,  # write provided content
                     ContentType="application/octet-stream",
                     Metadata={"deadline": deadline},
                 )
@@ -232,7 +232,7 @@ def storage_kv_acquire(bucket: str, key: str, *, ttl: int = 300) -> bool:
                 storage.put_object(
                     Bucket=bucket,
                     Key=key,
-                    Body=b"",
+                    Body=data,  # write provided content
                     ContentType="application/octet-stream",
                     Metadata={"deadline": new_deadline},
                 )

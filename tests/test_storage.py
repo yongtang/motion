@@ -52,7 +52,7 @@ def test_storage_acquire(freeze_time, endpoint):
                 "Metadata": {"deadline": deadline_a},
             },
         )
-        assert server.storage.storage_kv_acquire(bucket, key_a, ttl=300) is True
+        assert server.storage.storage_kv_acquire(bucket, key_a, b"", ttl=300) is True
 
     # Case B: busy (not expired)
     key_b = "vm-002"
@@ -80,7 +80,7 @@ def test_storage_acquire(freeze_time, endpoint):
             },
             expected_params={"Bucket": bucket, "Key": key_b},
         )
-        assert server.storage.storage_kv_acquire(bucket, key_b, ttl=300) is False
+        assert server.storage.storage_kv_acquire(bucket, key_b, b"", ttl=300) is False
 
     # Case C: expired -> reclaim
     key_c = "vm-003"
@@ -119,7 +119,7 @@ def test_storage_acquire(freeze_time, endpoint):
                 "Metadata": {"deadline": str(freeze_time + 300)},
             },
         )
-        assert server.storage.storage_kv_acquire(bucket, key_c, ttl=300) is True
+        assert server.storage.storage_kv_acquire(bucket, key_c, b"", ttl=300) is True
 
 
 def test_storage_release(endpoint):
