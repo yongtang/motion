@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import tempfile
+import uuid
 import zipfile
 
 import nats
@@ -157,6 +158,10 @@ async def run_work():
 
 
 async def main():
+    with open("/etc/machine-id") as f:
+        node = str(uuid.UUID(f.read().strip()))
+    storage_kv_set("node", f"meta/{node}.json", b"{}")
+
     async with run_http(9999):
         await run_work()
 

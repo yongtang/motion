@@ -50,6 +50,7 @@ services:
     volumes:
       - storage:/storage
       - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/machine-id:/etc/machine-id:ro
     environment:
       - MOTION=${PWD}
       - SCOPE=${SCOPE}

@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import datetime
 import logging
+import random
 import tempfile
 import uuid
 import zipfile
@@ -22,7 +23,15 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import motion
 
 from .channel import Channel
-from .storage import storage_kv_del, storage_kv_get, storage_kv_head, storage_kv_set
+from .storage import (
+    storage_kv_acquire,
+    storage_kv_del,
+    storage_kv_get,
+    storage_kv_head,
+    storage_kv_release,
+    storage_kv_scan,
+    storage_kv_set,
+)
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -281,6 +290,8 @@ async def session_status(
     "/session/{session:uuid}/play", response_model=motion.session.SessionBaseModel
 )
 async def session_play(session: pydantic.UUID4) -> motion.session.SessionBaseModel:
+    ttl = 3600  # one hourse lease
+    # 1) ensure session exists
     try:
         session = motion.session.SessionBaseModel.parse_raw(
             b"".join(storage_kv_get("session", f"{session}.json"))
@@ -290,9 +301,48 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBaseMod
         log.warning(f"[Session {session}] Not found for play")
         raise HTTPException(status_code=404, detail=f"Session {session} not found")
 
+    # 2) extract full list, then filter to node ids
+    entries = list(storage_kv_scan("node", "meta/"))
+    log.info(
+        f"[Session {session.uuid}] Registry scan returned {len(entries)} keys under meta/"
+    )
+
+    entries = list(
+        map(
+            lambda e: e[len("meta/") : -len(".json")],
+            filter(lambda e: e.endswith(".json"), entries),
+        )
+    )
+    log.info(f"[Session {session.uuid}] Nodes discovered: {len(entries)}")
+
+    if not entries:
+        log.info(f"[Session {session.uuid}] No nodes registered")
+        raise HTTPException(status_code=503, detail="No nodes registered")
+
+    # 3) shuffle and try to acquire one lease
+    random.shuffle(entries)
+    log.debug(f"[Session {session.uuid}] Allocation order: {entries}")
+
+    chosen = None
+    for node in entries:
+        if storage_kv_acquire("node", f"node/{node}.json", ttl=ttl):
+            chosen = node
+            log.info(f"[Session {session.uuid}] Lease acquired on node={chosen}")
+            break
+        else:
+            log.debug(f"[Session {session.uuid}] Node busy: {node}")
+
+    if chosen is None:
+        log.info(f"[Session {session.uuid}] All nodes busy (no capacity)")
+        raise HTTPException(status_code=503, detail="No capacity")
+
+    # 4) record assignment so /stop can free correctly
+    storage_kv_set("node", f"work/{session.uuid}.json", chosen.encode())
+    log.info(f"[Session {session.uuid}] Assigned node={chosen}")
+
+    # 5) publish play
     await app.state.channel.publish_play(str(session.uuid))
     log.info(f"[Session {session.uuid}] Published play")
-
     return session
 
 
@@ -300,6 +350,7 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBaseMod
     "/session/{session:uuid}/stop", response_model=motion.session.SessionBaseModel
 )
 async def session_stop(session: pydantic.UUID4) -> motion.session.SessionBaseModel:
+    # 1) ensure session exists
     try:
         session = motion.session.SessionBaseModel.parse_raw(
             b"".join(storage_kv_get("session", f"{session}.json"))
@@ -309,9 +360,20 @@ async def session_stop(session: pydantic.UUID4) -> motion.session.SessionBaseMod
         log.warning(f"[Session {session}] Stop requested for nonexistent session")
         raise HTTPException(status_code=404, detail=f"Session {session} not found")
 
+    # 2) read assignment and release lease (idempotent)
+    try:
+        chosen = b"".join(storage_kv_get("node", f"work/{session.uuid}.json")).decode()
+        log.info(f"[Session {session.uuid}] Releasing lease (node={chosen})")
+        storage_kv_release("node", f"node/{chosen}.json")
+        with contextlib.suppress(Exception):
+            storage_kv_del("node", f"work/{session.uuid}.json")
+        log.info(f"[Session {session.uuid}] Lease released and assignment cleared")
+    except FileNotFoundError:
+        log.info(f"[Session {session.uuid}] No assignment to release (maybe expired)")
+
+    # 3) publish stop
     await app.state.channel.publish_stop(str(session.uuid))
     log.info(f"[Session {session.uuid}] Published stop")
-
     return session
 
 
