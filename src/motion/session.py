@@ -10,7 +10,7 @@ import pydantic
 import websockets
 
 from .motionclass import motionclass
-from .scene import Scene, SceneBaseModel
+from .scene import Scene, SceneBase
 
 
 class SessionStatusSpec(str, enum.Enum):
@@ -51,18 +51,18 @@ class SessionStepModel(pydantic.BaseModel):
             raise ValueError("Must define exactly one of 'twist' or 'joint'")
 
 
-class SessionSpecModel(pydantic.BaseModel):
+class SessionSpec(pydantic.BaseModel):
     scene: pydantic.UUID4
     joint: list[str] = pydantic.Field(default_factory=lambda: ["*"])
     camera: dict[str, CameraSpec] = pydantic.Field(default_factory=dict)
     link: list[str] = pydantic.Field(default_factory=lambda: ["*"])
 
 
-class SessionBaseModel(SessionSpecModel):
+class SessionBase(SessionSpec):
     uuid: pydantic.UUID4
 
     def __eq__(self, other):
-        if not isinstance(other, SessionBaseModel):
+        if not isinstance(other, SessionBase):
             return NotImplemented
         return self.uuid == other.uuid
 
@@ -156,7 +156,7 @@ class SessionStream:
 
 
 @motionclass
-class Session(SessionBaseModel):
+class Session(SessionBase):
     """
     Usage:
         async with Session(base, uuid, timeout=5.0) as session:
@@ -175,12 +175,12 @@ class Session(SessionBaseModel):
         # One-time sync fetch to populate fields
         r = httpx.request("GET", f"{base}/session/{uuid}", timeout=timeout)
         r.raise_for_status()
-        data = SessionBaseModel.parse_obj(r.json())
+        data = SessionBase.parse_obj(r.json())
 
         # Fetch scene metadata to obtain runner
         r = httpx.request("GET", f"{base}/scene/{data.scene}", timeout=timeout)
         r.raise_for_status()
-        scene = SceneBaseModel.parse_obj(r.json())
+        scene = SceneBase.parse_obj(r.json())
         scene = Scene(base, scene.uuid, scene.runner, timeout=timeout)
 
         super().__init__(

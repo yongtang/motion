@@ -10,21 +10,21 @@ class SceneRunnerSpec(str, enum.Enum):
     isaac = "isaac"
 
 
-class SceneSpecModel(pydantic.BaseModel):
+class SceneSpec(pydantic.BaseModel):
     runner: SceneRunnerSpec
 
 
-class SceneBaseModel(SceneSpecModel):
+class SceneBase(SceneSpec):
     uuid: pydantic.UUID4
 
     def __eq__(self, other):
-        if not isinstance(other, SceneBaseModel):
+        if not isinstance(other, SceneBase):
             return NotImplemented
         return self.uuid == other.uuid
 
 
 @motionclass
-class Scene(SceneBaseModel):
+class Scene(SceneBase):
     def __init__(
         self,
         base: str,

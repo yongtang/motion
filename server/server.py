@@ -62,18 +62,18 @@ async def health():
     return JSONResponse({"status": "ok"})
 
 
-@app.post("/scene", response_model=motion.scene.SceneBaseModel, status_code=201)
+@app.post("/scene", response_model=motion.scene.SceneBase, status_code=201)
 async def scene_create(
     file: UploadFile = File(...),
     runner: motion.scene.SceneRunnerSpec = Form(...),  # NEW: form field
-) -> motion.scene.SceneBaseModel:
+) -> motion.scene.SceneBase:
     if file.content_type not in {"application/zip", "application/x-zip-compressed"}:
         log.warning(f"[Scene N/A] Upload rejected: invalid type {file.content_type}")
         raise HTTPException(status_code=415, detail="zip required")
 
-    spec = motion.scene.SceneSpecModel(runner=runner)
+    spec = motion.scene.SceneSpec(runner=runner)
 
-    scene = motion.scene.SceneBaseModel(uuid=uuid.uuid4(), **spec.dict())
+    scene = motion.scene.SceneBase(uuid=uuid.uuid4(), **spec.dict())
 
     storage_kv_set("scene", f"{scene.uuid}.zip", file.file)
     log.info(f"[Scene {scene.uuid}] Stored archive {file.filename}")
@@ -84,10 +84,10 @@ async def scene_create(
     return scene
 
 
-@app.get("/scene/{scene:uuid}", response_model=motion.scene.SceneBaseModel)
-async def scene_lookup(scene: pydantic.UUID4) -> motion.scene.SceneBaseModel:
+@app.get("/scene/{scene:uuid}", response_model=motion.scene.SceneBase)
+async def scene_lookup(scene: pydantic.UUID4) -> motion.scene.SceneBase:
     try:
-        scene = motion.scene.SceneBaseModel.parse_raw(
+        scene = motion.scene.SceneBase.parse_raw(
             b"".join(storage_kv_get("scene", f"{scene}.json"))
         )
         log.info(f"[Scene {scene.uuid}] Found")
@@ -114,10 +114,10 @@ async def scene_archive(scene: pydantic.UUID4):
     return StreamingResponse(stream, media_type="application/zip", headers=headers)
 
 
-@app.delete("/scene/{scene:uuid}", response_model=motion.scene.SceneBaseModel)
-async def scene_delete(scene: pydantic.UUID4) -> motion.scene.SceneBaseModel:
+@app.delete("/scene/{scene:uuid}", response_model=motion.scene.SceneBase)
+async def scene_delete(scene: pydantic.UUID4) -> motion.scene.SceneBase:
     try:
-        scene = motion.scene.SceneBaseModel.parse_raw(
+        scene = motion.scene.SceneBase.parse_raw(
             b"".join(storage_kv_get("scene", f"{scene}.json"))
         )
         log.info(f"[Scene {scene.uuid}] Deleting")
@@ -139,10 +139,10 @@ async def scene_delete(scene: pydantic.UUID4) -> motion.scene.SceneBaseModel:
     return scene
 
 
-@app.get("/scene", response_model=list[motion.scene.SceneBaseModel])
+@app.get("/scene", response_model=list[motion.scene.SceneBase])
 async def scene_search(q: pydantic.UUID4 = Query(..., description="exact scene uuid")):
     try:
-        scene = motion.scene.SceneBaseModel.parse_raw(
+        scene = motion.scene.SceneBase.parse_raw(
             b"".join(storage_kv_get("scene", f"{q}.json"))
         )
         log.info(f"[Scene {scene.uuid}] Search found")
@@ -152,11 +152,11 @@ async def scene_search(q: pydantic.UUID4 = Query(..., description="exact scene u
         return []
 
 
-@app.post("/session", response_model=motion.session.SessionBaseModel, status_code=201)
+@app.post("/session", response_model=motion.session.SessionBase, status_code=201)
 async def session_create(
-    body: motion.session.SessionSpecModel,
-) -> motion.session.SessionBaseModel:
-    session = motion.session.SessionBaseModel(uuid=uuid.uuid4(), **body.dict())
+    body: motion.session.SessionSpec,
+) -> motion.session.SessionBase:
+    session = motion.session.SessionBase(uuid=uuid.uuid4(), **body.dict())
 
     try:
         storage_kv_get("scene", f"{session.scene}.json")
@@ -182,10 +182,10 @@ async def session_create(
     return session
 
 
-@app.get("/session/{session:uuid}", response_model=motion.session.SessionBaseModel)
-async def session_lookup(session: pydantic.UUID4) -> motion.session.SessionBaseModel:
+@app.get("/session/{session:uuid}", response_model=motion.session.SessionBase)
+async def session_lookup(session: pydantic.UUID4) -> motion.session.SessionBase:
     try:
-        session = motion.session.SessionBaseModel.parse_raw(
+        session = motion.session.SessionBase.parse_raw(
             b"".join(storage_kv_get("session", f"{session}.json"))
         )
         log.info(f"[Session {session.uuid}] Found (scene={session.scene})")
@@ -198,7 +198,7 @@ async def session_lookup(session: pydantic.UUID4) -> motion.session.SessionBaseM
 @app.get("/session/{session:uuid}/archive")
 async def session_archive(session: pydantic.UUID4):
     try:
-        session = motion.session.SessionBaseModel.parse_raw(
+        session = motion.session.SessionBase.parse_raw(
             b"".join(storage_kv_get("session", f"{session}.json"))
         )
     except FileNotFoundError:
@@ -229,9 +229,9 @@ async def session_archive(session: pydantic.UUID4):
     return StreamingResponse(stream(), media_type="application/zip", headers=headers)
 
 
-@app.delete("/session/{session:uuid}", response_model=motion.session.SessionBaseModel)
-async def session_delete(session: pydantic.UUID4) -> motion.session.SessionBaseModel:
-    session = motion.session.SessionBaseModel.parse_raw(
+@app.delete("/session/{session:uuid}", response_model=motion.session.SessionBase)
+async def session_delete(session: pydantic.UUID4) -> motion.session.SessionBase:
+    session = motion.session.SessionBase.parse_raw(
         b"".join(storage_kv_get("session", f"{session}.json"))
     )
     log.info(f"[Session {session.uuid}] Deleting (scene={session.scene})")
@@ -288,14 +288,12 @@ async def session_status(
     )
 
 
-@app.post(
-    "/session/{session:uuid}/play", response_model=motion.session.SessionBaseModel
-)
-async def session_play(session: pydantic.UUID4) -> motion.session.SessionBaseModel:
+@app.post("/session/{session:uuid}/play", response_model=motion.session.SessionBase)
+async def session_play(session: pydantic.UUID4) -> motion.session.SessionBase:
     ttl = 3600  # one hourse lease
     # 1) ensure session exists
     try:
-        session = motion.session.SessionBaseModel.parse_raw(
+        session = motion.session.SessionBase.parse_raw(
             b"".join(storage_kv_get("session", f"{session}.json"))
         )
         log.info(f"[Session {session.uuid}] Play requested (scene={session.scene})")
@@ -305,7 +303,7 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBaseMod
 
     # 2) fetch scene
     try:
-        scene = motion.scene.SceneBaseModel.parse_raw(
+        scene = motion.scene.SceneBase.parse_raw(
             b"".join(storage_kv_get("scene", f"{session.scene}.json"))
         )
         log.info(
@@ -365,13 +363,11 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBaseMod
     return session
 
 
-@app.post(
-    "/session/{session:uuid}/stop", response_model=motion.session.SessionBaseModel
-)
-async def session_stop(session: pydantic.UUID4) -> motion.session.SessionBaseModel:
+@app.post("/session/{session:uuid}/stop", response_model=motion.session.SessionBase)
+async def session_stop(session: pydantic.UUID4) -> motion.session.SessionBase:
     # 1) ensure session exists
     try:
-        session = motion.session.SessionBaseModel.parse_raw(
+        session = motion.session.SessionBase.parse_raw(
             b"".join(storage_kv_get("session", f"{session}.json"))
         )
         log.info(f"[Session {session.uuid}] Stop requested (scene={session.scene})")

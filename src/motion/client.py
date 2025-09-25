@@ -5,8 +5,8 @@ import zipfile
 
 import httpx
 
-from .scene import Scene, SceneBaseModel, SceneRunnerSpec, SceneSpecModel
-from .session import Session, SessionBaseModel
+from .scene import Scene, SceneBase, SceneRunnerSpec, SceneSpec
+from .session import Session, SessionBase
 
 
 class BaseClient:
@@ -39,8 +39,8 @@ class SceneClient(BaseClient):
         if not file.is_file():
             raise FileNotFoundError(f"Input file not found: {file}")
 
-        # Validate + normalize runner via SceneSpecModel
-        spec = SceneSpecModel(runner=SceneRunnerSpec(runner))
+        # Validate + normalize runner via SceneSpec
+        spec = SceneSpec(runner=SceneRunnerSpec(runner))
 
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
@@ -61,7 +61,7 @@ class SceneClient(BaseClient):
                 data = json.loads(spec.json())  # was: spec.dict()
                 r = self._request_("POST", "scene", files=files, data=data)
 
-        scene = SceneBaseModel.parse_obj(r.json())
+        scene = SceneBase.parse_obj(r.json())
         return Scene(self._base_, scene.uuid, scene.runner, timeout=self._timeout_)
 
     def archive(self, scene: Scene, file: str | pathlib.Path) -> pathlib.Path:
@@ -72,14 +72,14 @@ class SceneClient(BaseClient):
         if r.status_code == 422:
             return []
         r.raise_for_status()
-        scenes = [SceneBaseModel.parse_obj(item) for item in r.json()]
+        scenes = [SceneBase.parse_obj(item) for item in r.json()]
         return [
             Scene(self._base_, s.uuid, s.runner, timeout=self._timeout_) for s in scenes
         ]
 
     def delete(self, scene: Scene) -> None:
         r = self._request_("DELETE", f"scene/{scene.uuid}")
-        SceneBaseModel.parse_obj(r.json())
+        SceneBase.parse_obj(r.json())
         return None
 
 
@@ -99,7 +99,7 @@ class SessionClient(BaseClient):
             | ({"link": link} if link is not None else {})
         )
         r = self._request_("POST", "session", json=payload)
-        session = SessionBaseModel.parse_obj(r.json())
+        session = SessionBase.parse_obj(r.json())
         return Session(self._base_, session.uuid, timeout=self._timeout_)
 
     def archive(self, session: Session, file: str | pathlib.Path) -> pathlib.Path:
@@ -110,12 +110,12 @@ class SessionClient(BaseClient):
         if r.status_code == 404:
             return []
         r.raise_for_status()
-        session = SessionBaseModel.parse_obj(r.json())
+        session = SessionBase.parse_obj(r.json())
         return [Session(self._base_, session.uuid, timeout=self._timeout_)]
 
     def delete(self, session: Session) -> None:
         r = self._request_("DELETE", f"session/{session.uuid}")
-        SessionBaseModel.parse_obj(r.json())
+        SessionBase.parse_obj(r.json())
         return None
 
 
