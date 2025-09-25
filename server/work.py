@@ -9,6 +9,8 @@ import time
 import uuid
 import zipfile
 
+import yaml
+
 from .channel import Channel
 from .node import run_http
 from .storage import storage_kv_get, storage_kv_set
@@ -34,7 +36,7 @@ async def node_play(session: str):
         f.write(json.dumps(data))
     log.info(f"[node_play] scene storage: {data}")
 
-    runner = data["runner"]["image"]
+    runner = data["runner"]
     log.info(f"[node_play] runner={runner}")
 
     with tempfile.TemporaryFile() as f:
@@ -52,6 +54,31 @@ async def node_play(session: str):
     scope = os.environ.get("SCOPE")
     project = f"{scope}-motion" if scope else "motion"
 
+    compose = {"services": {"node": {}}}
+    compose["services"]["node"]["image"] = f'motion/motion-node-{runner["image"]}'
+    compose["services"]["node"]["deploy"] = (
+        {
+            "resources": {
+                "reservations": {
+                    "devices": [
+                        {
+                            "driver": "nvidia",
+                            "count": "all",
+                            "capabilities": ["gpu"],
+                        }
+                    ]
+                }
+            }
+        }
+        if runner["device"] == "cuda"
+        else {}
+    )
+    with open("/storage/node/docker-compose.yml", "w") as f:
+        yaml.dump(compose, f, sort_keys=False)
+
+    with open("/storage/node/docker-compose.yml") as f:
+        log.info(f"[node_play] compose: {f.read()}")
+
     node = [
         "docker",
         "compose",
@@ -60,7 +87,7 @@ async def node_play(session: str):
         "-f",
         f"/app/docker/docker-compose.yml",
         "-f",
-        f"/app/docker/docker-compose.runner.{runner}.yml",
+        f"/storage/node/docker-compose.yml",
         "up",
         "--no-deps",
         "--force-recreate",
