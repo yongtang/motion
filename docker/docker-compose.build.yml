@@ -95,30 +95,37 @@ services:
         COPY server /app/server
         WORKDIR /app
         ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; sleep infinity"]
-  node:
-    image: motion/motion-node
-    build:
-      context: ..
-      dockerfile_inline: |
-        FROM python:3.12-slim
-        COPY LICENSE /app/LICENSE
-        WORKDIR /app
-        ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; exit 1"]
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; exit 1"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
   model:
     image: motion/motion-model
     build:
       context: ..
       dockerfile_inline: |
         FROM python:3.12-slim
+        RUN apt -y -qq update && \
+            apt -y -qq install curl
         COPY LICENSE /app/LICENSE
         COPY server/runner.py /app/server/runner.py
         WORKDIR /app
         ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; exit 1"]
-  node-relay:
-    image: motion/motion-node-relay
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; exit 1"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
+  runner:
+    image: motion/motion-runner
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        RUN apt -y -qq update && \
+            apt -y -qq install curl
+        COPY LICENSE /app/LICENSE
+        WORKDIR /app
+        ENTRYPOINT ["/bin/bash"]
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; exit 1"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
+  runner-relay:
+    image: motion/motion-runner-relay
     build:
       context: ..
       dockerfile_inline: |
@@ -133,9 +140,10 @@ services:
         RUN pip install -e . && \
             pip install -r server/requirements.txt
         ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 1; fi; python -m server.echo"]
-  node-isaac:
-    image: motion/motion-node-isaac
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; python -m server.relay"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
+  runner-isaac:
+    image: motion/motion-runner-isaac
     build:
       context: ..
       dockerfile_inline: |
@@ -152,4 +160,5 @@ services:
         ENV ACCEPT_EULA=Y
         ENV PRIVACY_CONSENT=Y
         ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 1; fi; sleep infinity; echo /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers"]
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; fi; sleep infinity; echo /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]

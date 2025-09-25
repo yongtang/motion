@@ -77,9 +77,11 @@ async def node_play(session: str):
         scope = os.environ.get("SCOPE")
         project = f"{scope}-motion" if scope else "motion"
 
-        compose = {"services": {"node": {}}}
-        compose["services"]["node"]["image"] = f'motion/motion-node-{runner["image"]}'
-        compose["services"]["node"]["deploy"] = (
+        compose = {"services": {"runner": {}}}
+        compose["services"]["runner"][
+            "image"
+        ] = f'motion/motion-runner-{runner["image"]}'
+        compose["services"]["runner"]["deploy"] = (
             {
                 "resources": {
                     "reservations": {
@@ -115,7 +117,9 @@ async def node_play(session: str):
             "--no-deps",
             "--force-recreate",
             "--no-log-prefix",
-            "node",
+            "runner",
+            "model",
+            "live",
         ]
         return node
 
@@ -137,7 +141,9 @@ async def node_stop(session: str):
             "-p",
             project,
             "stop",
-            "node",
+            "runner",
+            "model",
+            "live",
         ]
         return node
 

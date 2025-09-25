@@ -66,9 +66,9 @@ services:
     environment:
       - MOTION=${MOTION}
       - SCOPE=${SCOPE}
-  node:
-    image: motion/motion-node
-    container_name: ${SCOPE:-motion}-node
+  model:
+    image: motion/motion-model
+    container_name: ${SCOPE:-motion}-model
     restart: no
     depends_on:
       - server
@@ -78,9 +78,9 @@ services:
     environment:
       - MOTION=${MOTION}
       - SCOPE=${SCOPE}
-  model:
-    image: motion/motion-model
-    container_name: ${SCOPE:-motion}-model
+  runner:
+    image: motion/motion-runner
+    container_name: ${SCOPE:-motion}-runner
     restart: no
     depends_on:
       - server
