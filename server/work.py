@@ -19,6 +19,14 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
+async def f_pipe(prefix: str, stream: asyncio.StreamReader):
+    while True:
+        line = await stream.readline()
+        if not line:
+            break
+        log.info("%s %s", prefix, line.decode(errors="replace").rstrip())
+
+
 async def node_play(session: str):
     shutil.rmtree("/storage/node", ignore_errors=True)
     os.makedirs("/storage/node/scene", exist_ok=True)
@@ -91,10 +99,20 @@ async def node_play(session: str):
         "up",
         "--no-deps",
         "--force-recreate",
+        "--no-log-prefix",
         "node",
     ]
     log.info(f"[node_play] node cmd={node}")
-    return await asyncio.create_subprocess_exec(*node, env={**os.environ})
+    proc = await asyncio.create_subprocess_exec(
+        *node,
+        env={**os.environ, "NO_COLOR": "1"},
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+
+    asyncio.create_task(f_pipe("[node_play] compose:", proc.stdout))
+
+    return proc
 
 
 async def node_stop(session: str):
@@ -112,7 +130,14 @@ async def node_stop(session: str):
         "node",
     ]
     log.info(f"[node_stop] stop cmd={stop}")
-    proc = await asyncio.create_subprocess_exec(*stop, env={**os.environ})
+    proc = await asyncio.create_subprocess_exec(
+        *stop,
+        env={**os.environ, "NO_COLOR": "1"},
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+
+    asyncio.create_task(f_pipe("[node_stop] compose:", proc.stdout))
 
     await proc.wait()
 

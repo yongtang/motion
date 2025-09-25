@@ -1,3 +1,0 @@
-services:
-  node:
-    image: motion/motion-node-relay
