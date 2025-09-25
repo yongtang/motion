@@ -117,8 +117,8 @@ services:
         WORKDIR /app
         ENTRYPOINT ["/bin/bash"]
         CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; exit 1"]
-  node-echo:
-    image: motion/motion-node-echo
+  node-data:
+    image: motion/motion-node-data
     build:
       context: ..
       dockerfile_inline: |
@@ -133,7 +133,7 @@ services:
         RUN pip install -e . && \
             pip install -r server/requirements.txt
         ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 1; fi; python -m server.echo"]
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 1; fi; python -m server.data"]
   node-isaac:
     image: motion/motion-node-isaac
     build:

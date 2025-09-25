@@ -6,7 +6,7 @@ from .motionclass import motionclass
 
 
 class SceneRunnerSpec(str, enum.Enum):
-    echo = "echo"
+    data = "data"
     isaac = "isaac"
 
 

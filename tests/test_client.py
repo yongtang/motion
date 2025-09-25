@@ -21,7 +21,7 @@ def test_client_scene(docker_compose):
         usd_contents = "#usda 1.0\ndef X {\n}\n"
         usd_path.write_text(usd_contents, encoding="utf-8")
 
-        runner = "echo"
+        runner = "data"
         scene = client.scene.create(usd_path, runner)
     assert scene
 
