@@ -13,7 +13,7 @@ import pytest
             "read",
             150.0,
             1,
-            "data",
+            "relay",
             [
                 '[Producer] Iteration 0: {"op": "none"}',
             ],
@@ -23,7 +23,7 @@ import pytest
             "sink",
             150.0,
             15,
-            "data",
+            "relay",
             [
                 '"key": "Q"',
             ],
@@ -33,7 +33,7 @@ import pytest
             "tick",
             300.0,
             15,
-            "data",
+            "relay",
             [
                 '[Consumer] Iteration 14: {"op": "none", "seq": 14}',
             ],

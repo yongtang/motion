@@ -6,7 +6,7 @@ from .motionclass import motionclass
 
 
 class SceneRunnerSpec(str, enum.Enum):
-    data = "data"
+    relay = "relay"
     isaac = "isaac"
 
 
