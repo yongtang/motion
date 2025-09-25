@@ -106,6 +106,17 @@ services:
         WORKDIR /app
         ENTRYPOINT ["/bin/bash"]
         CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; exit 1"]
+  model:
+    image: motion/motion-model
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        COPY LICENSE /app/LICENSE
+        COPY server/runner.py /app/server/runner.py
+        WORKDIR /app
+        ENTRYPOINT ["/bin/bash"]
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, exiting'; exit 0; fi; exit 1"]
   node-echo:
     image: motion/motion-node-echo
     build:
