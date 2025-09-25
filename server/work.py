@@ -34,7 +34,7 @@ async def node_play(session: str):
         f.write(json.dumps(data))
     log.info(f"[node_play] scene storage: {data}")
 
-    runner = data["runner"]
+    runner = data["runner"]["image"]
     log.info(f"[node_play] runner={runner}")
 
     with tempfile.TemporaryFile() as f:

@@ -222,7 +222,7 @@ def browser_run(docker_compose, scope):
 
 @pytest.fixture(scope="session")
 def scene_on_server(docker_compose):
-    """Create a scene (POST /scene) with a zip that includes scene.usd + empty meta.json, and runner in form data."""
+    """Create a scene (POST /scene) with a zip that includes scene.usd + empty meta.json, and image/device in form data."""
     base = f"http://{docker_compose['motion']}:8080"
 
     # build in-memory zip with USD + empty meta.json
@@ -235,8 +235,8 @@ def scene_on_server(docker_compose):
     buf.seek(0)
 
     files = {"file": ("scene.zip", buf, "application/zip")}
-    # send runner as multipart form field
-    data = {"runner": "relay"}
+    # send image/device as multipart form field
+    data = {"image": "relay", "device": "cpu"}
     r = httpx.post(f"{base}/scene", files=files, data=data, timeout=5.0)
     assert r.status_code == 201, r.text
     scene = r.json()["uuid"]

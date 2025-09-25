@@ -126,7 +126,8 @@ async def main():
     mode_parser.add_argument("--base", default="http://127.0.0.1:8080")
     mode_parser.add_argument("--timeout", type=float, default=None)
     mode_parser.add_argument("--iteration", type=int, default=15)
-    mode_parser.add_argument("--runner", default="isaac")
+    mode_parser.add_argument("--image", default="isaac")
+    mode_parser.add_argument("--device", default="cuda")
     mode_parser.add_argument("--camera", nargs="+", metavar="camera:width:height")
 
     read_parser = mode.add_parser("read", parents=[mode_parser], help="read data only")
@@ -156,8 +157,10 @@ async def main():
 
     client = motion.client(args.base)
 
-    log.info(f"[Scene] Creating from {args.file} (runner={args.runner!r}) ...")
-    scene = client.scene.create(pathlib.Path(args.file), args.runner)
+    log.info(
+        f"[Scene] Creating from {args.file} (image={args.image}, device={args.device}) ..."
+    )
+    scene = client.scene.create(pathlib.Path(args.file), args.image, args.device)
     log.info(f"[Scene {scene.uuid}] Created")
 
     log.info("[Session] Creating...")

@@ -14,25 +14,29 @@ def test_client_scene(docker_compose):
     base = f"http://{docker_compose['motion']}:8080"
     client = motion.client(base=base, timeout=5.0)
 
-    # create from USD + runner (client zips internally and uploads)
+    # create from USD + image/device (client zips internally and uploads)
     with tempfile.TemporaryDirectory() as tdir:
         tdir = pathlib.Path(tdir)
         usd_path = tdir / "scene.usd"
         usd_contents = "#usda 1.0\ndef X {\n}\n"
         usd_path.write_text(usd_contents, encoding="utf-8")
 
-        runner = "relay"
-        scene = client.scene.create(usd_path, runner)
+        image = "relay"
+        device = "cpu"
+        scene = client.scene.create(usd_path, image, device)
     assert scene
 
     # search should find the scene
     assert client.scene.search(str(scene.uuid)) == [scene]
 
-    # direct REST check for metadata (now includes runner)
+    # direct REST check for metadata (now includes nested runner)
     base = f"http://{docker_compose['motion']}:8080"
     r = httpx.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"uuid": str(scene.uuid), "runner": runner}
+    assert r.json() == {
+        "uuid": str(scene.uuid),
+        "runner": {"image": image, "device": device},
+    }
 
     # archive via client API and just confirm file exists and is non-empty
     with tempfile.TemporaryDirectory() as tdir:
@@ -62,7 +66,7 @@ def test_client_session(scene_on_server):
     # fetch runner for the scene so we can construct motion.Scene
     r = httpx.get(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200, r.text
-    runner = r.json()["runner"]
+    runner = motion.scene.SceneRunnerSpec.parse_obj(r.json()["runner"])
 
     # Build a Scene with uuid + runner (constructor requires runner)
     scene_obj = motion.Scene(base, scene, runner, timeout=5.0)

@@ -5,9 +5,19 @@ import pydantic
 from .motionclass import motionclass
 
 
-class SceneRunnerSpec(str, enum.Enum):
+class SceneRunnerImageSpec(str, enum.Enum):
     relay = "relay"
     isaac = "isaac"
+
+
+class SceneRunnerDeviceSpec(str, enum.Enum):
+    cpu = "cpu"
+    cuda = "cuda"
+
+
+class SceneRunnerSpec(pydantic.BaseModel):
+    image: SceneRunnerImageSpec
+    device: SceneRunnerDeviceSpec
 
 
 class SceneSpec(pydantic.BaseModel):

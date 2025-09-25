@@ -7,13 +7,14 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    "mode, timeout, iteration, runner, entries",
+    "mode, timeout, iteration, image, device, entries",
     [
         pytest.param(
             "read",
             150.0,
             1,
             "relay",
+            "cpu",
             [
                 '[Producer] Iteration 0: {"op": "none"}',
             ],
@@ -24,6 +25,7 @@ import pytest
             150.0,
             15,
             "relay",
+            "cpu",
             [
                 '"key": "Q"',
             ],
@@ -34,6 +36,7 @@ import pytest
             300.0,
             15,
             "relay",
+            "cpu",
             [
                 '[Consumer] Iteration 14: {"op": "none", "seq": 14}',
             ],
@@ -43,7 +46,15 @@ import pytest
 )
 @pytest.mark.asyncio
 async def test_tool(
-    docker_compose, monkeypatch, tmp_path, mode, timeout, iteration, runner, entries
+    docker_compose,
+    monkeypatch,
+    tmp_path,
+    mode,
+    timeout,
+    iteration,
+    image,
+    device,
+    entries,
 ):
     monkeypatch.setenv("PYTHONPATH", "src")
 
@@ -67,8 +78,10 @@ async def test_tool(
         + [
             "--iteration",
             str(iteration),
-            "--runner",
-            str(runner),
+            "--image",
+            str(image),
+            "--device",
+            str(device),
             "--camera",
             "/world/camera_A:1024:768",
             "/world/camera_B:1280:720",

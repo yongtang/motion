@@ -9,7 +9,7 @@ def test_scene(scene_on_server):
     # fetch runner from server
     r = httpx.get(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200, r.text
-    runner = r.json()["runner"]
+    runner = motion.scene.SceneRunnerSpec.parse_obj(r.json()["runner"])
 
     # construct Scene with uuid + runner
     s = motion.Scene(base, scene, runner, timeout=5.0)
