@@ -12,6 +12,7 @@ import pydantic
 from fastapi import (
     FastAPI,
     File,
+    Form,
     HTTPException,
     Query,
     Response,
@@ -62,15 +63,17 @@ async def health():
 
 
 @app.post("/scene", response_model=motion.scene.SceneBaseModel, status_code=201)
-async def scene_create(file: UploadFile = File(...)) -> motion.scene.SceneBaseModel:
-    match file.content_type:
-        case "application/zip" | "application/x-zip-compressed":
-            pass
-        case other:
-            log.warning(f"[Scene N/A] Upload rejected: invalid type {other}")
-            raise HTTPException(status_code=415, detail="zip required")
+async def scene_create(
+    file: UploadFile = File(...),
+    runner: motion.scene.SceneRunnerSpec = Form(...),  # NEW: form field
+) -> motion.scene.SceneBaseModel:
+    if file.content_type not in {"application/zip", "application/x-zip-compressed"}:
+        log.warning(f"[Scene N/A] Upload rejected: invalid type {file.content_type}")
+        raise HTTPException(status_code=415, detail="zip required")
 
-    scene = motion.scene.SceneBaseModel(uuid=uuid.uuid4())
+    spec = motion.scene.SceneSpecModel(runner=runner)
+
+    scene = motion.scene.SceneBaseModel(uuid=uuid.uuid4(), **spec.dict())
 
     storage_kv_set("scene", f"{scene.uuid}.zip", file.file)
     log.info(f"[Scene {scene.uuid}] Stored archive {file.filename}")
@@ -300,7 +303,21 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBaseMod
         log.warning(f"[Session {session}] Not found for play")
         raise HTTPException(status_code=404, detail=f"Session {session} not found")
 
-    # 2) extract full list, then filter to node ids
+    # 2) fetch scene
+    try:
+        scene = motion.scene.SceneBaseModel.parse_raw(
+            b"".join(storage_kv_get("scene", f"{session.scene}.json"))
+        )
+        log.info(
+            f"[Session {session.uuid}] Scene fetched (scene={scene.uuid}, runner={scene.runner})"
+        )
+    except FileNotFoundError:
+        log.warning(
+            f"[Session {session.uuid}] Scene {session.scene} not found for play"
+        )
+        raise HTTPException(status_code=404, detail=f"Scene {session.scene} not found")
+
+    # 3) extract full list, then filter to node ids
     entries = list(storage_kv_scan("node", "meta/"))
     log.info(
         f"[Session {session.uuid}] Registry scan returned {len(entries)} keys under meta/"
@@ -318,12 +335,13 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBaseMod
         log.info(f"[Session {session.uuid}] No nodes registered")
         raise HTTPException(status_code=503, detail="No nodes registered")
 
-    # 3) shuffle and try to acquire one lease
+    # 4) shuffle and try to acquire one lease
     random.shuffle(entries)
     log.debug(f"[Session {session.uuid}] Allocation order: {entries}")
 
     chosen = None
     data = json.dumps({"session": str(session.uuid)}, sort_keys=True).encode()
+
     for node in entries:
         if storage_kv_acquire("node", f"node/{node}.json", data, ttl=ttl):
             chosen = node

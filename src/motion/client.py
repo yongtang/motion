@@ -5,7 +5,7 @@ import zipfile
 
 import httpx
 
-from .scene import Scene, SceneBaseModel
+from .scene import Scene, SceneBaseModel, SceneRunnerSpec, SceneSpecModel
 from .session import Session, SessionBaseModel
 
 
@@ -39,13 +39,17 @@ class SceneClient(BaseClient):
         if not file.is_file():
             raise FileNotFoundError(f"Input file not found: {file}")
 
+        # Validate + normalize runner via SceneSpecModel
+        spec = SceneSpecModel(runner=SceneRunnerSpec(runner))
+
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             zipf = directory.joinpath(f"{file.stem}.zip")
             meta = directory.joinpath("meta.json")
 
+            # Keep empty meta.json for forward compatibility
             with meta.open("w", encoding="utf-8") as mf:
-                json.dump({"runner": runner}, mf, ensure_ascii=False)
+                json.dump({}, mf)
 
             with zipfile.ZipFile(zipf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
                 zf.write(file, arcname="scene.usd")
@@ -53,10 +57,12 @@ class SceneClient(BaseClient):
 
             with zipf.open("rb") as f:
                 files = {"file": (zipf.name, f, "application/zip")}
-                r = self._request_("POST", "scene", files=files)
+                # IMPORTANT: use JSON serialization so Enums become their .value
+                data = json.loads(spec.json())  # was: spec.dict()
+                r = self._request_("POST", "scene", files=files, data=data)
 
         scene = SceneBaseModel.parse_obj(r.json())
-        return Scene(self._base_, scene.uuid, timeout=self._timeout_)
+        return Scene(self._base_, scene.uuid, scene.runner, timeout=self._timeout_)
 
     def archive(self, scene: Scene, file: str | pathlib.Path) -> pathlib.Path:
         return self._download_(f"scene/{scene.uuid}/archive", file)
@@ -67,7 +73,9 @@ class SceneClient(BaseClient):
             return []
         r.raise_for_status()
         scenes = [SceneBaseModel.parse_obj(item) for item in r.json()]
-        return [Scene(self._base_, s.uuid, timeout=self._timeout_) for s in scenes]
+        return [
+            Scene(self._base_, s.uuid, s.runner, timeout=self._timeout_) for s in scenes
+        ]
 
     def delete(self, scene: Scene) -> None:
         r = self._request_("DELETE", f"scene/{scene.uuid}")

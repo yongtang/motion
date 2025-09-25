@@ -28,11 +28,11 @@ def test_client_scene(docker_compose):
     # search should find the scene
     assert client.scene.search(str(scene.uuid)) == [scene]
 
-    # direct REST check for minimal metadata
+    # direct REST check for metadata (now includes runner)
     base = f"http://{docker_compose['motion']}:8080"
     r = httpx.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"uuid": str(scene.uuid)}
+    assert r.json() == {"uuid": str(scene.uuid), "runner": runner}
 
     # archive via client API and just confirm file exists and is non-empty
     with tempfile.TemporaryDirectory() as tdir:
@@ -58,7 +58,14 @@ def test_client_scene(docker_compose):
 def test_client_session(scene_on_server):
     base, scene = scene_on_server
     client = motion.client(base=base, timeout=5.0)
-    scene_obj = motion.Scene(base, scene, timeout=5.0)
+
+    # fetch runner for the scene so we can construct motion.Scene
+    r = httpx.get(f"{base}/scene/{scene}", timeout=5.0)
+    assert r.status_code == 200, r.text
+    runner = r.json()["runner"]
+
+    # Build a Scene with uuid + runner (constructor requires runner)
+    scene_obj = motion.Scene(base, scene, runner, timeout=5.0)
 
     # --- helpers using /status and archive (no websockets) ---
 
@@ -74,9 +81,9 @@ def test_client_session(scene_on_server):
         deadline = time.monotonic() + timeout_s
         last = None
         while time.monotonic() < deadline:
-            r = httpx.get(f"{base}/session/{session_id}/status", timeout=5.0)
-            assert r.status_code == 200, r.text
-            state = r.json()["state"]
+            r2 = httpx.get(f"{base}/session/{session_id}/status", timeout=5.0)
+            assert r2.status_code == 200, r2.text
+            state = r2.json()["state"]
             last = state
             if want == "play":
                 if state == "stop":

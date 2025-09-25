@@ -29,6 +29,14 @@ async def node_play(session: str):
     scene = data["scene"]
     log.info(f"[node_play] scene={scene}")
 
+    data = json.loads(b"".join(storage_kv_get("scene", f"{scene}.json")))
+    with open("/storage/node/scene.json", "w") as f:
+        f.write(json.dumps(data))
+    log.info(f"[node_play] scene storage: {data}")
+
+    runner = data["runner"]
+    log.info(f"[node_play] runner={runner}")
+
     with tempfile.TemporaryFile() as f:
         for chunk in storage_kv_get("scene", f"{scene}.zip"):
             f.write(chunk)
@@ -39,8 +47,7 @@ async def node_play(session: str):
 
     with open("/storage/node/scene/meta.json", "r") as f:
         meta = json.loads(f.read())
-    runner = meta["runner"]
-    log.info(f"[node_play] runner={runner}")
+    log.info(f"[node_play] meta={meta}")
 
     scope = os.environ.get("SCOPE")
     project = f"{scope}-motion" if scope else "motion"

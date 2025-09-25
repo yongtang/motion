@@ -10,7 +10,7 @@ import pydantic
 import websockets
 
 from .motionclass import motionclass
-from .scene import Scene
+from .scene import Scene, SceneBaseModel
 
 
 class SessionStatusSpec(str, enum.Enum):
@@ -167,17 +167,21 @@ class Session(SessionBaseModel):
             await session.stop()
     """
 
-    scene: Scene
+    scene: Scene  # overridden to the richer Scene type
 
     def __init__(self, base: str, uuid: pydantic.UUID4, timeout: float = 5.0):
         base = base.rstrip("/")
 
-        # one-time sync fetch to populate fields
+        # One-time sync fetch to populate fields
         r = httpx.request("GET", f"{base}/session/{uuid}", timeout=timeout)
         r.raise_for_status()
         data = SessionBaseModel.parse_obj(r.json())
 
-        scene = Scene(base, data.scene, timeout=timeout)
+        # Fetch scene metadata to obtain runner
+        r = httpx.request("GET", f"{base}/scene/{data.scene}", timeout=timeout)
+        r.raise_for_status()
+        scene = SceneBaseModel.parse_obj(r.json())
+        scene = Scene(base, scene.uuid, scene.runner, timeout=timeout)
 
         super().__init__(
             uuid=data.uuid,

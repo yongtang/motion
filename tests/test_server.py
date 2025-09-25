@@ -24,10 +24,11 @@ def test_server_scene(docker_compose):
     with zipfile.ZipFile(buf, "w") as z:
         usd_contents = "#usda 1.0\ndef X {\n}\n"
         z.writestr("scene.usd", usd_contents)
-        z.writestr("meta.json", json.dumps({"runner": "echo"}))
+        z.writestr("meta.json", json.dumps({}))  # empty {}
     buf.seek(0)
     files = {"file": ("scene.zip", buf, "application/zip")}
-    r = httpx.post(f"{base}/scene", files=files, timeout=5.0)
+    data = {"runner": "echo"}  # runner is a form field, not inside meta.json
+    r = httpx.post(f"{base}/scene", files=files, data=data, timeout=5.0)
     assert r.status_code == 201, r.text
     scene = r.json()["uuid"]
     assert scene
@@ -35,12 +36,12 @@ def test_server_scene(docker_compose):
     # search
     r = httpx.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == [{"uuid": scene}]
+    assert r.json() == [{"uuid": scene, "runner": "echo"}]
 
     # lookup
     r = httpx.get(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"uuid": scene}
+    assert r.json() == {"uuid": scene, "runner": "echo"}
 
     # ARCHIVE (download) -> GET /scene/{uuid}/archive
     r = httpx.get(f"{base}/scene/{scene}/archive", timeout=5.0)
@@ -52,7 +53,8 @@ def test_server_scene(docker_compose):
 
         with z.open("meta.json") as f:
             meta = json.loads(f.read().decode("utf-8"))
-            assert meta.get("runner") in ("isaac", "echo")  # accept either
+            # meta.json is intentionally empty for forward-compatibility
+            assert meta == {}
 
         with z.open("scene.usd") as f:
             assert f.read().decode("utf-8") == usd_contents
@@ -66,7 +68,7 @@ def test_server_scene(docker_compose):
     # delete
     r = httpx.delete(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"uuid": scene}
+    assert r.json() == {"runner": "echo", "uuid": scene}
 
     # after delete: search empty, lookup/archive 404
     r = httpx.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
