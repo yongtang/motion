@@ -27,6 +27,20 @@ async def f_pipe(prefix: str, stream: asyncio.StreamReader):
         log.info("%s %s", prefix, line.decode(errors="replace").rstrip())
 
 
+async def f_proc(node, prefix):
+    log.info(f"{prefix} node cmd={node}")
+
+    proc = await asyncio.create_subprocess_exec(
+        *node,
+        env={**os.environ, "NO_COLOR": "1"},
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    asyncio.create_task(f_pipe(f"{prefix} compose:", proc.stdout))
+
+    return proc
+
+
 async def node_play(session: str):
     shutil.rmtree("/storage/node", ignore_errors=True)
     os.makedirs("/storage/node/scene", exist_ok=True)
@@ -59,58 +73,53 @@ async def node_play(session: str):
         meta = json.loads(f.read())
     log.info(f"[node_play] meta={meta}")
 
-    scope = os.environ.get("SCOPE")
-    project = f"{scope}-motion" if scope else "motion"
+    def f_node(runner):
+        scope = os.environ.get("SCOPE")
+        project = f"{scope}-motion" if scope else "motion"
 
-    compose = {"services": {"node": {}}}
-    compose["services"]["node"]["image"] = f'motion/motion-node-{runner["image"]}'
-    compose["services"]["node"]["deploy"] = (
-        {
-            "resources": {
-                "reservations": {
-                    "devices": [
-                        {
-                            "driver": "nvidia",
-                            "count": "all",
-                            "capabilities": ["gpu"],
-                        }
-                    ]
+        compose = {"services": {"node": {}}}
+        compose["services"]["node"]["image"] = f'motion/motion-node-{runner["image"]}'
+        compose["services"]["node"]["deploy"] = (
+            {
+                "resources": {
+                    "reservations": {
+                        "devices": [
+                            {
+                                "driver": "nvidia",
+                                "count": "all",
+                                "capabilities": ["gpu"],
+                            }
+                        ]
+                    }
                 }
             }
-        }
-        if runner["device"] == "cuda"
-        else {}
-    )
-    with open("/storage/node/docker-compose.yml", "w") as f:
-        yaml.dump(compose, f, sort_keys=False)
+            if runner["device"] == "cuda"
+            else {}
+        )
+        with open("/storage/node/docker-compose.yml", "w") as f:
+            yaml.dump(compose, f, sort_keys=False)
 
-    with open("/storage/node/docker-compose.yml") as f:
-        log.info(f"[node_play] compose: {f.read()}")
+        with open("/storage/node/docker-compose.yml") as f:
+            log.info(f"[node_play] compose: {f.read()}")
 
-    node = [
-        "docker",
-        "compose",
-        "-p",
-        project,
-        "-f",
-        f"/app/docker/docker-compose.yml",
-        "-f",
-        f"/storage/node/docker-compose.yml",
-        "up",
-        "--no-deps",
-        "--force-recreate",
-        "--no-log-prefix",
-        "node",
-    ]
-    log.info(f"[node_play] node cmd={node}")
-    proc = await asyncio.create_subprocess_exec(
-        *node,
-        env={**os.environ, "NO_COLOR": "1"},
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
+        node = [
+            "docker",
+            "compose",
+            "-p",
+            project,
+            "-f",
+            f"/app/docker/docker-compose.yml",
+            "-f",
+            f"/storage/node/docker-compose.yml",
+            "up",
+            "--no-deps",
+            "--force-recreate",
+            "--no-log-prefix",
+            "node",
+        ]
+        return node
 
-    asyncio.create_task(f_pipe("[node_play] compose:", proc.stdout))
+    proc = await f_proc(f_node(runner), "[node_play]")
 
     return proc
 
@@ -118,26 +127,21 @@ async def node_play(session: str):
 async def node_stop(session: str):
     log.info(f"[node_stop] session={session} stop")
 
-    scope = os.environ.get("SCOPE")
-    project = f"{scope}-motion" if scope else "motion"
+    def f_node():
+        scope = os.environ.get("SCOPE")
+        project = f"{scope}-motion" if scope else "motion"
 
-    stop = [
-        "docker",
-        "compose",
-        "-p",
-        project,
-        "stop",
-        "node",
-    ]
-    log.info(f"[node_stop] stop cmd={stop}")
-    proc = await asyncio.create_subprocess_exec(
-        *stop,
-        env={**os.environ, "NO_COLOR": "1"},
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
+        node = [
+            "docker",
+            "compose",
+            "-p",
+            project,
+            "stop",
+            "node",
+        ]
+        return node
 
-    asyncio.create_task(f_pipe("[node_stop] compose:", proc.stdout))
+    proc = await f_proc(f_node(), "[node_stop]")
 
     await proc.wait()
 
