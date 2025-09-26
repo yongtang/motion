@@ -49,6 +49,10 @@ async def node_play(meta):
     shutil.rmtree("/storage/node", ignore_errors=True)
     os.makedirs("/storage/node/scene", exist_ok=True)
 
+    with open("/storage/node/node.json", "w") as f:
+        f.write(json.dumps(meta))
+    log.info(f"[node_play] meta storage: {meta}")
+
     data = json.loads(b"".join(storage_kv_get("session", f"{session}.json")))
     with open("/storage/node/session.json", "w") as f:
         f.write(json.dumps(data))
@@ -72,10 +76,6 @@ async def node_play(meta):
         with zipfile.ZipFile(f) as z:
             z.extractall("/storage/node/scene")
     log.info("[node_play] uncompressed scene")
-
-    with open("/storage/node/scene/meta.json", "r") as f:
-        meta = json.loads(f.read())
-    log.info(f"[node_play] meta={meta}")
 
     def f_node(runner):
         scope = os.environ.get("SCOPE")
