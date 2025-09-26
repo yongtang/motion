@@ -14,35 +14,36 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("relay")
 
 
-async def wait_ready(
-    sock: zmq.asyncio.Socket, timeout: float = 2.0, max: float | None = None
-):
+async def wait_ready(sock: zmq.asyncio.Socket, timeout: float = 2.0, max: int = 300):
     """
     Send __PING__ and wait up to `timeout` seconds for __PONG__.
-    Repeat until success or total elapsed time exceeds `max`.
-    If max is None, wait indefinitely.
+    Try at most `max` times; then raise TimeoutError.
     """
-
-    start = time.monotonic()
     poller = zmq.asyncio.Poller()
     poller.register(sock, zmq.POLLIN)
 
-    while True:
+    log.info(f"[wait_ready] start timeout={timeout}s max={max}")
+    for i in range(max):
         try:
             # May queue until server binds (we do not set IMMEDIATE)
             await sock.send_multipart([b"", b"__PING__"], flags=zmq.NOBLOCK)
         except zmq.Again:
-            # Only occurs if IMMEDIATE=1; safe to ignore
+            # Only if IMMEDIATE were set; safe to ignore
             pass
 
         events = dict(await poller.poll(int(timeout * 1000)))
         if sock in events and events[sock] & zmq.POLLIN:
             _, msg = await sock.recv_multipart()
             if msg == b"__PONG__":
+                log.info(f"[wait_ready] ready")
                 return
 
-        if max is not None and (time.monotonic() - start) >= max:
-            raise TimeoutError(f"ZMQ server not ready within {max} seconds")
+        if (i + 1) % 10 == 0:
+            log.info(f"[wait_ready] still waiting… tries={i+1}")
+
+    raise TimeoutError(
+        f"ZMQ server not ready after {max} tries (timeout={timeout}s each)"
+    )
 
 
 async def run_tick(channel: Channel, session: str, sock: zmq.asyncio.Socket):
@@ -51,15 +52,14 @@ async def run_tick(channel: Channel, session: str, sock: zmq.asyncio.Socket):
     """
 
     async def f(msg):
-        # Channel -> ZMQ
-        log.info(f"[run_node] zmq send {msg}")
         data = msg.data
+        log.info(f"[run_node] zmq send ({data})")
         """
         await sock.send_multipart([b"", data])
         _, step = await sock.recv_multipart()
+        log.info(f"[run_node] zmq recv ({step})")
         """
-        step = data.decode()
-        log.info(f"[run_node] zmq recv {step}")
+        step = data
         await channel.publish_data(session, step)
         log.info(f"[run_node] zmq loop done")
 
@@ -78,16 +78,16 @@ async def run_norm(channel: Channel, session: str, sock: zmq.asyncio.Socket):
 
     async def f(msg):
         data = msg.data
-        log.info(f"[run_node] zmq send {data}")
-        await sock.send_multipart([b"", msg.data])
+        log.info(f"[run_node] zmq send ({data})")
+        await sock.send_multipart([b"", data])
 
     sub = await channel.subscribe_step(session, f)
 
     async def g():
         while True:
-            _, msg = await sock.recv_multipart()
-            step = msg.decode()
-            log.info(f"[run_node] zmq recv {step}")
+            _, step = await sock.recv_multipart()
+            log.info(f"[run_node] zmq recv ({step})")
+            step = step
             await channel.publish_data(session, step)
 
     task = asyncio.create_task(g())
@@ -104,28 +104,26 @@ async def run_node(session: str, tick: bool):
     log.info(f"[run_node] session={session} tick={tick}")
 
     file = os.environ.get("RUNNER_SOCK", "/run/motion/runner.sock")
-
     log.info(f"[run_node] file={file}")
 
     # ZMQ DEALER
     context = zmq.asyncio.Context.instance()
     sock = context.socket(zmq.DEALER)
     sock.connect(f"ipc://{file}")
-
-    log.info(f"[run_node] zmq connect")
+    log.info(f"[run_node] zmq connect addr=ipc://{file}")
 
     # Channel
     channel = Channel()
     await channel.start()
     log.info(f"[run_node] channel start")
 
-    await channel.publish_data(session, json.dumps({"op": "none"}))  # initial seed
-
+    await channel.publish_data(
+        session, json.dumps({"op": "none"}).encode()
+    )  # initial seed
     log.info(f"[run_node] channel inital data")
 
     # Wait for ROUTER to be ready (server has __PING__/__PONG__ built-in)
-    await wait_ready(sock, timeout=2.0, max=None)  # wait indefinitely by default
-
+    await wait_ready(sock, timeout=2.0, max=300)
     log.info(f"[run_node] zmq ready")
 
     try:
@@ -146,7 +144,6 @@ async def main():
     log.info(f"[main] meta={meta}")
 
     session, tick = meta["session"], meta["tick"]
-
     await run_node(session, tick)
 
 

@@ -453,7 +453,7 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
         try:
             while True:
                 data = await ws.receive_text()
-                await app.state.channel.publish_step(str(session), data)
+                await app.state.channel.publish_step(str(session), data.encode())
         except WebSocketDisconnect:
             log.info(f"[Session {session}] WS stream recv disconnected")
             raise
@@ -466,7 +466,7 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
         try:
             while True:
                 msg = await sub.next_msg()
-                await ws.send_text(msg.data.decode(errors="ignore"))
+                await ws.send_text(msg.data.decode())
         except WebSocketDisconnect:
             log.info(f"[Session {session}] WS stream send disconnected")
             raise

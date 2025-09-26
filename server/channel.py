@@ -67,12 +67,12 @@ class Channel:
         self.nc = None
         self.js = None
 
-    async def publish_data(self, session: str, payload: str) -> None:
+    async def publish_data(self, session: str, payload: bytes) -> None:
         log.info(f"[Channel.publish_data] session={session}, size={len(payload)}")
         assert self.nc is not None, "Channel not started"
         subject = f"motion.data.{session}"
         log.info(f"[Channel.publish_data] Publish (core) {subject}: {payload[:80]!r}")
-        await self.nc.publish(subject, payload.encode())
+        await self.nc.publish(subject, payload)
 
     async def subscribe_data(self, session: str, start: int | None = None):
         log.info(f"[Channel.subscribe_data] session={session}, start={start}")
@@ -119,14 +119,14 @@ class Channel:
         )
         return sub
 
-    async def publish_step(self, session: str, payload: str) -> None:
+    async def publish_step(self, session: str, payload: bytes) -> None:
         log.info(f"[Channel.publish_step] session={session}, size={len(payload)}")
         assert self.nc is not None, "Channel not started"
         subject = f"motion.step.{session}"
         log.info(f"[Channel.publish_step] Publish (core) {subject}: {payload[:80]!r}")
         await self.nc.publish(
             subject,
-            payload.encode(),
+            payload,
             headers={"Nats-Rollup": "sub"},
         )
 
