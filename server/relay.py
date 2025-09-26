@@ -54,12 +54,9 @@ async def run_tick(channel: Channel, session: str, sock: zmq.asyncio.Socket):
     async def f(msg):
         data = msg.data
         log.info(f"[run_node] zmq send ({data})")
-        """
         await sock.send_multipart([b"", data])
         _, step = await sock.recv_multipart()
         log.info(f"[run_node] zmq recv ({step})")
-        """
-        step = data
         await channel.publish_data(session, step)
         log.info(f"[run_node] zmq loop done")
 
