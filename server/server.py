@@ -291,14 +291,22 @@ async def session_status(
 
 
 @app.post("/session/{session:uuid}/play", response_model=motion.session.SessionBase)
-async def session_play(session: pydantic.UUID4) -> motion.session.SessionBase:
-    ttl = 3600  # one hourse lease
+async def session_play(
+    session: pydantic.UUID4,
+    tick: bool = Query(
+        False,
+        description="Enable tick mode. When true, save 'tick': true in the node lease payload.",
+    ),
+) -> motion.session.SessionBase:
+    ttl = 3600  # one hour lease
     # 1) ensure session exists
     try:
         session = motion.session.SessionBase.parse_raw(
             b"".join(storage_kv_get("session", f"{session}.json"))
         )
-        log.info(f"[Session {session.uuid}] Play requested (scene={session.scene})")
+        log.info(
+            f"[Session {session.uuid}] Play requested (scene={session.scene}, tick={tick})"
+        )
     except FileNotFoundError:
         log.warning(f"[Session {session}] Not found for play")
         raise HTTPException(status_code=404, detail=f"Session {session} not found")
@@ -340,7 +348,7 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBase:
     log.debug(f"[Session {session.uuid}] Allocation order: {entries}")
 
     chosen = None
-    # Include structured runner (image + device) in the lease payload
+    # Include structured runner (image + device) and tick in the lease payload
     data = json.dumps(
         {
             "session": str(session.uuid),
@@ -348,6 +356,7 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBase:
                 "image": scene.runner.image.value,
                 "device": scene.runner.device.value,
             },
+            "tick": tick,
         },
         sort_keys=True,
     ).encode()
@@ -355,7 +364,9 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBase:
     for node in entries:
         if storage_kv_acquire("node", f"node/{node}.json", data, ttl=ttl):
             chosen = node
-            log.info(f"[Session {session.uuid}] Lease acquired on node={chosen}")
+            log.info(
+                f"[Session {session.uuid}] Lease acquired on node={chosen} (tick={tick})"
+            )
             break
         else:
             log.debug(f"[Session {session.uuid}] Node busy: {node}")
@@ -364,7 +375,7 @@ async def session_play(session: pydantic.UUID4) -> motion.session.SessionBase:
         log.info(f"[Session {session.uuid}] All nodes busy (no capacity)")
         raise HTTPException(status_code=503, detail="No capacity")
 
-    # 4) record assignment so /stop can free correctly
+    # 5) record assignment so /stop can free correctly
     storage_kv_set(
         "node",
         f"work/{session.uuid}.json",

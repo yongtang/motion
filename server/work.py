@@ -41,7 +41,11 @@ async def f_proc(node, prefix):
     return proc
 
 
-async def node_play(session: str):
+async def node_play(meta):
+    session, tick = meta["session"], meta["tick"]
+
+    log.info(f"[node_play] session={session} tick={tick} play")
+
     shutil.rmtree("/storage/node", ignore_errors=True)
     os.makedirs("/storage/node/scene", exist_ok=True)
 
@@ -128,8 +132,10 @@ async def node_play(session: str):
     return proc
 
 
-async def node_stop(session: str):
-    log.info(f"[node_stop] session={session} stop")
+async def node_stop(meta):
+    session, tick = meta["session"], meta["tick"]
+
+    log.info(f"[node_stop] session={session} tick={tick} stop")
 
     def f_node():
         scope = os.environ.get("SCOPE")
@@ -184,32 +190,33 @@ async def node_stop(session: str):
 async def run_work(node):
     interval = 1.0
 
-    def f_session(desc):
+    def f_meta(desc):
         with contextlib.suppress(FileNotFoundError):
             log.info(f"[run_work] fetch {desc}")
             data = (b"".join(storage_kv_get("node", f"node/{node}.json"))).decode()
             log.info(f"[run_work] fetch {desc} data={data}")
-            session = (json.loads(data) if data.strip() else {}).get("session")
-            return session
+            return json.loads(data) if data.strip() else {}
+        return {}
 
     while True:
         while True:
-            session = f_session("play")
-            if session:
+            play = f_meta("play")
+            if play.get("session"):
                 break
             await asyncio.sleep(interval)
 
-        proc = await node_play(session)
-        log.info(f"[run_work] session={session} play")
+        proc = await node_play(play)
+        log.info(f"[run_work] meta={play} play")
 
         while True:
-            if session != f_session("stop"):
+            stop = f_meta("stop")
+            if stop.get("session") != play.get("session"):
                 break
             await asyncio.sleep(interval)
 
-        await node_stop(session)
+        await node_stop(play)
         await asyncio.wait_for(proc.wait(), timeout=300)
-        log.info(f"[run_work] session={session} stop")
+        log.info(f"[run_work] meta={play} stop")
 
 
 async def run_beat(node: str):
