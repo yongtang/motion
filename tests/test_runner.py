@@ -24,7 +24,6 @@ def test_runner(tmp_path, monkeypatch):
     addr = f"ipc://{sockfile}"
     zctx = zmq.Context.instance()
     sock = zctx.socket(zmq.DEALER)
-    sock.setsockopt(zmq.IMMEDIATE, 1)
     sock.connect(addr)
 
     def recv(timeout_ms=2000):

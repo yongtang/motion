@@ -15,7 +15,7 @@ def context():
     sock = context.socket(zmq.ROUTER)
     sock.setsockopt(zmq.SNDHWM, queue)
     sock.setsockopt(zmq.RCVHWM, queue)
-    sock.setsockopt(zmq.LINGER, 500)
+    sock.setsockopt(zmq.LINGER, -1)
     sock.bind(f"ipc://{file}")
 
     class Context:
