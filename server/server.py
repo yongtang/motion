@@ -294,7 +294,7 @@ async def session_status(
 async def session_play(
     session: pydantic.UUID4,
     tick: bool = Query(
-        False,
+        True,
         description="Enable tick mode. When true, save 'tick': true in the node lease payload.",
     ),
 ) -> motion.session.SessionBase:
