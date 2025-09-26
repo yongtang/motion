@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 
 import pytest
 import zmq
@@ -16,7 +17,6 @@ def test_runner(tmp_path, monkeypatch):
     def run_server_once():
         with server.runner.context() as ctx:
             obj = ctx.data()  # dict from JSON header
-            # Echo logic: build a dict reply (step sends JSON-only)
             msg = obj.get("msg", "")
             ctx.step({"echo": msg[:32].upper()})
 
@@ -37,10 +37,20 @@ def test_runner(tmp_path, monkeypatch):
             pytest.fail("timeout waiting for server reply")
         return sock.recv_multipart()
 
-    # Ping/Pong (invisible to server loop)
-    sock.send_multipart([b"", b"__PING__"])
-    _, pong = recv()
-    assert pong == b"__PONG__"
+    # Handshake: Ping/Pong until ready
+    for _ in range(30):
+        sock.send_multipart([b"", b"__PING__"])
+        try:
+            _, pong = recv(500)
+            if pong == b"__PONG__":
+                break
+        except Exception:
+            time.sleep(1)
+    else:
+        pytest.fail("server not ready for PING/PONG")
+
+    # Send mode once (mandatory before payload)
+    sock.send_multipart([b"", b"__MODE__", b"TICK"])
 
     # Real roundtrip (JSON header only)
     payload = {"msg": "hello"}

@@ -12,7 +12,7 @@ def context():
     with contextlib.suppress(FileNotFoundError):
         os.unlink(file)
 
-    queue = 16
+    queue = 1  # keep inbound/outbound queues tiny so pressure is visible immediately
     context = zmq.Context()
     sock = context.socket(zmq.ROUTER)
     sock.setsockopt(zmq.SNDHWM, queue)
@@ -23,6 +23,7 @@ def context():
     class Context:
         def __init__(self):
             self.identity = None
+            self.mode = None  # "TICK" or "NORM" — must be set once before first payload
 
         def data(self) -> dict:
             while True:
@@ -31,11 +32,31 @@ def context():
                     empty == b""
                 ), "protocol error: expected empty delimiter frame b''"
 
+                # Health check
                 if len(payload) == 1 and payload[0] == b"__PING__":
                     sock.send_multipart([identity, b"", b"__PONG__"])
                     continue
 
+                # Required one-time mode frame: ["", "__MODE__", b"TICK|NORM"]
+                if len(payload) == 2 and payload[0] == b"__MODE__":
+                    mode = payload[1].decode("utf-8")
+                    if self.mode is None:
+                        assert mode in ("TICK", "NORM"), f"invalid mode {mode!r}"
+                        self.mode = mode
+                    else:
+                        # Never allowed to change
+                        assert (
+                            mode == self.mode
+                        ), f"mode change not allowed: {self.mode} -> {mode}"
+                    # Do not set identity; continue waiting for a real payload
+                    continue
+
+                # From here on, a real payload must have a mode registered
+                assert (
+                    self.mode is not None
+                ), "mode must be sent once before first payload"
                 self.identity = identity
+
                 if not payload:
                     return {}
 
@@ -63,7 +84,18 @@ def context():
 
         def step(self, o):
             assert self.identity is not None, f"step() called before data()"
-            sock.send_multipart([self.identity, b"", json.dumps(o).encode()])
+            payload = json.dumps(o).encode()
+            if self.mode == "NORM":
+                # Best-effort reply: if DEALER is busy, drop reply instead of blocking
+                try:
+                    sock.send_multipart(
+                        [self.identity, b"", payload], flags=zmq.DONTWAIT
+                    )
+                except zmq.Again:
+                    pass  # drop by design in norm mode
+            else:
+                # Tick: guaranteed, blocking reply
+                sock.send_multipart([self.identity, b"", payload])
             self.identity = None
 
     try:

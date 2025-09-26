@@ -70,12 +70,18 @@ async def run_norm(channel: Channel, session: str, sock: zmq.asyncio.Socket):
     """
     Streaming: callback just sends; one background receiver publishes replies.
     One client <-> one server => reply order matches send order; no pairing needed.
+
+    In norm mode, drop on pressure: non-blocking send, ignore if ZMQ pipe is full.
     """
 
     async def f(msg):
         data = msg.data
         log.info(f"[run_node] zmq send ({data})")
-        await sock.send_multipart([b"", data])
+        # Non-blocking send: if ROUTER/pipe is full (HWM), drop this update
+        try:
+            await sock.send_multipart([b"", data], flags=zmq.DONTWAIT)
+        except zmq.Again:
+            log.info(f"[run_node] zmq drop (busy)")
 
     sub = await channel.subscribe_step(session, f)
 
@@ -104,6 +110,11 @@ async def run_node(session: str, tick: bool):
     # ZMQ DEALER
     context = zmq.asyncio.Context.instance()
     sock = context.socket(zmq.DEALER)
+
+    # Keep local queues tiny so pressure is visible immediately
+    sock.setsockopt(zmq.SNDHWM, 1)
+    sock.setsockopt(zmq.RCVHWM, 1)
+
     sock.connect(f"ipc://{file}")
     log.info(f"[run_node] zmq connect addr=ipc://{file}")
 
@@ -120,6 +131,11 @@ async def run_node(session: str, tick: bool):
     # Wait for ROUTER to be ready (server has __PING__/__PONG__ built-in)
     await wait_ready(sock, timeout=2.0, max=300)
     log.info(f"[run_node] zmq ready")
+
+    # Send mode exactly once; runner requires it before first real payload
+    mode = b"TICK" if tick else b"NORM"
+    await sock.send_multipart([b"", b"__MODE__", mode])
+    log.info(f"[run_node] sent mode {mode.decode()}")
 
     try:
         if tick:
