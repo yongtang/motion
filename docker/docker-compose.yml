@@ -74,6 +74,7 @@ services:
       - server
     network_mode: "service:server"
     volumes:
+      - run:/run/motion
       - storage:/storage:ro
     environment:
       - MOTION=${MOTION}
@@ -86,9 +87,11 @@ services:
       - server
     network_mode: "service:server"
     volumes:
+      - run:/run/motion
       - storage:/storage:ro
     environment:
       - MOTION=${MOTION}
       - SCOPE=${SCOPE}
 volumes:
   storage: {}
+  run: {}

@@ -6,7 +6,7 @@ import zmq
 
 @contextlib.contextmanager
 def context():
-    file = os.environ.get("RUNNER_SOCK", "/tmp/runner.sock")
+    file = os.environ.get("RUNNER_SOCK", "/run/motion/runner.sock")
     with contextlib.suppress(FileNotFoundError):
         os.unlink(file)
 
