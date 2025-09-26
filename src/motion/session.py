@@ -19,7 +19,7 @@ class SessionStatusSpec(str, enum.Enum):
     stop = "stop"
 
 
-class SessionStatusModel(pydantic.BaseModel):
+class SessionStatus(pydantic.BaseModel):
     uuid: pydantic.UUID4
     state: SessionStatusSpec
     update: datetime.datetime
@@ -228,7 +228,7 @@ class Session(SessionBase):
 
         # fast path
         r = await self._request_("GET", f"session/{self.uuid}/status")
-        state = SessionStatusModel.parse_obj(r.json())
+        state = SessionStatus.parse_obj(r.json())
         if status == "play":
             if state.state is SessionStatusSpec.stop:
                 raise RuntimeError("cannot wait for play: session already stopped")
@@ -250,7 +250,7 @@ class Session(SessionBase):
                 f"session/{self.uuid}/status",
                 timeout=min(self._timeout_, remaining),
             )
-            state = SessionStatusModel.parse_obj(r.json())
+            state = SessionStatus.parse_obj(r.json())
             if status == "play":
                 if state.state is SessionStatusSpec.stop:
                     raise RuntimeError(

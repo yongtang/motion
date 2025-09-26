@@ -243,12 +243,10 @@ async def session_delete(session: pydantic.UUID4) -> motion.session.SessionBase:
     return session
 
 
-@app.get(
-    "/session/{session:uuid}/status", response_model=motion.session.SessionStatusModel
-)
+@app.get("/session/{session:uuid}/status", response_model=motion.session.SessionStatus)
 async def session_status(
     session: pydantic.UUID4, response: Response
-) -> motion.session.SessionStatusModel:
+) -> motion.session.SessionStatus:
     response.headers["Cache-Control"] = "no-store"
 
     # 1) session must exist
@@ -259,7 +257,7 @@ async def session_status(
     # 2) stop: data artifact present
     if storage_kv_head("data", f"{session}.json") is not None:
         log.info(f"[Session {session}] Status derived: stop (data present)")
-        return motion.session.SessionStatusModel(
+        return motion.session.SessionStatus(
             uuid=session,
             state=motion.session.SessionStatusSpec.stop,
             update=datetime.datetime.now(datetime.timezone.utc),
@@ -270,7 +268,7 @@ async def session_status(
     try:
         await asyncio.wait_for(subscribe.next_msg(), timeout=0.05)
         log.info(f"[Session {session}] Status derived: play (data messages exist)")
-        return motion.session.SessionStatusModel(
+        return motion.session.SessionStatus(
             uuid=session,
             state=motion.session.SessionStatusSpec.play,
             update=datetime.datetime.now(datetime.timezone.utc),
@@ -283,7 +281,7 @@ async def session_status(
 
     # 4) pending
     log.info(f"[Session {session}] Status derived: pending (default)")
-    return motion.session.SessionStatusModel(
+    return motion.session.SessionStatus(
         uuid=session,
         state=motion.session.SessionStatusSpec.pending,
         update=datetime.datetime.now(datetime.timezone.utc),
