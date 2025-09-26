@@ -1,6 +1,8 @@
 import contextlib
+import json
 import os
 
+import numpy as np
 import zmq
 
 
@@ -22,19 +24,46 @@ def context():
         def __init__(self):
             self.identity = None
 
-        def data(self) -> bytes:
+        def data(self) -> dict:
             while True:
-                ident, empty, payload = sock.recv_multipart()
-                if payload == b"__PING__":
-                    sock.send_multipart([ident, b"", b"__PONG__"])
-                    continue
-                self.identity = ident
-                return payload
+                identity, empty, *payload = sock.recv_multipart()
+                assert (
+                    empty == b""
+                ), "protocol error: expected empty delimiter frame b''"
 
-        def step(self, reply: bytes):
-            if self.identity is None:
-                raise RuntimeError("step() called before data()")
-            sock.send_multipart([self.identity, b"", reply])
+                if len(payload) == 1 and payload[0] == b"__PING__":
+                    sock.send_multipart([identity, b"", b"__PONG__"])
+                    continue
+
+                self.identity = identity
+                if not payload:
+                    return {}
+
+                header = payload[0]  # JSON bytes
+                frame = payload[1:]  # list[bytes]
+
+                o = json.loads(header.decode("utf-8"))
+
+                camera = o.get("camera")
+                if camera is not None:
+                    for name, meta in list(camera.items()):
+                        index = int(meta["frame"])
+                        dtype = np.dtype(meta["dtype"])
+                        shape = tuple(meta["shape"])
+                        assert (
+                            0 <= index < len(frame)
+                        ), f"camera frame index out of range: {index}"
+                        camera[name] = np.frombuffer(frame[index], dtype=dtype).reshape(
+                            shape
+                        )
+                        with contextlib.suppress(Exception):
+                            camera[name].setflags(write=False)
+
+                return o
+
+        def step(self, o):
+            assert self.identity is not None, f"step() called before data()"
+            sock.send_multipart([self.identity, b"", json.dumps(o).encode()])
             self.identity = None
 
     try:

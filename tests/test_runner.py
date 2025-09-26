@@ -1,3 +1,4 @@
+import json
 import threading
 
 import pytest
@@ -11,11 +12,13 @@ def test_runner(tmp_path, monkeypatch):
     sockfile = tmp_path / "runner.sock"
     monkeypatch.setenv("RUNNER_SOCK", str(sockfile))
 
-    # Server: handle exactly one real request
+    # Server: handle exactly one real request (dict in, dict out)
     def run_server_once():
         with server.runner.context() as ctx:
-            data = ctx.data()
-            ctx.step(b"OK:" + data[:32].upper())
+            obj = ctx.data()  # dict from JSON header
+            # Echo logic: build a dict reply (step sends JSON-only)
+            msg = obj.get("msg", "")
+            ctx.step({"echo": msg[:32].upper()})
 
     t = threading.Thread(target=run_server_once, daemon=True)
     t.start()
@@ -39,11 +42,13 @@ def test_runner(tmp_path, monkeypatch):
     _, pong = recv()
     assert pong == b"__PONG__"
 
-    # Real roundtrip
-    payload = b"hello"
-    sock.send_multipart([b"", payload])
-    _, reply = recv()
-    assert reply == b"OK:" + payload.upper()
+    # Real roundtrip (JSON header only)
+    payload = {"msg": "hello"}
+    sock.send_multipart([b"", json.dumps(payload).encode("utf-8")])
+
+    _, reply_b = recv()
+    reply = json.loads(reply_b.decode("utf-8"))
+    assert reply["echo"] == payload["msg"][:32].upper()
 
     sock.close(0)
     zctx.term()

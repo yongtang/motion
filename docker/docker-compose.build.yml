@@ -109,7 +109,7 @@ services:
         COPY server/model.py /app/server/model.py
         COPY server/runner.py /app/server/runner.py
         WORKDIR /app
-        RUN pip install pyzmq
+        RUN pip install pyzmq numpy
         ENTRYPOINT ["/bin/bash"]
         CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; if [ -f motion/model.py ]; then python3 -m motion.model; else python3 -m server.model; fi"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]

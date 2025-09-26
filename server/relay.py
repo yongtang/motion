@@ -3,7 +3,6 @@ import contextlib
 import json
 import logging
 import os
-import time
 
 import zmq
 import zmq.asyncio
@@ -84,7 +83,6 @@ async def run_norm(channel: Channel, session: str, sock: zmq.asyncio.Socket):
         while True:
             _, step = await sock.recv_multipart()
             log.info(f"[run_node] zmq recv ({step})")
-            step = step
             await channel.publish_data(session, step)
 
     task = asyncio.create_task(g())
