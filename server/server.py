@@ -292,7 +292,7 @@ async def session_status(
 async def session_play(
     session: pydantic.UUID4,
     model: motion.session.ModelSpec = Query(
-        motion.session.ModelSpec.bounce,
+        motion.session.ModelSpec.remote,
         description="Execution model to use: 'model', 'bounce', or 'remote'.",
     ),
     tick: bool = Query(True, description="Enable tick mode."),
