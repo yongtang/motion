@@ -11,7 +11,9 @@ def main():
     assert model in ["model", "bounce", "remote"], f"{model} not supported"
     model = f"motion.{model}" if model == "model" else f"server.{model}"
 
-    print(shlex.join(["python3", "-m", model]))
+    tick = f"--tick" if tick else f"--no-tick"
+
+    print(shlex.join(["python3", "-m", model, "--session", session, tick]))
 
 
 if __name__ == "__main__":

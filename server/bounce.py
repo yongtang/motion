@@ -1,4 +1,6 @@
+import argparse
 import logging
+import uuid
 
 from server import runner
 
@@ -7,6 +9,17 @@ log = logging.getLogger(__name__)
 
 
 def main():
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--session", type=uuid.UUID)
+    parser.add_argument("--tick", action=argparse.BooleanOptionalAction)
+
+    args = parser.parse_args()
+
+    session, tick = str(args.session), bool(args.tick)
+
+    log.info(f"[main] session={session} tick={tick}")
+
     log.info(f"[main] model start")
     with runner.context() as context:
         while True:
