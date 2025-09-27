@@ -13,6 +13,12 @@ from .motionclass import motionclass
 from .scene import Scene, SceneBase
 
 
+class ModelSpec(str, enum.Enum):
+    model = "model"
+    bounce = "bounce"
+    remote = "remote"
+
+
 class SessionStatusSpec(str, enum.Enum):
     pending = "pending"
     play = "play"
@@ -41,7 +47,7 @@ class TwistSpec(pydantic.BaseModel):
     angular: Vector3Spec
 
 
-class SessionStepModel(pydantic.BaseModel):
+class SessionStepSpec(pydantic.BaseModel):
     twist: dict[str, TwistSpec] | None = None
     joint: dict[str, float] | None = None
 

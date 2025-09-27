@@ -291,10 +291,11 @@ async def session_status(
 @app.post("/session/{session:uuid}/play", response_model=motion.session.SessionBase)
 async def session_play(
     session: pydantic.UUID4,
-    tick: bool = Query(
-        True,
-        description="Enable tick mode. When true, save 'tick': true in the node lease payload.",
+    model: motion.session.ModelSpec = Query(
+        motion.session.ModelSpec.bounce,
+        description="Execution model to use: 'model', 'bounce', or 'remote'.",
     ),
+    tick: bool = Query(True, description="Enable tick mode."),
 ) -> motion.session.SessionBase:
     ttl = 3600  # one hour lease
     # 1) ensure session exists
@@ -354,6 +355,7 @@ async def session_play(
                 "image": scene.runner.image.value,
                 "device": scene.runner.device.value,
             },
+            "model": model,
             "tick": tick,
         },
         sort_keys=True,
