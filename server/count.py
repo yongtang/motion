@@ -7,7 +7,7 @@ from .channel import Channel
 from .interface import Interface
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("count")
+log = logging.getLogger(__name__)
 
 
 async def run_tick(session: str, interface: Interface, channel: Channel):

@@ -94,8 +94,17 @@ services:
         COPY src /app/src
         COPY server /app/server
         WORKDIR /app
-        ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; exit 1"]
+        RUN echo '#!/bin/bash \n\
+        set -e \n\
+        if [ -z "$${MOTION}" ]; then \n\
+          echo "MOTION not set, sleeping" \n\
+          sleep infinity \n\
+          exit 0 \n\
+        fi \n\
+        sleep infinity \n\
+        exit 0' >/entrypoint.sh
+        RUN chmod +x /entrypoint.sh
+        ENTRYPOINT ["/entrypoint.sh"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
   model:
     image: motion/motion-model
@@ -107,11 +116,21 @@ services:
             apt -y -qq install curl
         COPY LICENSE /app/LICENSE
         COPY server/model.py /app/server/model.py
+        COPY server/bounce.py /app/server/bounce.py
         COPY server/runner.py /app/server/runner.py
         WORKDIR /app
         RUN pip install pyzmq numpy
-        ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; if [ -f motion/model.py ]; then python3 -m motion.model; else python3 -m server.model; fi"]
+        RUN echo '#!/bin/bash \n\
+        set -e \n\
+        if [ -z "$${MOTION}" ]; then \n\
+          echo "MOTION not set, sleeping" \n\
+          sleep infinity \n\
+          exit 0 \n\
+        fi \n\
+        exec $(python3 -m server.model) \n\
+        exit 0' >/entrypoint.sh
+        RUN chmod +x /entrypoint.sh
+        ENTRYPOINT ["/entrypoint.sh"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
   runner:
     image: motion/motion-runner
@@ -123,8 +142,17 @@ services:
             apt -y -qq install curl
         COPY LICENSE /app/LICENSE
         WORKDIR /app
-        ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; exit 1"]
+        RUN echo '#!/bin/bash \n\
+        set -e \n\
+        if [ -z "$${MOTION}" ]; then \n\
+          echo "MOTION not set, sleeping" \n\
+          sleep infinity \n\
+          exit 0 \n\
+        fi \n\
+        sleep infinity \n\
+        exit 0' >/entrypoint.sh
+        RUN chmod +x /entrypoint.sh
+        ENTRYPOINT ["/entrypoint.sh"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
   runner-count:
     image: motion/motion-runner-count
@@ -141,8 +169,17 @@ services:
         WORKDIR /app
         RUN pip install -e . && \
             pip install -r server/requirements.txt
-        ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; python -m server.count"]
+        RUN echo '#!/bin/bash \n\
+        set -e \n\
+        if [ -z "$${MOTION}" ]; then \n\
+          echo "MOTION not set, sleeping" \n\
+          sleep infinity \n\
+          exit 0 \n\
+        fi \n\
+        python -m server.count \n\
+        exit 0' >/entrypoint.sh
+        RUN chmod +x /entrypoint.sh
+        ENTRYPOINT ["/entrypoint.sh"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
   runner-isaac:
     image: motion/motion-runner-isaac
@@ -161,6 +198,16 @@ services:
         RUN /isaac-sim/python.sh -m pip install nats-py
         ENV ACCEPT_EULA=Y
         ENV PRIVACY_CONSENT=Y
-        ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; fi; sleep infinity; echo /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers"]
+        RUN echo '#!/bin/bash \n\
+        set -e \n\
+        if [ -z "$${MOTION}" ]; then \n\
+          echo "MOTION not set, sleeping" \n\
+          sleep infinity \n\
+          exit 0 \n\
+        fi \n\
+        sleep infinity \n\
+        echo /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers \n\
+        exit 0' >/entrypoint.sh
+        RUN chmod +x /entrypoint.sh
+        ENTRYPOINT ["/entrypoint.sh"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]

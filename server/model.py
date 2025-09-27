@@ -1,20 +1,13 @@
-import logging
-
-from server import runner
-
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("count")
+import json
+import shlex
 
 
 def main():
-    log.info(f"[main] model start")
-    with runner.context() as context:
-        while True:
-            log.info(f"[main] recv")
-            data = context.data()
-            log.info(f"[main] recv data={data}")
-            context.step(data)
-            log.info(f"[main] send step={data}")
+    with open("/storage/node/node.json", "r") as f:
+        meta = json.loads(f.read())
+
+    session, tick = meta["session"], meta["tick"]
+    print(shlex.join(["python3", "-m", "server.bounce"]))
 
 
 if __name__ == "__main__":
