@@ -3,7 +3,7 @@ import logging
 from server import runner
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("relay")
+log = logging.getLogger("count")
 
 
 def main():

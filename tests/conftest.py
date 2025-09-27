@@ -236,7 +236,7 @@ def scene_on_server(docker_compose):
 
     files = {"file": ("scene.zip", buf, "application/zip")}
     # send image/device as multipart form field
-    data = {"image": "relay", "device": "cpu"}
+    data = {"image": "count", "device": "cpu"}
     r = httpx.post(f"{base}/scene", files=files, data=data, timeout=5.0)
     assert r.status_code == 201, r.text
     scene = r.json()["uuid"]

@@ -6,7 +6,7 @@ from .motionclass import motionclass
 
 
 class SceneRunnerImageSpec(str, enum.Enum):
-    relay = "relay"
+    count = "count"
     isaac = "isaac"
 
 

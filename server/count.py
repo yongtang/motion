@@ -7,10 +7,10 @@ from .channel import Channel
 from .interface import Interface
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("relay")
+log = logging.getLogger("count")
 
 
-async def run_tick(channel: Channel, session: str, interface: Interface):
+async def run_tick(session: str, interface: Interface, channel: Channel):
     """
     Strict 1->1: on each Channel step, send to ZMQ and wait for one reply, then publish back.
     """
@@ -30,7 +30,7 @@ async def run_tick(channel: Channel, session: str, interface: Interface):
         await sub.unsubscribe()
 
 
-async def run_norm(channel: Channel, session: str, interface: Interface):
+async def run_norm(session: str, interface: Interface, channel: Channel):
     """
     Streaming: callback just sends; one background receiver publishes replies.
     One client <-> one server => reply order matches send order; no pairing needed.
@@ -85,9 +85,9 @@ async def run_node(session: str, tick: bool):
 
     try:
         if tick:
-            await run_tick(channel, session, interface)
+            await run_tick(session, interface, channel)
         else:
-            await run_norm(channel, session, interface)
+            await run_norm(session, interface, channel)
     finally:
         log.info(f"[run_node] channel close")
         await channel.close()

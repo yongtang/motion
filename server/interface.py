@@ -6,7 +6,7 @@ import zmq
 import zmq.asyncio
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("relay")
+log = logging.getLogger("count")
 
 
 class Interface:

@@ -28,7 +28,7 @@ def test_server_scene(docker_compose):
     buf.seek(0)
     files = {"file": ("scene.zip", buf, "application/zip")}
     data = {
-        "image": "relay",
+        "image": "count",
         "device": "cpu",
     }  # runner is now (image, device) form fields
     r = httpx.post(f"{base}/scene", files=files, data=data, timeout=5.0)
@@ -39,12 +39,12 @@ def test_server_scene(docker_compose):
     # search
     r = httpx.get(f"{base}/scene", params={"q": scene}, timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == [{"uuid": scene, "runner": {"image": "relay", "device": "cpu"}}]
+    assert r.json() == [{"uuid": scene, "runner": {"image": "count", "device": "cpu"}}]
 
     # lookup
     r = httpx.get(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"uuid": scene, "runner": {"image": "relay", "device": "cpu"}}
+    assert r.json() == {"uuid": scene, "runner": {"image": "count", "device": "cpu"}}
 
     # ARCHIVE (download) -> GET /scene/{uuid}/archive
     r = httpx.get(f"{base}/scene/{scene}/archive", timeout=5.0)
@@ -71,7 +71,7 @@ def test_server_scene(docker_compose):
     # delete
     r = httpx.delete(f"{base}/scene/{scene}", timeout=5.0)
     assert r.status_code == 200
-    assert r.json() == {"runner": {"image": "relay", "device": "cpu"}, "uuid": scene}
+    assert r.json() == {"runner": {"image": "count", "device": "cpu"}, "uuid": scene}
 
     # after delete: search empty, lookup/archive 404
     r = httpx.get(f"{base}/scene", params={"q": scene}, timeout=5.0)

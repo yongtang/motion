@@ -126,8 +126,8 @@ services:
         ENTRYPOINT ["/bin/bash"]
         CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; exit 1"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
-  runner-relay:
-    image: motion/motion-runner-relay
+  runner-count:
+    image: motion/motion-runner-count
     build:
       context: ..
       dockerfile_inline: |
@@ -142,7 +142,7 @@ services:
         RUN pip install -e . && \
             pip install -r server/requirements.txt
         ENTRYPOINT ["/bin/bash"]
-        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; python -m server.relay"]
+        CMD ["-lc", "if [ -z \"$$MOTION\" ]; then echo 'MOTION not set, sleeping' && sleep infinity; exit 0; fi; python -m server.count"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
   runner-isaac:
     image: motion/motion-runner-isaac
