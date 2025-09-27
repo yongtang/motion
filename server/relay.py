@@ -2,50 +2,15 @@ import asyncio
 import contextlib
 import json
 import logging
-import os
-
-import zmq
-import zmq.asyncio
 
 from .channel import Channel
+from .interface import Interface
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("relay")
 
 
-async def wait_ready(sock: zmq.asyncio.Socket, timeout: float = 2.0, max: int = 300):
-    """
-    Send __PING__ and wait up to `timeout` seconds for __PONG__.
-    Try at most `max` times; then raise TimeoutError.
-    """
-    poller = zmq.asyncio.Poller()
-    poller.register(sock, zmq.POLLIN)
-
-    log.info(f"[wait_ready] start timeout={timeout}s max={max}")
-    for i in range(max):
-        try:
-            # May queue until server binds (we do not set IMMEDIATE)
-            await sock.send_multipart([b"", b"__PING__"], flags=zmq.NOBLOCK)
-        except zmq.Again:
-            # Only if IMMEDIATE were set; safe to ignore
-            pass
-
-        events = dict(await poller.poll(int(timeout * 1000)))
-        if sock in events and events[sock] & zmq.POLLIN:
-            _, msg = await sock.recv_multipart()
-            if msg == b"__PONG__":
-                log.info(f"[wait_ready] ready")
-                return
-
-        if (i + 1) % 10 == 0:
-            log.info(f"[wait_ready] still waiting… tries={i+1}")
-
-    raise TimeoutError(
-        f"ZMQ server not ready after {max} tries (timeout={timeout}s each)"
-    )
-
-
-async def run_tick(channel: Channel, session: str, sock: zmq.asyncio.Socket):
+async def run_tick(channel: Channel, session: str, interface: Interface):
     """
     Strict 1->1: on each Channel step, send to ZMQ and wait for one reply, then publish back.
     """
@@ -53,8 +18,7 @@ async def run_tick(channel: Channel, session: str, sock: zmq.asyncio.Socket):
     async def f(msg):
         data = msg.data
         log.info(f"[run_node] zmq send ({data})")
-        await sock.send_multipart([b"", data])
-        _, step = await sock.recv_multipart()
+        step = await interface.tick(data)
         log.info(f"[run_node] zmq recv ({step})")
         await channel.publish_data(session, step)
         log.info(f"[run_node] zmq loop done")
@@ -66,7 +30,7 @@ async def run_tick(channel: Channel, session: str, sock: zmq.asyncio.Socket):
         await sub.unsubscribe()
 
 
-async def run_norm(channel: Channel, session: str, sock: zmq.asyncio.Socket):
+async def run_norm(channel: Channel, session: str, interface: Interface):
     """
     Streaming: callback just sends; one background receiver publishes replies.
     One client <-> one server => reply order matches send order; no pairing needed.
@@ -78,16 +42,13 @@ async def run_norm(channel: Channel, session: str, sock: zmq.asyncio.Socket):
         data = msg.data
         log.info(f"[run_node] zmq send ({data})")
         # Non-blocking send: if ROUTER/pipe is full (HWM), drop this update
-        try:
-            await sock.send_multipart([b"", data], flags=zmq.DONTWAIT)
-        except zmq.Again:
-            log.info(f"[run_node] zmq drop (busy)")
+        await interface.send(data)
 
     sub = await channel.subscribe_step(session, f)
 
     async def g():
         while True:
-            _, step = await sock.recv_multipart()
+            step = await interface.recv()
             log.info(f"[run_node] zmq recv ({step})")
             await channel.publish_data(session, step)
 
@@ -104,19 +65,8 @@ async def run_norm(channel: Channel, session: str, sock: zmq.asyncio.Socket):
 async def run_node(session: str, tick: bool):
     log.info(f"[run_node] session={session} tick={tick}")
 
-    file = os.environ.get("RUNNER_SOCK", "/run/motion/runner.sock")
-    log.info(f"[run_node] file={file}")
-
-    # ZMQ DEALER
-    context = zmq.asyncio.Context.instance()
-    sock = context.socket(zmq.DEALER)
-
-    # Keep local queues tiny so pressure is visible immediately
-    sock.setsockopt(zmq.SNDHWM, 1)
-    sock.setsockopt(zmq.RCVHWM, 1)
-
-    sock.connect(f"ipc://{file}")
-    log.info(f"[run_node] zmq connect addr=ipc://{file}")
+    # ZMQ DEALER (encapsulated by Interface)
+    interface = Interface(tick=tick)
 
     # Channel
     channel = Channel()
@@ -129,24 +79,20 @@ async def run_node(session: str, tick: bool):
     log.info(f"[run_node] channel inital data")
 
     # Wait for ROUTER to be ready (server has __PING__/__PONG__ built-in)
-    await wait_ready(sock, timeout=2.0, max=300)
-    log.info(f"[run_node] zmq ready")
-
     # Send mode exactly once; runner requires it before first real payload
-    mode = b"TICK" if tick else b"NORM"
-    await sock.send_multipart([b"", b"__MODE__", mode])
-    log.info(f"[run_node] sent mode {mode.decode()}")
+    await interface.ready(timeout=2.0, max=300)
+    log.info(f"[run_node] zmq ready")
 
     try:
         if tick:
-            await run_tick(channel, session, sock)
+            await run_tick(channel, session, interface)
         else:
-            await run_norm(channel, session, sock)
+            await run_norm(channel, session, interface)
     finally:
         log.info(f"[run_node] channel close")
         await channel.close()
         log.info(f"[run_node] zmq close")
-        sock.close(0)
+        await interface.close()
 
 
 async def main():
