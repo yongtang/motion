@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import itertools
 import json
 import logging
 
@@ -15,19 +16,17 @@ async def run_tick(session: str, interface: Interface, channel: Channel):
     Strict 1->1: on each Channel step, send to ZMQ and wait for one reply, then publish back.
     """
 
-    async def f(msg):
-        data = msg.data
-        log.info(f"[run_node] zmq send ({data})")
-        step = await interface.tick(data)
-        log.info(f"[run_node] zmq recv ({step})")
-        await channel.publish_data(session, step)
-        log.info(f"[run_node] zmq loop done")
+    for i in itertools.count():
+        data = json.dumps({"joint": {"count": i}}, sort_keys=True).encode()
 
-    sub = await channel.subscribe_step(session, f)
-    try:
-        await asyncio.Future()  # run forever
-    finally:
-        await sub.unsubscribe()
+        log.info(f"[run_tick] channel send ({data})")
+        await channel.publish_data(session, data)
+
+        log.info(f"[run_tick] zmq send ({data})")
+        step = await interface.tick(data)
+        log.info(f"[run_tick] zmq recv ({step})")
+
+        await asyncio.sleep(1)
 
 
 async def run_norm(session: str, interface: Interface, channel: Channel):
@@ -72,11 +71,6 @@ async def run_node(session: str, tick: bool):
     channel = Channel()
     await channel.start()
     log.info(f"[run_node] channel start")
-
-    await channel.publish_data(
-        session, json.dumps({"op": "none"}).encode()
-    )  # initial seed
-    log.info(f"[run_node] channel inital data")
 
     # Wait for ROUTER to be ready (server has __PING__/__PONG__ built-in)
     # Send mode exactly once; runner requires it before first real payload

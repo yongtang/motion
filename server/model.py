@@ -13,8 +13,10 @@ def main():
             log.info(f"[main] recv")
             data = context.data()
             log.info(f"[main] recv data={data}")
-            context.step(data)
-            log.info(f"[main] send step={data}")
+            step = data  # model = lambda e: e
+            log.info(f"[main] model data={data} step={step}")
+            context.step(step)
+            log.info(f"[main] send step={step}")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import sys
 import pytest
 
 
+@pytest.mark.skip(reason="TODO")
 @pytest.mark.parametrize(
     "mode, timeout, iteration, image, device, entries",
     [

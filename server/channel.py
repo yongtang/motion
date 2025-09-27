@@ -130,18 +130,47 @@ class Channel:
             headers={"Nats-Rollup": "sub"},
         )
 
-    async def subscribe_step(self, session: str, callback):
-        log.info(f"[Channel.subscribe_step] session={session}")
+    async def subscribe_step(self, session: str, start: int | None = None):
+        log.info(f"[Channel.subscribe_step] session={session}, start={start}")
         assert self.js is not None, "Channel not started"
         subject = f"motion.step.{session}"
-        config = nats.js.api.ConsumerConfig(
-            filter_subject=subject,
-            deliver_policy=nats.js.api.DeliverPolicy.ALL,
-            ack_policy=nats.js.api.AckPolicy.NONE,
-            inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
+
+        match start:
+            case None:
+                config = nats.js.api.ConsumerConfig(
+                    filter_subject=subject,
+                    deliver_policy=nats.js.api.DeliverPolicy.NEW,
+                    replay_policy=nats.js.api.ReplayPolicy.INSTANT,
+                    ack_policy=nats.js.api.AckPolicy.NONE,
+                    inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
+                )
+                note = "NEW"
+            case -1:
+                # tail the last available message, then follow new ones
+                config = nats.js.api.ConsumerConfig(
+                    filter_subject=subject,
+                    deliver_policy=nats.js.api.DeliverPolicy.LAST,
+                    replay_policy=nats.js.api.ReplayPolicy.INSTANT,
+                    ack_policy=nats.js.api.AckPolicy.NONE,
+                    inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
+                )
+                note = "LAST"
+            case seq if isinstance(seq, int) and seq > 0:
+                config = nats.js.api.ConsumerConfig(
+                    filter_subject=subject,
+                    deliver_policy=nats.js.api.DeliverPolicy.BY_START_SEQUENCE,
+                    opt_start_seq=seq,
+                    replay_policy=nats.js.api.ReplayPolicy.INSTANT,
+                    ack_policy=nats.js.api.AckPolicy.NONE,
+                    inactive_threshold=datetime.timedelta(hours=1).total_seconds(),
+                )
+                note = f"START_SEQUENCE {seq}"
+            case other:
+                log.error(f"[Channel.subscribe_step] Invalid start={other!r}")
+                raise ValueError(f"Invalid start sequence: {other!r}")
+
+        sub = await self.js.subscribe(subject, stream="motion", config=config)
+        log.info(
+            f"[Channel.subscribe_step] Subscribed (JS) {subject} (ephemeral, {note})"
         )
-        sub = await self.js.subscribe(
-            subject, config=config, stream="motion", cb=callback
-        )
-        log.info(f"[Channel.subscribe_step] Subscribed (JS) {subject}")
         return sub
