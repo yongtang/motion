@@ -6,6 +6,7 @@ import uuid
 import zipfile
 
 import httpx
+import pytest
 
 import motion
 
@@ -59,7 +60,20 @@ def test_client_scene(docker_compose):
     assert r.status_code == 404
 
 
-def test_client_session(scene_on_server):
+@pytest.mark.parametrize(
+    "model",
+    [
+        pytest.param(
+            "bounce",
+            id="bounce",
+        ),
+        pytest.param(
+            "remote",
+            id="remote",
+        ),
+    ],
+)
+def test_client_session(scene_on_server, model):
     base, scene = scene_on_server
     client = motion.client(base=base, timeout=5.0)
 
@@ -126,7 +140,7 @@ def test_client_session(scene_on_server):
     assert isinstance(session, motion.Session)
 
     # play
-    r = httpx.post(f"{base}/session/{session.uuid}/play", timeout=5.0)
+    r = httpx.post(f"{base}/session/{session.uuid}/play?model={model}", timeout=5.0)
     assert r.status_code == 200
 
     # wait for play using /status

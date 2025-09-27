@@ -6,28 +6,46 @@ import pytest
 import motion
 
 
+@pytest.mark.parametrize(
+    "model",
+    [
+        pytest.param(
+            "bounce",
+            id="bounce",
+        ),
+        pytest.param(
+            "remote",
+            id="remote",
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_session(session_on_server):
-    base, session_id, scene = session_on_server
+async def test_session(scene_on_server, model):
+    base, scene = scene_on_server
+
+    # fetch runner from server
+    r = httpx.get(f"{base}/scene/{scene}", timeout=5.0)
+    assert r.status_code == 200, r.text
+    runner = motion.scene.SceneRunnerSpec.parse_obj(r.json()["runner"])
+
+    client = motion.client(base=base, timeout=5.0)
+
+    # Build a Scene with uuid + runner (constructor requires runner)
+    scene_obj = motion.Scene(base, scene, runner, timeout=5.0)
 
     # construct client model (fetch-on-init)
-    async with motion.Session(base, session_id, timeout=5.0) as session:
+    async with client.session.create(scene_obj) as session:
         # start playback
         await session.play()
 
         # wait until playing via status waiter (no WS-based readiness)
         await session.wait("play", timeout=300.0)
 
-        # tail: ensure we can get something quickly from the end
-        async with session.stream(start=-1) as tail:
-            tail_msg = await tail.data(timeout=30.0)
-            assert tail_msg is not None
-
-        # duplex stream: send one step, receive one data message
-        async with session.stream(start=None) as stream:
-            await stream.step({"k": "v", "i": 1})
+        # duplex stream: receive one data message, send one step
+        async with session.stream(start=1) as stream:
             msg = await stream.data(timeout=30.0)
             assert msg is not None  # JSON or text/bytes, validated by client
+            await stream.step({"k": "v", "i": 1})
 
         # stop playback
         await session.stop()

@@ -6,6 +6,7 @@ import uuid
 import zipfile
 
 import httpx
+import pytest
 import websockets
 
 
@@ -84,7 +85,20 @@ def test_server_scene(docker_compose):
     assert r.status_code == 404
 
 
-def test_server_session(scene_on_server):
+@pytest.mark.parametrize(
+    "model",
+    [
+        pytest.param(
+            "bounce",
+            id="bounce",
+        ),
+        pytest.param(
+            "remote",
+            id="remote",
+        ),
+    ],
+)
+def test_server_session(scene_on_server, model):
     base, scene = scene_on_server  # fixture: POST /scene with a tiny zip
 
     # ---- helpers ----
@@ -199,7 +213,7 @@ def test_server_session(scene_on_server):
     assert r.status_code == 201, r.text
     session = r.json()["uuid"]
 
-    r = httpx.post(f"{base}/session/{session}/play", timeout=5.0)
+    r = httpx.post(f"{base}/session/{session}/play?model={model}", timeout=5.0)
     assert r.status_code == 200
 
     # Wait for play via status API (no WS needed just to check readiness)
@@ -243,7 +257,7 @@ def test_server_session(scene_on_server):
     assert r.status_code == 201, r.text
     session2 = r.json()["uuid"]
 
-    r = httpx.post(f"{base}/session/{session2}/play", timeout=5.0)
+    r = httpx.post(f"{base}/session/{session2}/play?model={model}", timeout=5.0)
     assert r.status_code == 200
 
     # Wait for play via status API
