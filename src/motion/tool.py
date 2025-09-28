@@ -1,8 +1,5 @@
 import argparse
 import asyncio
-import contextlib
-import itertools
-import json
 import logging
 import pathlib
 
@@ -11,149 +8,22 @@ import motion
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-model_read = """
-import sys
-
-for _ in sys.stdin:
-    pass
-"""
-
-model_sink = r"""
-import sys, json, asyncio, os, termios, tty, time, contextlib
-
-
-def drain_stdin():
-    # Synchronous drain so it can run in a thread via asyncio.to_thread
-    for line in sys.stdin:
-        print(f"This goes to stderr: {line}", file=sys.stderr)
-
-
-def iter_keys_from_tty(tty_path: str):
-    fd = os.open(tty_path, os.O_RDONLY)
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setcbreak(fd)
-        while True:
-            b = os.read(fd, 1)
-            if not b:
-                break
-            yield b
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        os.close(fd)
-
 
 async def main():
-    # Wait for sync line from stdin (ignore EOF)
-    line = sys.stdin.readline()
-    print(f"[Sink] Ready: {line.strip()}", file=sys.stderr)
-
-    # Drain the rest of stdin in a background thread and keep a handle to await later
-    drain_task = asyncio.create_task(asyncio.to_thread(drain_stdin))
-
-    # In tests we inject a pseudo-tty path; otherwise use the real tty
-    tty_path = os.environ.get("SINK_TTY_PATH") or "/dev/tty"
-
-    try:
-        for b in iter_keys_from_tty(tty_path):
-            s = b.decode("utf-8", errors="replace")
-            print(f"This goes to stderr e: {s}", file=sys.stderr)
-            payload = {"ts": time.time(), "key": s}
-            if len(b) == 1:
-                payload["code"] = b[0]
-            print(json.dumps(payload), flush=True)
-
-            if s.upper() == "Q":  # stop cleanly on Q/q
-                break
-    finally:
-        # Wait until producer closes stdin, so parent never writes to a closed pipe
-        with contextlib.suppress(Exception):
-            await drain_task
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-"""
-
-
-async def f_producer(stream, proc, iteration, timeout):
-    loop = asyncio.get_running_loop()
-    deadline = None if timeout is None else loop.time() + timeout
-
-    for i in range(iteration):
-
-        # compute remaining total budget
-        if deadline is not None:
-            remaining = deadline - loop.time()
-            if remaining <= 0:
-                log.info("[Producer] Total timeout reached; stopping producer")
-                break
-        else:
-            remaining = None  # unlimited
-
-        data = await stream.data(timeout=remaining)
-        log.info(f"[Producer] Iteration {i}: {json.dumps(data)}")
-        proc.stdin.write((json.dumps(data) + "\n").encode())
-        await proc.stdin.drain()
-
-
-async def f_consumer(proc, stream):
-    for i in itertools.count():
-        line = await proc.stdout.readline()
-        if not line:
-            log.info(f"[Consumer] EOF")
-            return
-        log.info(f"[Consumer] Iteration {i}: {line.rstrip().decode()}")
-        await stream.step(json.loads(line))
-
-
-async def f_observer(proc):
-    while True:
-        line = await proc.stderr.readline()
-        if not line:
-            log.info(f"[Observer] EOF")
-            return
-        log.info(f"[Observer] {line.rstrip().decode()}")
-
-
-async def main():
-    parser = argparse.ArgumentParser(prog="tool", description="Run motion stream")
+    parser = argparse.ArgumentParser()
 
     mode = parser.add_subparsers(dest="mode", required=True)
 
     mode_parser = argparse.ArgumentParser(add_help=False)
-    mode_parser.add_argument("--file", help="path to USD file", required=True)
     mode_parser.add_argument("--base", default="http://127.0.0.1:8080")
-    mode_parser.add_argument("--timeout", type=float, default=None)
-    mode_parser.add_argument("--iteration", type=int, default=15)
-    mode_parser.add_argument("--image", default="isaac")
-    mode_parser.add_argument("--device", default="cuda")
-    mode_parser.add_argument("--camera", nargs="+", metavar="camera:width:height")
 
-    read_parser = mode.add_parser("read", parents=[mode_parser], help="read data only")
-
-    sink_parser = mode.add_parser("sink", parents=[mode_parser], help="sink step only")
-
-    # example: 'import sys,json;[sys.stdout.write(json.dumps(dict(json.loads(l),seq=i))+"\n") for i,l in enumerate(sys.stdin) if l.strip()]'
-    tick_parser = mode.add_parser(
-        "tick", parents=[mode_parser], help="read data and transform to step"
-    )
-    tick_parser.add_argument(
-        "--model",
-        required=True,
-        help="python one-liner with stdin json and stdout json",
-    )
+    live_parser = mode.add_parser("live", parents=[mode_parser])
+    live_parser.add_argument("--duration", type=int, default=3600)
+    live_parser.add_argument("--file", required=True)
+    live_parser.add_argument("--image", default="count")
+    live_parser.add_argument("--device", default="cpu")
 
     args = parser.parse_args()
-
-    def f_camera(camera):
-        entries = list(set(camera if camera else []))
-        entries = list(e.split(":", maxsplit=2) for e in entries)
-        entries = list(
-            (e[0], {"width": int(e[1]), "height": int(e[2])}) for e in entries
-        )
-        assert len([e for e, v in entries]) == len(entries), camera
-        return dict(entries)
 
     client = motion.client(args.base)
 
@@ -164,7 +34,7 @@ async def main():
     log.info(f"[Scene {scene.uuid}] Created")
 
     log.info("[Session] Creating...")
-    async with client.session.create(scene, camera=f_camera(args.camera)) as session:
+    async with client.session.create(scene) as session:
         log.info(f"[Session {session.uuid}] Starting playback...")
         await session.play()
 
@@ -172,51 +42,10 @@ async def main():
         await session.wait("play", timeout=300.0)
         log.info(f"[Session {session.uuid}] Playing (status-confirmed)")
 
-        async with session.stream(start=-1) as stream:
-            match args.mode:
-                case "tick":
-                    model = args.model
-                case "read":
-                    model = model_read
-                case "sink":
-                    model = model_sink
-                case _:
-                    raise ValueError(f"Unknown mode {args.mode!r}")
-            proc = await asyncio.create_subprocess_exec(
-                "python3",
-                "-u",
-                "-c",
-                model,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            log.info(f"[Session {session.uuid}] Process model {model}")
-            observer = asyncio.create_task(f_observer(proc))
-            producer = asyncio.create_task(
-                f_producer(stream, proc, args.iteration, args.timeout)
-            )
-            consumer = asyncio.create_task(f_consumer(proc, stream))
-
-            await producer
-            log.info(f"[Session {session.uuid}] Producer done")
-
-            proc.stdin.close()
-            log.info(f"[Session {session.uuid}] Process close")
-
-            await consumer
-            log.info(f"[Session {session.uuid}] Consumer done")
-
-            await observer
-            log.info(f"[Session {session.uuid}] Observer done")
-
-            with contextlib.suppress(Exception):
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=2.0)
-                except asyncio.TimeoutError:
-                    proc.kill()
-                    await proc.wait()
-            log.info(f"[Session {session.uuid}] Process done")
+        interval = 15
+        for count in range(0, args.duration, interval):
+            asyncio.sleep(interval)
+            log.info(f"[Session {session.uuid}] Elapsed {count}/{args.duration} ...")
 
         log.info(f"[Session {session.uuid}] Stopping ...")
         await session.stop()

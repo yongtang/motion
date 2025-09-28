@@ -117,9 +117,11 @@ services:
         COPY LICENSE /app/LICENSE
         COPY server/model.py /app/server/model.py
         COPY server/bounce.py /app/server/bounce.py
+        COPY server/remote.py /app/server/remote.py
         COPY server/runner.py /app/server/runner.py
+        COPY server/channel.py /app/server/channel.py
         WORKDIR /app
-        RUN pip install pyzmq numpy
+        RUN pip install pyzmq numpy nats-py
         RUN echo '#!/bin/bash \n\
         set -e \n\
         if [ -z "$${MOTION}" ]; then \n\
