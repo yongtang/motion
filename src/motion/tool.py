@@ -9,6 +9,37 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
+async def f_live(client, file, image, device, duration):
+    log.info(f"[Scene] Creating from {file} (image={image}, device={device}) ...")
+    scene = client.scene.create(pathlib.Path(file), image, device)
+    log.info(f"[Scene {scene.uuid}] Created")
+
+    log.info("[Session] Creating...")
+    async with client.session.create(scene) as session:
+        log.info(f"[Session {session.uuid}] Starting playback...")
+        await session.play()
+
+        log.info(f"[Session {session.uuid}] Waiting for play ...")
+        await session.wait("play", timeout=300.0)
+        log.info(f"[Session {session.uuid}] Playing (status-confirmed)")
+
+        interval = 15
+        for count in range(0, duration, interval):
+            await asyncio.sleep(interval)
+            log.info(f"[Session {session.uuid}] Elapsed {count}/{duration} ...")
+
+        log.info(f"[Session {session.uuid}] Stopping ...")
+        await session.stop()
+
+        log.info(f"[Session {session.uuid}] Waiting for stop ...")
+        await session.wait("stop", timeout=60.0)
+        log.info(f"[Session {session.uuid}] Stopped (status-confirmed)")
+
+        client.session.delete(session)
+
+    client.scene.delete(scene)
+
+
 async def main():
     parser = argparse.ArgumentParser()
 
@@ -27,36 +58,11 @@ async def main():
 
     client = motion.client(args.base)
 
-    log.info(
-        f"[Scene] Creating from {args.file} (image={args.image}, device={args.device}) ..."
-    )
-    scene = client.scene.create(pathlib.Path(args.file), args.image, args.device)
-    log.info(f"[Scene {scene.uuid}] Created")
-
-    log.info("[Session] Creating...")
-    async with client.session.create(scene) as session:
-        log.info(f"[Session {session.uuid}] Starting playback...")
-        await session.play()
-
-        log.info(f"[Session {session.uuid}] Waiting for play ...")
-        await session.wait("play", timeout=300.0)
-        log.info(f"[Session {session.uuid}] Playing (status-confirmed)")
-
-        interval = 15
-        for count in range(0, args.duration, interval):
-            asyncio.sleep(interval)
-            log.info(f"[Session {session.uuid}] Elapsed {count}/{args.duration} ...")
-
-        log.info(f"[Session {session.uuid}] Stopping ...")
-        await session.stop()
-
-        log.info(f"[Session {session.uuid}] Waiting for stop ...")
-        await session.wait("stop", timeout=60.0)
-        log.info(f"[Session {session.uuid}] Stopped (status-confirmed)")
-
-        client.session.delete(session)
-
-    client.scene.delete(scene)
+    match args.mode:
+        case "live":
+            await f_live(client, args.file, args.image, args.device, args.duration)
+        case other:
+            raise ValueError(f"Unsupported mode {other}")
 
     log.info("[Tool] Done")
 

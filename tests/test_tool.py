@@ -46,7 +46,6 @@ async def test_tool(
         str(file),
         "--base",
         str(base),
-    ] + [
         "--duration",
         str(duration),
         "--image",
