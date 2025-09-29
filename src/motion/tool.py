@@ -273,11 +273,14 @@ async def f_tick(
             finally:
                 pygame.quit()
 
-    async def f(pose, twist):
-        logging.info(f"Callback received pose={pose}, twist={twist}")
-        await stream.step({"pose": pose, "twist": twist})
-
     async with session.stream(start=None) as stream:
+
+        async def f(pose, twist):
+            data = await stream.data()
+            logging.info(f"Data rece data={data}")
+            ste = {"pose": pose, "twist": twist}
+            logging.info(f"Step send step={step}")
+            await stream.step(step)
 
         controller = XboxTeleop(callback=f)
         await controller.loop_async(rate_hz=20.0)
