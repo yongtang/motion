@@ -106,13 +106,19 @@ class SessionStream:
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        await self._socket_.close()
+        # be tolerant if already closed/None
+        with contextlib.suppress(Exception):
+            if self._socket_ is not None:
+                await self._socket_.close()
         self._socket_ = None
         return False
 
     async def _reconnect_(self):
+        # best-effort close old socket
         with contextlib.suppress(Exception):
-            await self._socket_.close()
+            if self._socket_ is not None:
+                await self._socket_.close()
+
         ws_base = self._base_.replace("https://", "wss://").replace("http://", "ws://")
         url = f"{ws_base}/session/{self._uuid_}/stream" + (
             f"?start={self._start_}" if self._start_ is not None else ""
@@ -124,9 +130,40 @@ class SessionStream:
             ping_interval=None,
         )
 
-    async def step(self, payload: dict) -> None:
-        """Send one JSON step command."""
-        await self._socket_.send(json.dumps(payload))
+    async def step(self, payload: dict, *, timeout: float | None = None) -> None:
+        """
+        Send one JSON step command. If the websocket was closed with an expected
+        Close (ClosedError/ClosedOK), transparently reconnect and retry until
+        the per-call timeout expires.
+        """
+        if self._socket_ is None:
+            await self._reconnect_()
+
+        to = self._timeout_ if timeout is None else float(timeout)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + to
+        msg = json.dumps(payload)
+
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise asyncio.TimeoutError()
+
+            try:
+                # keep the single await short to allow retries
+                await asyncio.wait_for(
+                    self._socket_.send(msg),
+                    timeout=min(1.5, remaining),
+                )
+                return None  # success
+
+            except (
+                websockets.exceptions.ConnectionClosedError,
+                websockets.exceptions.ConnectionClosedOK,
+            ):
+                # reconnect and retry until deadline
+                await self._reconnect_()
+                continue
 
     async def data(self, *, timeout: float | None = None):
         """Receive one message; JSON-decode if possible."""
