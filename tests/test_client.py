@@ -88,3 +88,71 @@ async def test_client_session(scene_on_server, model):
         # delete and verify search is empty after
         assert client.session.delete(session) is None
         assert client.session.search(str(session.uuid)) == []
+
+
+def test_client_scene_search(docker_compose):
+    base = f"http://{docker_compose['motion']}:8080"
+    client = motion.client(base=base, timeout=5.0)
+
+    # Create TWO additional scenes so we can test prefix + all
+    with tempfile.TemporaryDirectory() as tdir:
+        tdir = pathlib.Path(tdir)
+        usd_path = tdir / "scene.usd"
+        usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
+
+        s1 = client.scene.create(usd_path, image="count", device="cpu")
+        s2 = client.scene.create(usd_path, image="count", device="cpu")
+
+    try:
+        # Exact search returns the same typed Scene
+        assert client.scene.search(str(s1.uuid)) == [s1]
+
+        # Prefix search: use a short canonical prefix (with hyphens preserved)
+        prefix = str(s1.uuid)[:8]
+        prefix_results = client.scene.search(prefix)
+        # We don't assert exclusivity (prefix can collide), just membership
+        assert s1 in prefix_results
+
+        # Empty search -> all: should include both newly-created scenes
+        all_scenes = client.scene.search()  # q=None
+        assert s1 in all_scenes
+        assert s2 in all_scenes
+
+        # Bogus (random) UUID should return empty
+        bogus = str(uuid.uuid4())
+        assert client.scene.search(bogus) == []
+    finally:
+        # Cleanup both scenes
+        client.scene.delete(s1)
+        client.scene.delete(s2)
+
+
+def test_client_session_search(scene_on_server):
+    base, scene = scene_on_server
+    client = motion.client(base=base, timeout=5.0)
+
+    # Create TWO sessions bound to the existing scene
+    sess1 = client.session.create(scene=scene)
+    sess2 = client.session.create(scene=scene)
+
+    try:
+        # Exact search returns the same typed Session
+        assert client.session.search(str(sess1.uuid)) == [sess1]
+
+        # Prefix search: short canonical prefix
+        prefix = str(sess1.uuid)[:8]
+        prefix_results = client.session.search(prefix)
+        assert sess1 in prefix_results
+
+        # Empty search -> all sessions: should contain both
+        all_sessions = client.session.search()
+        assert sess1 in all_sessions
+        assert sess2 in all_sessions
+
+        # Bogus UUID -> empty
+        bogus = str(uuid.uuid4())
+        assert client.session.search(bogus) == []
+    finally:
+        # Cleanup
+        client.session.delete(sess1)
+        client.session.delete(sess2)
