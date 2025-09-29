@@ -82,14 +82,15 @@ class SceneClient(BaseClient):
     def archive(self, scene: Scene, file: str | pathlib.Path) -> pathlib.Path:
         return self._download_(f"scene/{scene.uuid}/archive", file)
 
-    def search(self, q: str) -> list[Scene]:
-        r = httpx.get(f"{self._base_}/scene", params={"q": q}, timeout=self._timeout_)
+    def search(self, q: str | None = None) -> list[Scene]:
+        params = None if not q else {"q": q}
+        r = httpx.get(f"{self._base_}/scene", params=params, timeout=self._timeout_)
         if r.status_code == 422:
             return []
         r.raise_for_status()
-        scenes = [SceneBase.parse_obj(item) for item in r.json()]
+        items = [SceneBase.parse_obj(item) for item in r.json()]
         return [
-            Scene(self._base_, s.uuid, s.runner, timeout=self._timeout_) for s in scenes
+            Scene(self._base_, s.uuid, s.runner, timeout=self._timeout_) for s in items
         ]
 
     def delete(self, scene: Scene) -> None:
@@ -120,13 +121,14 @@ class SessionClient(BaseClient):
     def archive(self, session: Session, file: str | pathlib.Path) -> pathlib.Path:
         return self._download_(f"session/{session.uuid}/archive", file)
 
-    def search(self, q: str) -> list[Session]:
-        r = httpx.get(f"{self._base_}/session/{q}", timeout=self._timeout_)
-        if r.status_code == 404:
+    def search(self, q: str | None = None) -> list[Session]:
+        params = None if not q else {"q": q}
+        r = httpx.get(f"{self._base_}/session", params=params, timeout=self._timeout_)
+        if r.status_code == 422:
             return []
         r.raise_for_status()
-        session = SessionBase.parse_obj(r.json())
-        return [Session(self._base_, session.uuid, timeout=self._timeout_)]
+        items = [SessionBase.parse_obj(item) for item in r.json()]
+        return [Session(self._base_, s.uuid, timeout=self._timeout_) for s in items]
 
     def delete(self, session: Session) -> None:
         r = self._request_("DELETE", f"session/{session.uuid}")

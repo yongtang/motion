@@ -4,6 +4,7 @@ import datetime
 import json
 import logging
 import random
+import re
 import tempfile
 import uuid
 import zipfile
@@ -141,16 +142,58 @@ async def scene_delete(scene: pydantic.UUID4) -> motion.scene.SceneBase:
 
 
 @app.get("/scene", response_model=list[motion.scene.SceneBase])
-async def scene_search(q: pydantic.UUID4 = Query(..., description="exact scene uuid")):
-    try:
-        scene = motion.scene.SceneBase.parse_raw(
-            b"".join(storage_kv_get("scene", f"{q}.json"))
-        )
-        log.info(f"[Scene {scene.uuid}] Search found")
-        return [scene]
-    except FileNotFoundError:
-        log.warning(f"[Scene {q}] Search not found")
-        return []
+async def scene_search(
+    q: str | None = Query(
+        None, description="Scene UUID (full), prefix, or empty for all"
+    ),
+):
+    # Empty or missing -> return ALL scenes
+    if not q:
+        matches: list[motion.scene.SceneBase] = []
+        for key in storage_kv_scan("scene", ""):
+            if not key.endswith(".json"):
+                continue
+            try:
+                scene = motion.scene.SceneBase.parse_raw(
+                    b"".join(storage_kv_get("scene", key))
+                )
+                matches.append(scene)
+            except Exception:
+                continue
+        return matches
+
+    # Validate and normalize
+    if not re.fullmatch(r"[0-9a-fA-F-]+", q):
+        raise HTTPException(status_code=422, detail="UUID prefix must be hex/hyphen")
+    norm = q.lower().strip()
+
+    # Fast path: exact UUID
+    if len(norm) == 36:
+        try:
+            _ = pydantic.UUID4(norm)
+            scene = motion.scene.SceneBase.parse_raw(
+                b"".join(storage_kv_get("scene", f"{norm}.json"))
+            )
+            return [scene]
+        except Exception:
+            pass  # fall through to prefix scan
+
+    # Prefix scan: keys are "<uuid>.json"
+    matches: list[motion.scene.SceneBase] = []
+    for key in storage_kv_scan("scene", norm):
+        if not key.endswith(".json"):
+            continue
+        uuid_part = key[:-5]
+        if not uuid_part.startswith(norm):
+            continue
+        try:
+            scene = motion.scene.SceneBase.parse_raw(
+                b"".join(storage_kv_get("scene", key))
+            )
+            matches.append(scene)
+        except Exception:
+            continue
+    return matches
 
 
 @app.post("/session", response_model=motion.session.SessionBase, status_code=201)
@@ -240,6 +283,64 @@ async def session_delete(session: pydantic.UUID4) -> motion.session.SessionBase:
     log.info(f"[Session {session.uuid}] Metadata deleted")
 
     return session
+
+
+from fastapi import HTTPException, Query
+
+
+@app.get("/session", response_model=list[motion.session.SessionBase])
+async def session_search(
+    q: str | None = Query(
+        None, description="Session UUID (full), prefix, or empty for all"
+    ),
+):
+    # Empty or missing -> return ALL sessions
+    if not q:
+        matches: list[motion.session.SessionBase] = []
+        for key in storage_kv_scan("session", ""):
+            if not key.endswith(".json"):
+                continue
+            try:
+                session = motion.session.SessionBase.parse_raw(
+                    b"".join(storage_kv_get("session", key))
+                )
+                matches.append(session)
+            except Exception:
+                continue
+        return matches
+
+    # Validate and normalize
+    if not re.fullmatch(r"[0-9a-fA-F-]+", q):
+        raise HTTPException(status_code=422, detail="UUID prefix must be hex/hyphen")
+    norm = q.lower().strip()
+
+    # Fast path: exact UUID
+    if len(norm) == 36:
+        try:
+            _ = pydantic.UUID4(norm)
+            session = motion.session.SessionBase.parse_raw(
+                b"".join(storage_kv_get("session", f"{norm}.json"))
+            )
+            return [session]
+        except Exception:
+            pass  # fall through to prefix scan
+
+    # Prefix scan: keys are "<uuid>.json"
+    matches: list[motion.session.SessionBase] = []
+    for key in storage_kv_scan("session", norm):
+        if not key.endswith(".json"):
+            continue
+        uuid_part = key[:-5]
+        if not uuid_part.startswith(norm):
+            continue
+        try:
+            session = motion.session.SessionBase.parse_raw(
+                b"".join(storage_kv_get("session", key))
+            )
+            matches.append(session)
+        except Exception:
+            continue
+    return matches
 
 
 @app.get("/session/{session:uuid}/status", response_model=motion.session.SessionStatus)
