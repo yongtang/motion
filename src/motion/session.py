@@ -42,19 +42,40 @@ class Vector3Spec(pydantic.BaseModel):
     z: float
 
 
+class PointSpec(pydantic.BaseModel):
+    x: float
+    y: float
+    z: float
+
+
+class QuaternionSpec(pydantic.BaseModel):
+    x: float
+    y: float
+    z: float
+    w: float
+
+
+class PoseSpec(pydantic.BaseModel):
+    position: PointSpec
+    orientation: QuaternionSpec
+
+
 class TwistSpec(pydantic.BaseModel):
     linear: Vector3Spec
     angular: Vector3Spec
 
 
 class SessionStepSpec(pydantic.BaseModel):
+    pose: dict[str, PoseSpec] | None = None
     twist: dict[str, TwistSpec] | None = None
     joint: dict[str, float] | None = None
 
     def __init__(self, **data):
         super().__init__(**data)
-        if (self.twist is None) == (self.joint is None):
-            raise ValueError("Must define exactly one of 'twist' or 'joint'")
+        if sum(v is not None for v in (self.pose, self.twist, self.joint)) != 1:
+            raise ValueError(
+                "Must define exactly one from pose={self.pose}, twist={self.twist}, joint={self.joint}"
+            )
 
 
 class SessionSpec(pydantic.BaseModel):
