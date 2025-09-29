@@ -100,7 +100,6 @@ async def scene_lookup(scene: pydantic.UUID4) -> motion.scene.SceneBase:
 
 
 @app.get("/scene/{scene:uuid}/archive")
-@app.get("/scene/{scene:uuid}/archive")
 async def scene_archive(scene: pydantic.UUID4):
     try:
         stream = storage_kv_get("scene", f"{scene}.zip")

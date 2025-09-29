@@ -1,14 +1,15 @@
 import concurrent
-import io
 import json
 import os
+import pathlib
 import subprocess
+import tempfile
 import time
 import uuid
-import zipfile
 
-import httpx
 import pytest
+
+import motion
 
 
 def pytest_addoption(parser):
@@ -222,55 +223,58 @@ def browser_run(docker_compose, scope):
 
 @pytest.fixture(scope="session")
 def scene_on_server(docker_compose):
-    """Create a scene (POST /scene) with a zip that includes scene.usd + empty meta.json, and image/device in form data."""
+    """
+    Create a Scene on the server using the typed client (POST /scene via SceneClient).
+    Returns: (base_url, Scene)
+    """
     base = f"http://{docker_compose['motion']}:8080"
+    api = motion.client(base, timeout=10.0)
 
-    # build in-memory zip with USD + empty meta.json
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as z:
-        usd_contents = "#usda 1.0\ndef X {\n}\n"
-        z.writestr("scene.usd", usd_contents)
-        z.writestr("meta.json", json.dumps({}))  # empty {}
+    # Create a temporary USD file; the client will zip + attach meta.json internally.
+    with tempfile.TemporaryDirectory() as td:
+        usd_path = pathlib.Path(td) / "scene.usd"
+        usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
 
-    buf.seek(0)
+        scene: motion.Scene = api.scene.create(
+            file=usd_path,
+            image="count",  # validated by SceneRunnerImageSpec
+            device="cpu",  # validated by SceneRunnerDeviceSpec
+        )
 
-    files = {"file": ("scene.zip", buf, "application/zip")}
-    # send image/device as multipart form field
-    data = {"image": "count", "device": "cpu"}
-    r = httpx.post(f"{base}/scene", files=files, data=data, timeout=5.0)
-    assert r.status_code == 201, r.text
-    scene = r.json()["uuid"]
-    assert scene
+    # sanity
+    assert isinstance(scene, motion.Scene)
+    assert scene.uuid
 
     yield base, scene
 
     # teardown once all tests are finished
     try:
-        httpx.delete(f"{base}/scene/{scene}", timeout=5.0)
+        api.scene.delete(scene)
     except Exception:
         pass
 
 
 @pytest.fixture(scope="session")
 def session_on_server(scene_on_server):
-    """Create a session bound to the scene created above."""
+    """
+    Create a Session bound to the created Scene using the typed client (POST /session).
+    Returns: (base_url, Session, Scene)
+    """
     base, scene = scene_on_server
-    r = httpx.post(f"{base}/session", json={"scene": scene}, timeout=5.0)
-    assert r.status_code == 201, r.text
-    data = r.json()
-    session = data["uuid"]
-    assert data == {
-        "uuid": session,
-        "scene": scene,
-        "joint": ["*"],
-        "camera": {},
-        "link": ["*"],
-    }
+    api = motion.client(base, timeout=10.0)
+
+    session: motion.Session = api.session.create(scene=scene)
+    # sanity (matches your default server response shape)
+    assert session.uuid
+    assert session.scene.uuid == scene.uuid
+    assert session.joint == ["*"]
+    assert isinstance(session.camera, dict)
+    assert session.link == ["*"]
 
     yield base, session, scene
 
     # teardown
     try:
-        httpx.delete(f"{base}/session/{session}", timeout=5.0)
+        api.session.delete(session)
     except Exception:
         pass

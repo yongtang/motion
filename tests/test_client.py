@@ -1,11 +1,9 @@
 import json
 import pathlib
 import tempfile
-import time
 import uuid
 import zipfile
 
-import httpx
 import pytest
 
 import motion
@@ -19,27 +17,21 @@ def test_client_scene(docker_compose):
     with tempfile.TemporaryDirectory() as tdir:
         tdir = pathlib.Path(tdir)
         usd_path = tdir / "scene.usd"
-        usd_contents = "#usda 1.0\ndef X {\n}\n"
-        usd_path.write_text(usd_contents, encoding="utf-8")
+        usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
 
         image = "count"
         device = "cpu"
         scene = client.scene.create(usd_path, image, device)
-    assert scene
 
-    # search should find the scene
+    # got a typed Scene back
+    assert scene
+    assert scene.runner.image.value == image
+    assert scene.runner.device.value == device
+
+    # search returns the same typed Scene (equality by UUID)
     assert client.scene.search(str(scene.uuid)) == [scene]
 
-    # direct REST check for metadata (now includes nested runner)
-    base = f"http://{docker_compose['motion']}:8080"
-    r = httpx.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
-    assert r.status_code == 200
-    assert r.json() == {
-        "uuid": str(scene.uuid),
-        "runner": {"image": image, "device": device},
-    }
-
-    # archive via client API and just confirm file exists and is non-empty
+    # archive via client API and confirm file exists and is non-empty
     with tempfile.TemporaryDirectory() as tdir:
         out = pathlib.Path(tdir) / f"{scene.uuid}.zip"
         client.scene.archive(scene, out)
@@ -49,113 +41,50 @@ def test_client_scene(docker_compose):
     bogus = str(uuid.uuid4())
     assert client.scene.search(bogus) == []
 
-    # delete
+    # delete via client API
     assert client.scene.delete(scene) is None
 
-    # search after delete should be empty
+    # after delete, search should be empty
     assert client.scene.search(str(scene.uuid)) == []
 
-    # after delete, REST lookup should 404
-    r = httpx.get(f"{base}/scene/{scene.uuid}", timeout=5.0)
-    assert r.status_code == 404
 
-
-@pytest.mark.parametrize(
-    "model",
-    [
-        pytest.param(
-            "bounce",
-            id="bounce",
-        ),
-        pytest.param(
-            "remote",
-            id="remote",
-        ),
-    ],
-)
-def test_client_session(scene_on_server, model):
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["bounce", "remote"])
+async def test_client_session(scene_on_server, model):
     base, scene = scene_on_server
     client = motion.client(base=base, timeout=5.0)
 
-    # fetch runner for the scene so we can construct motion.Scene
-    r = httpx.get(f"{base}/scene/{scene}", timeout=5.0)
-    assert r.status_code == 200, r.text
-    runner = motion.scene.SceneRunnerSpec.parse_obj(r.json()["runner"])
+    async with client.session.create(scene=scene) as session:
+        # sanity on the typed object we got back
+        assert isinstance(session, motion.Session)
+        assert session.scene.uuid == scene.uuid
+        assert session.joint == ["*"]
+        assert isinstance(session.camera, dict)
+        assert session.link == ["*"]
 
-    # Build a Scene with uuid + runner (constructor requires runner)
-    scene_obj = motion.Scene(base, scene, runner, timeout=5.0)
+        # drive lifecycle via the async API
+        await session.play(model=model)  # requires play(model: str | None = None)
+        await session.wait("play", timeout=300.0)
 
-    # --- helpers using /status and archive (no websockets) ---
+        await session.stop()
+        await session.wait("stop", timeout=60.0)
 
-    def f_wait_status(
-        session_id: str, want: str, timeout_s: float = 60.0, interval_s: float = 0.25
-    ):
-        """
-        Poll /session/{id}/status until state==want or timeout.
-        want must be 'play' or 'stop'.
-        Raises AssertionError on timeout or impossible transition (waiting for play after stop).
-        """
-        assert want in ("play", "stop")
-        deadline = time.monotonic() + timeout_s
-        last = None
-        while time.monotonic() < deadline:
-            r2 = httpx.get(f"{base}/session/{session_id}/status", timeout=5.0)
-            assert r2.status_code == 200, r2.text
-            state = r2.json()["state"]
-            last = state
-            if want == "play":
-                if state == "stop":
-                    raise AssertionError(
-                        "cannot wait for play: session already stopped"
-                    )
-                if state == "play":
-                    return
-            else:  # want == "stop"
-                if state == "stop":
-                    return
-            time.sleep(interval_s)
-        raise AssertionError(f"Timed out waiting for state={want}. last_state={last}")
-
-    def f_archive_contains_data_json(session_obj) -> list[str]:
-        """Download archive once and return non-empty JSONL lines from data.json."""
+        # archive and validate JSONL
         with tempfile.TemporaryDirectory() as tdir:
-            out = pathlib.Path(tdir) / f"{session_obj.uuid}.zip"
-            client.session.archive(session_obj, out)
+            out = pathlib.Path(tdir) / f"{session.uuid}.zip"
+            client.session.archive(session, out)  # sync call is fine inside async block
             assert out.exists() and out.stat().st_size > 0
 
             with zipfile.ZipFile(out, "r") as z:
                 names = set(z.namelist())
                 assert "session.json" in names, "archive missing session.json"
                 assert "data.json" in names, "archive missing data.json"
-                with z.open("data.json") as f:
-                    content = f.read().decode("utf-8", errors="ignore")
-                    lines = [ln for ln in content.splitlines() if ln.strip()]
-                    assert lines, "data.json empty"
-                    for ln in lines:
-                        json.loads(ln)
-                    return lines
+                content = z.read("data.json").decode("utf-8", errors="ignore")
+                lines = [ln for ln in content.splitlines() if ln.strip()]
+                assert lines, "data.json empty"
+                for ln in lines:
+                    json.loads(ln)  # each line parses
 
-    # explicit stop flow with status-based readiness + stop waits
-    session = client.session.create(scene_obj)
-    assert isinstance(session, motion.Session)
-
-    # play
-    r = httpx.post(f"{base}/session/{session.uuid}/play?model={model}", timeout=5.0)
-    assert r.status_code == 200
-
-    # wait for play using /status
-    f_wait_status(str(session.uuid), want="play", timeout_s=300.0, interval_s=0.25)
-
-    # stop
-    r = httpx.post(f"{base}/session/{session.uuid}/stop", timeout=5.0)
-    assert r.status_code == 200
-
-    # wait for stop using /status, then download archive once and validate data.json
-    f_wait_status(str(session.uuid), want="stop", timeout_s=60.0, interval_s=0.5)
-    lines = f_archive_contains_data_json(session)
-    assert lines
-
-    # cleanup
-    assert client.session.delete(session) is None
-    r = httpx.get(f"{base}/session/{session.uuid}", timeout=5.0)
-    assert r.status_code == 404
+        # delete and verify search is empty after
+        assert client.session.delete(session) is None
+        assert client.session.search(str(session.uuid)) == []

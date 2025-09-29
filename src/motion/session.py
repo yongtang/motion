@@ -263,8 +263,10 @@ class Session(SessionBase):
             self._base_, self.uuid, timeout=self._timeout_, start=start
         )
 
-    async def play(self):
-        r = await self._request_("POST", f"session/{self.uuid}/play")
+    async def play(self, model: str | None = None):
+        r = await self._request_(
+            "POST", f"session/{self.uuid}/play" + (f"?model={model}" if model else "")
+        )
         return r.json()
 
     async def stop(self):
