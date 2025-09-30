@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
 import math
@@ -582,6 +583,72 @@ async def session_step(client, args):
 
 
 # -------------------
+# Quick command (async)
+# -------------------
+
+
+async def quick_run(client, args):
+    """
+    One-shot flow using existing commands:
+      - scene create
+      - session create (context)
+      - session play
+      - session step (xbox)
+      - session stop
+      - (optional) archive both scene and session if --archive is provided
+      - session delete
+      - scene delete
+    """
+    # 1) scene create
+    file = pathlib.Path(args.file)
+    scene = client.scene.create(file, args.image, args.device)
+    f_print(scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
+    args.scene = str(scene.uuid)
+
+    # 2) session create (keep context while we operate)
+    async with client.session.create(scene) as session:
+        f_print(
+            session,
+            json_mode=args.json,
+            pretty_mode=args.pretty,
+            quiet_mode=args.quiet,
+        )
+        args.session = str(session.uuid)
+
+        try:
+            # 3) play
+            await session_play(client, args)
+
+            # 4) drive (xbox loop)
+            await session_step(client, args)
+
+            # 5) stop
+            await session_stop(client, args)
+
+            # 6) optional archives
+            if args.archive:
+                outdir = pathlib.Path(args.archive)
+                outdir.mkdir(parents=True, exist_ok=True)
+                scene_zip = outdir / f"scene-{scene.uuid}.zip"
+                session_zip = outdir / f"session-{session_uuid}.zip"
+                client.scene.archive(scene, scene_zip)
+                client.session.archive(session, session_zip)
+                f_print(
+                    {"archive": {"scene": str(scene_zip), "session": str(session_zip)}},
+                    json_mode=args.json,
+                    pretty_mode=args.pretty,
+                    quiet_mode=args.quiet,
+                )
+
+        finally:
+            with contextlib.suppress(Exception):
+                await session_delete(client, args)
+
+    with contextlib.suppress(Exception):
+        scene_delete(client, args)
+
+
+# -------------------
 # Parser
 # -------------------
 
@@ -654,6 +721,17 @@ def f_parser():
     session_step_parser.add_argument("session")
     session_step_parser.add_argument("--control", default="xbox", choices=["xbox"])
 
+    quick_parser = mode_parser.add_parser("quick", parents=[flag_parser])
+    quick_parser.add_argument("--file", required=True)
+    quick_parser.add_argument("--image", default="count")
+    quick_parser.add_argument("--device", default="cpu")
+    quick_parser.add_argument("--model", default=None)
+    quick_parser.add_argument("--control", default="xbox", choices=["xbox"])
+    quick_parser.add_argument(
+        "--archive",
+        help="Directory to save both scene and session archives before cleanup",
+    )
+
     return parser
 
 
@@ -696,6 +774,9 @@ async def main():
             await session_stop(client, args)
         elif args.command == "step":
             await session_step(client, args)
+
+    elif args.mode == "quick":
+        await quick_run(client, args)
 
     return 0
 
