@@ -582,6 +582,55 @@ async def session_step(client, args):
         )
 
 
+async def quick_run(client, args):
+    file = pathlib.Path(args.file)
+    scene = client.scene.create(file, args.image, args.device)
+    f_print(scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
+    args.scene = str(scene.uuid)
+
+    try:
+        async with client.session.create(scene) as session:
+            f_print(
+                session,
+                json_mode=args.json,
+                pretty_mode=args.pretty,
+                quiet_mode=args.quiet,
+            )
+            args.session = str(session.uuid)
+
+            try:
+                await session_play(client, args)
+                await session_step(client, args)
+                await session_stop(client, args)
+
+                if args.archive:
+                    outdir = pathlib.Path(args.archive)
+                    outdir.mkdir(parents=True, exist_ok=True)
+                    scene_zip = outdir / f"scene-{scene.uuid}.zip"
+                    session_zip = outdir / f"session-{args.session}.zip"
+                    client.scene.archive(scene, scene_zip)
+                    client.session.archive(session, session_zip)
+                    f_print(
+                        {
+                            "archive": {
+                                "scene": str(scene_zip),
+                                "session": str(session_zip),
+                            }
+                        },
+                        json_mode=args.json,
+                        pretty_mode=args.pretty,
+                        quiet_mode=args.quiet,
+                    )
+            finally:
+                # guaranteed last step inside session context
+                with contextlib.suppress(Exception):
+                    await session_delete(client, args)
+    finally:
+        # always delete scene, even if session creation/play failed
+        with contextlib.suppress(Exception):
+            scene_delete(client, args)
+
+
 # -------------------
 # Quick command (async)
 # -------------------
