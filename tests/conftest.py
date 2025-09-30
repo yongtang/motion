@@ -1,5 +1,5 @@
 import concurrent
-import importlib
+import importlib.resources
 import json
 import os
 import pathlib

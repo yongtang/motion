@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import contextlib
+import importlib.resources
 import json
 import logging
 import math
@@ -582,13 +583,166 @@ async def session_step(client, args):
         )
 
 
+async def f_proc(*argv: str) -> tuple[str, str]:
+    """Run a process, log stdout/stderr line-by-line, return both as strings."""
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    assert proc.stdout is not None and proc.stderr is not None
+
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    async def read_stream(stream, collector, label):
+        async for line in stream:
+            entry = line.decode(errors="replace").strip()
+            log.info(f"[{label}] {entry}")
+            collector.append(entry)
+
+    await asyncio.gather(
+        read_stream(proc.stdout, stdout_lines, "stdout"),
+        read_stream(proc.stderr, stderr_lines, "stderr"),
+    )
+    await proc.wait()
+
+    return "\n".join(stdout_lines), "\n".join(stderr_lines)
+
+
+async def f_base_start(args) -> str:
+    """Start docker compose project, wait until healthy, and return base URL."""
+    if str(args.base).startswith(("http://", "https://")):
+        return args.base
+
+    project = args.base or "motion"
+    compose = str(importlib.resources.files("motion").joinpath("docker-compose.yml"))
+
+    log.info("docker compose up -d …")
+    await f_proc("docker", "compose", "-p", project, "-f", compose, "up", "-d")
+
+    # stream logs in background
+    asyncio.create_task(
+        f_proc(
+            "docker",
+            "compose",
+            "-p",
+            project,
+            "-f",
+            compose,
+            "logs",
+            "-f",
+            "--no-color",
+        )
+    )
+
+    deadline = time.time() + max(30.0, args.timeout * 6)
+    ip: str | None = None
+    while True:
+        # discover containers
+        stdout, stderr = await f_proc(
+            "docker", "compose", "-p", project, "-f", compose, "ps", "-q"
+        )
+        containers = [c.strip() for c in stdout.split("\n") if c.strip()]
+        if not containers:
+            if time.time() > deadline:
+                raise TimeoutError("docker compose ps returned no containers")
+            await asyncio.sleep(1)
+            continue
+
+        statuses: dict[str, str] = {}
+        ips: set[str] = set()
+        for container in containers:
+            stdout, stderr = await f_proc(
+                "docker",
+                "inspect",
+                "-f",
+                "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
+                container,
+            )
+            statuses[container] = stdout
+            stdout, stderr = await f_proc(
+                "docker",
+                "inspect",
+                "-f",
+                "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+                container,
+            )
+            ips.add(stdout.strip())
+        ips = {ip for ip in ips if ip}
+
+        log.info(f"health: {statuses}")
+
+        if (
+            all(s in ("healthy", "running") for s in statuses.values())
+            and len(ips) == 1
+        ):
+            ip = next(iter(ips))
+            break
+
+        if time.time() > deadline:
+            raise TimeoutError(f"containers not healthy: {statuses} ips={ips}")
+
+        await asyncio.sleep(2)
+
+    log.info(f"Compose project {project} ready at http://{ip}:8080")
+    return f"http://{ip}:8080"
+
+
+async def f_base_close(args) -> None:
+    """Stop docker compose project and log output."""
+    if str(args.base).startswith(("http://", "https://")):
+        return
+
+    project = args.base or "motion"
+
+    log.info("docker compose down…")
+    await f_proc(
+        "docker",
+        "compose",
+        "-p",
+        project,
+        "-f",
+        str(importlib.resources.files("motion").joinpath("docker-compose.yml")),
+        "down",
+        "-v",
+        "--remove-orphans",
+    )
+    log.info(f"Compose project {project} stopped and removed.")
+
+
+# -------------------
+# Quick command (async)
+# -------------------
+
+
 async def quick_run(client, args):
-    file = pathlib.Path(args.file)
-    scene = client.scene.create(file, args.image, args.device)
-    f_print(scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
-    args.scene = str(scene.uuid)
+    """
+    One-shot flow:
+      - docker compose up (if base is project name)
+      - scene create
+      - session create (context)
+      - session play
+      - session step (xbox)
+      - session stop
+      - (optional) archive both scene and session if --archive is provided
+      - session delete
+      - scene delete
+      - docker compose down (if started)
+    """
+    base = await f_base_start(args)
+    client = motion.client(base=base, timeout=args.timeout)
 
     try:
+        # 1) scene create
+        file = pathlib.Path(args.file)
+        scene = client.scene.create(file, args.image, args.device)
+        f_print(
+            scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
+        )
+        args.scene = str(scene.uuid)
+
+        # 2) session create (keep context while we operate)
         async with client.session.create(scene) as session:
             f_print(
                 session,
@@ -599,15 +753,21 @@ async def quick_run(client, args):
             args.session = str(session.uuid)
 
             try:
+                # 3) play
                 await session_play(client, args)
+
+                # 4) drive (xbox loop)
                 await session_step(client, args)
+
+                # 5) stop
                 await session_stop(client, args)
 
+                # 6) optional archives
                 if args.archive:
                     outdir = pathlib.Path(args.archive)
                     outdir.mkdir(parents=True, exist_ok=True)
                     scene_zip = outdir / f"scene-{scene.uuid}.zip"
-                    session_zip = outdir / f"session-{args.session}.zip"
+                    session_zip = outdir / f"session-{session.uuid}.zip"
                     client.scene.archive(scene, scene_zip)
                     client.session.archive(session, session_zip)
                     f_print(
@@ -621,80 +781,16 @@ async def quick_run(client, args):
                         pretty_mode=args.pretty,
                         quiet_mode=args.quiet,
                     )
+
             finally:
-                # guaranteed last step inside session context
                 with contextlib.suppress(Exception):
                     await session_delete(client, args)
-    finally:
-        # always delete scene, even if session creation/play failed
+
         with contextlib.suppress(Exception):
             scene_delete(client, args)
 
-
-# -------------------
-# Quick command (async)
-# -------------------
-
-
-async def quick_run(client, args):
-    """
-    One-shot flow using existing commands:
-      - scene create
-      - session create (context)
-      - session play
-      - session step (xbox)
-      - session stop
-      - (optional) archive both scene and session if --archive is provided
-      - session delete
-      - scene delete
-    """
-    # 1) scene create
-    file = pathlib.Path(args.file)
-    scene = client.scene.create(file, args.image, args.device)
-    f_print(scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
-    args.scene = str(scene.uuid)
-
-    # 2) session create (keep context while we operate)
-    async with client.session.create(scene) as session:
-        f_print(
-            session,
-            json_mode=args.json,
-            pretty_mode=args.pretty,
-            quiet_mode=args.quiet,
-        )
-        args.session = str(session.uuid)
-
-        try:
-            # 3) play
-            await session_play(client, args)
-
-            # 4) drive (xbox loop)
-            await session_step(client, args)
-
-            # 5) stop
-            await session_stop(client, args)
-
-            # 6) optional archives
-            if args.archive:
-                outdir = pathlib.Path(args.archive)
-                outdir.mkdir(parents=True, exist_ok=True)
-                scene_zip = outdir / f"scene-{scene.uuid}.zip"
-                session_zip = outdir / f"session-{session_uuid}.zip"
-                client.scene.archive(scene, scene_zip)
-                client.session.archive(session, session_zip)
-                f_print(
-                    {"archive": {"scene": str(scene_zip), "session": str(session_zip)}},
-                    json_mode=args.json,
-                    pretty_mode=args.pretty,
-                    quiet_mode=args.quiet,
-                )
-
-        finally:
-            with contextlib.suppress(Exception):
-                await session_delete(client, args)
-
-    with contextlib.suppress(Exception):
-        scene_delete(client, args)
+    finally:
+        await f_base_close(args)
 
 
 # -------------------
@@ -825,7 +921,7 @@ async def main():
             await session_step(client, args)
 
     elif args.mode == "quick":
-        await quick_run(client, args)
+        await quick_run(None, args)
 
     return 0
 

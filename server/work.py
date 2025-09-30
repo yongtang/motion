@@ -1,6 +1,6 @@
 import asyncio
 import contextlib
-import importlib
+import importlib.resources
 import json
 import logging
 import os
