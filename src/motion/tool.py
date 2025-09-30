@@ -1,4 +1,3 @@
-# src/motion/tool.py
 import argparse
 import asyncio
 import json
@@ -94,38 +93,38 @@ def f_prefix(items, q: str, *, kind: str):
 # -------------------
 
 
-def scene_create(client, args, *, json_mode, pretty_mode, quiet_mode):
+def scene_create(client, args):
     """Create a Scene by uploading a USD file. The client zips USD+empty meta.json internally."""
     file = pathlib.Path(args.file)
     scene = client.scene.create(file, args.image, args.device)
-    f_print(scene, json_mode=json_mode, pretty_mode=pretty_mode, quiet_mode=quiet_mode)
+    f_print(scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
 
 
-def scene_delete(client, args, *, json_mode, pretty_mode, quiet_mode):
+def scene_delete(client, args):
     """Delete a Scene resolved from a UUID prefix."""
     scenes = client.scene.search(args.scene)
     scene = f_prefix(scenes, args.scene, kind="scene")
     client.scene.delete(scene)
-    f_print(scene, json_mode=json_mode, pretty_mode=pretty_mode, quiet_mode=quiet_mode)
+    f_print(scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
 
 
-def scene_list(client, args, *, json_mode, pretty_mode, quiet_mode):
+def scene_list(client, args):
     """
     List Scenes. If a prefix query (q) is provided, server-side returns all matches
     (the server accepts empty q to list-all; client simply forwards).
     """
     scenes = client.scene.search(args.q or "")
-    f_print(scenes, json_mode=json_mode, pretty_mode=pretty_mode, quiet_mode=quiet_mode)
+    f_print(scenes, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
 
 
-def scene_show(client, args, *, json_mode, pretty_mode, quiet_mode):
+def scene_show(client, args):
     """Show one Scene by UUID prefix (must be unique)."""
     scenes = client.scene.search(args.scene)
     scene = f_prefix(scenes, args.scene, kind="scene")
-    f_print(scene, json_mode=json_mode, pretty_mode=pretty_mode, quiet_mode=quiet_mode)
+    f_print(scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
 
 
-def scene_archive(client, args, *, json_mode, pretty_mode, quiet_mode):
+def scene_archive(client, args):
     """Download a Scene archive (zip containing scene.usd + meta.json) to the given output path."""
     scenes = client.scene.search(args.scene)
     scene = f_prefix(scenes, args.scene, kind="scene")
@@ -133,9 +132,9 @@ def scene_archive(client, args, *, json_mode, pretty_mode, quiet_mode):
     client.scene.archive(scene, out)
     f_print(
         {"output": str(out)},
-        json_mode=json_mode,
-        pretty_mode=pretty_mode,
-        quiet_mode=quiet_mode,
+        json_mode=args.json,
+        pretty_mode=args.pretty,
+        quiet_mode=args.quiet,
     )
 
 
@@ -144,7 +143,7 @@ def scene_archive(client, args, *, json_mode, pretty_mode, quiet_mode):
 # -------------------
 
 
-async def session_create(client, args, *, json_mode, pretty_mode, quiet_mode):
+async def session_create(client, args):
     """
     Create a Session bound to a Scene (resolved from prefix).
     Prints the typed Session object (safe JSON) while inside the async context.
@@ -153,41 +152,41 @@ async def session_create(client, args, *, json_mode, pretty_mode, quiet_mode):
     scene = f_prefix(scenes, args.scene, kind="scene")
     async with client.session.create(scene) as session:
         f_print(
-            session, json_mode=json_mode, pretty_mode=pretty_mode, quiet_mode=quiet_mode
+            session, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
         )
 
 
-async def session_delete(client, args, *, json_mode, pretty_mode, quiet_mode):
+async def session_delete(client, args):
     """Delete a Session resolved from a UUID prefix."""
     sessions = client.session.search(args.session)
     session = f_prefix(sessions, args.session, kind="session")
     client.session.delete(session)
     f_print(
-        session, json_mode=json_mode, pretty_mode=pretty_mode, quiet_mode=quiet_mode
+        session, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
     )
 
 
-async def session_list(client, args, *, json_mode, pretty_mode, quiet_mode):
+async def session_list(client, args):
     """
     List Sessions. If a prefix query (q) is provided, server returns all matches.
     Empty q lists all sessions.
     """
     sessions = client.session.search(args.q or "")
     f_print(
-        sessions, json_mode=json_mode, pretty_mode=pretty_mode, quiet_mode=quiet_mode
+        sessions, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
     )
 
 
-async def session_show(client, args, *, json_mode, pretty_mode, quiet_mode):
+async def session_show(client, args):
     """Show one Session by UUID prefix (must be unique)."""
     sessions = client.session.search(args.session)
     session = f_prefix(sessions, args.session, kind="session")
     f_print(
-        session, json_mode=json_mode, pretty_mode=pretty_mode, quiet_mode=quiet_mode
+        session, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
     )
 
 
-async def session_archive(client, args, *, json_mode, pretty_mode, quiet_mode):
+async def session_archive(client, args):
     """Download a Session archive (zip containing session.json + data.json) to the given output path."""
     sessions = client.session.search(args.session)
     session = f_prefix(sessions, args.session, kind="session")
@@ -195,13 +194,13 @@ async def session_archive(client, args, *, json_mode, pretty_mode, quiet_mode):
     client.session.archive(session, out)
     f_print(
         {"output": str(out)},
-        json_mode=json_mode,
-        pretty_mode=pretty_mode,
-        quiet_mode=quiet_mode,
+        json_mode=args.json,
+        pretty_mode=args.pretty,
+        quiet_mode=args.quiet,
     )
 
 
-async def session_play(client, args, *, json_mode, pretty_mode, quiet_mode):
+async def session_play(client, args):
     """
     POST /session/{id}/play using the typed async API.
     Resolved by UUID prefix; prints the session metadata after invoking play().
@@ -210,11 +209,11 @@ async def session_play(client, args, *, json_mode, pretty_mode, quiet_mode):
     async with f_prefix(sessions, args.session, kind="session") as session:
         await session.play(model=args.model)
         f_print(
-            session, json_mode=json_mode, pretty_mode=pretty_mode, quiet_mode=quiet_mode
+            session, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
         )
 
 
-async def session_stop(client, args, *, json_mode, pretty_mode, quiet_mode):
+async def session_stop(client, args):
     """
     POST /session/{id}/stop using the typed async API.
     Resolved by UUID prefix; prints the session metadata after invoking stop().
@@ -223,11 +222,11 @@ async def session_stop(client, args, *, json_mode, pretty_mode, quiet_mode):
     async with f_prefix(sessions, args.session, kind="session") as session:
         await session.stop()
         f_print(
-            session, json_mode=json_mode, pretty_mode=pretty_mode, quiet_mode=quiet_mode
+            session, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
         )
 
 
-async def session_step(client, args, *, json_mode, pretty_mode, quiet_mode):
+async def session_step(client, args):
     """
     Drive a session with step messages using a control scheme.
 
@@ -576,9 +575,9 @@ async def session_step(client, args, *, json_mode, pretty_mode, quiet_mode):
         # We print something on success so CLI users get a confirmation even in quiet setups.
         f_print(
             {"status": "ok"},
-            json_mode=json_mode,
-            pretty_mode=pretty_mode,
-            quiet_mode=quiet_mode,
+            json_mode=args.json,
+            pretty_mode=args.pretty,
+            quiet_mode=args.quiet,
         )
 
 
@@ -670,111 +669,33 @@ async def main():
 
     if args.mode == "scene":
         if args.command == "create":
-            scene_create(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            scene_create(client, args)
         elif args.command == "delete":
-            scene_delete(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            scene_delete(client, args)
         elif args.command == "list":
-            scene_list(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            scene_list(client, args)
         elif args.command == "show":
-            scene_show(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            scene_show(client, args)
         elif args.command == "archive":
-            scene_archive(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            scene_archive(client, args)
 
     elif args.mode == "session":
         if args.command == "create":
-            await session_create(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            await session_create(client, args)
         elif args.command == "delete":
-            await session_delete(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            await session_delete(client, args)
         elif args.command == "list":
-            await session_list(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            await session_list(client, args)
         elif args.command == "show":
-            await session_show(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            await session_show(client, args)
         elif args.command == "archive":
-            await session_archive(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            await session_archive(client, args)
         elif args.command == "play":
-            await session_play(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            await session_play(client, args)
         elif args.command == "stop":
-            await session_stop(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            await session_stop(client, args)
         elif args.command == "step":
-            await session_step(
-                client,
-                args,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            await session_step(client, args)
 
     return 0
 
