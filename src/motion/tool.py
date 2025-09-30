@@ -11,7 +11,6 @@ import time
 
 import motion
 
-logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
@@ -802,6 +801,12 @@ def f_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://127.0.0.1:8080")
     parser.add_argument("--timeout", type=float, default=10.0)
+    parser.add_argument(
+        "--log-level",
+        type=str.lower,
+        choices=["debug", "info", "warning", "error", "critical"],
+        default="error",
+    )
 
     flag_parser = argparse.ArgumentParser(add_help=False)
     flag_parser.add_argument("--json", dest="json", action="store_true")
@@ -888,6 +893,11 @@ def f_parser():
 async def main():
     parser = f_parser()
     args = parser.parse_args()
+
+    level = getattr(logging, args.log_level.upper())
+    logging.basicConfig(level=level, force=True)
+    log.setLevel(level)
+
     client = motion.client(base=args.base, timeout=args.timeout)
 
     if args.mode == "scene":
