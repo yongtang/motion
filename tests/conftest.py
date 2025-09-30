@@ -1,4 +1,5 @@
 import concurrent
+import importlib
 import json
 import os
 import pathlib
@@ -25,7 +26,9 @@ def scope(request):
 @pytest.fixture(scope="session")
 def docker_compose(scope, request):
     projects = {
-        "motion": "docker/docker-compose.yml",
+        "motion": str(
+            importlib.resources.files("motion").joinpath("docker-compose.yml")
+        ),
         "tests": "tests/docker-compose.yml",
     }
 
@@ -99,7 +102,7 @@ def docker_compose(scope, request):
             "docker",
             "compose",
             "-f",
-            "docker/docker-compose.build.yml",
+            ".docker/docker-compose.build.yml",
             "build",
         ],
         check=True,

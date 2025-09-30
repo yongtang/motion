@@ -23,6 +23,11 @@ requires = [
 ]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.package-data]
+motion = [
+    "docker-compose.yml",
+]
+
 [tool.pytest.ini_options]
 pythonpath = [
     "src",

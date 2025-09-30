@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import importlib
 import json
 import logging
 import os
@@ -114,7 +115,7 @@ async def node_play(meta):
             "-p",
             project,
             "-f",
-            f"/app/docker/docker-compose.yml",
+            str(importlib.resources.files("motion").joinpath("docker-compose.yml")),
             "-f",
             f"/storage/node/docker-compose.yml",
             "up",

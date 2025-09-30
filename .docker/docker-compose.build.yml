@@ -67,7 +67,6 @@ services:
         COPY pyproject.toml /app/pyproject.toml
         COPY src /app/src
         COPY server /app/server
-        COPY docker /app/docker
         WORKDIR /app
         RUN pip install -e . && \
             pip install -r server/requirements.txt
