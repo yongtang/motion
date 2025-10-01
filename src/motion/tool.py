@@ -601,11 +601,26 @@ async def f_proc(*argv: str) -> tuple[str, str]:
             log.info(f"[{label}] {entry}")
             collector.append(entry)
 
-    await asyncio.gather(
-        read_stream(proc.stdout, stdout_lines, "stdout"),
-        read_stream(proc.stderr, stderr_lines, "stderr"),
-    )
-    await proc.wait()
+    # spawn reader tasks
+    task_stdout = asyncio.create_task(read_stream(proc.stdout, stdout_lines, "stdout"))
+    task_stderr = asyncio.create_task(read_stream(proc.stderr, stderr_lines, "stderr"))
+
+    try:
+        await proc.wait()
+    except asyncio.CancelledError:
+        # Cancelled by caller, kill the child so no transport lingers.
+        with contextlib.suppress(ProcessLookupError):
+            proc.terminate()
+        with contextlib.suppress(asyncio.TimeoutError):
+            # Give it a brief moment to exit; if it already exited this returns immediately.
+            await asyncio.wait_for(proc.wait(), timeout=1.5)
+        raise
+    finally:
+        task_stdout.cancel()
+        task_stderr.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task_stdout
+            await task_stderr
 
     return "\n".join(stdout_lines), "\n".join(stderr_lines)
 
@@ -664,7 +679,7 @@ async def f_base_start(args) -> str:
     await f_proc("docker", "compose", "-p", project, "-f", compose, "up", "-d")
 
     # stream logs in background (non-blocking)
-    asyncio.create_task(
+    task = asyncio.create_task(
         f_proc(
             "docker",
             "compose",
