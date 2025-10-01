@@ -191,6 +191,8 @@ services:
         RUN apt -y -qq update && \
             apt -y -qq install curl ffmpeg
         COPY LICENSE /app/LICENSE
+        COPY pyproject.toml /app/pyproject.toml
+        COPY src /app/src
         COPY server/channel.py /isaac-sim/exts/motion.extension/motion/channel.py
         COPY server/storage.py /isaac-sim/exts/motion.extension/motion/storage.py
         COPY server/extension.py /isaac-sim/exts/motion.extension/motion/extension.py
@@ -198,7 +200,8 @@ services:
         ENV ACCEPT_EULA=Y
         ENV PRIVACY_CONSENT=Y
         WORKDIR /app
-        RUN /isaac-sim/python.sh -m pip install nats-py
+        RUN /isaac-sim/python.sh -m pip install -e . --no-deps && \
+            /isaac-sim/python.sh -m pip install nats-py
         RUN echo '#!/bin/bash \n\
         set -e \n\
         if [ -z "$${MOTION}" ]; then \n\
