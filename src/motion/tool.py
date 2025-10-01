@@ -21,21 +21,7 @@ def f_fail(code: int, msg: str) -> None:
     sys.exit(code)
 
 
-def f_print(obj, *, json_mode: bool, pretty_mode: bool, quiet_mode: bool) -> None:
-    """
-    Print object(s) depending on flags.
-
-    IMPORTANT: Avoid calling .json() on live motion.Session objects because they may
-    hold a non-serializable httpx.AsyncClient on a private attr. Convert to plain dicts.
-
-    - motion.Session -> minimal safe dict {uuid, scene, joint, camera, link}
-    - motion.Scene   -> {uuid, runner:{image,device}}
-    - lists/tuples   -> map element-wise through the same conversion
-    - other pydantic models -> attempt o.json() then json.loads as a fallback
-    """
-    if quiet_mode:
-        return
-
+def f_print(obj, *, output: str) -> None:
     def to_safe(o):
         if isinstance(o, motion.Session):
             return {
@@ -60,18 +46,50 @@ def f_print(obj, *, json_mode: bool, pretty_mode: bool, quiet_mode: bool) -> Non
                 pass
         return o
 
-    if not json_mode:
-        print(obj)
+    def flatten(d, parent_key=""):
+        flat = {}
+        for k, v in (d or {}).items():
+            key = f"{parent_key}.{k}" if parent_key else k
+            if isinstance(v, dict):
+                flat.update(flatten(v, key))
+            else:
+                flat[key] = v
+        return flat
+
+    def render_table(rows: list[dict]) -> str:
+        if not rows:
+            return ""
+        preferred = [
+            "uuid",
+            "scene",
+            "runner.image",
+            "runner.device",
+            "joint",
+            "camera",
+            "link",
+        ]
+        keys = list(dict.fromkeys(preferred + [k for r in rows for k in r.keys()]))
+        widths = {k: max(len(k), *(len(str(r.get(k, ""))) for r in rows)) for k in keys}
+        header = "  ".join(k.ljust(widths[k]) for k in keys)
+        sep = "  ".join("-" * widths[k] for k in keys)
+        body = [
+            "  ".join(str(r.get(k, "")).ljust(widths[k]) for k in keys) for r in rows
+        ]
+        return "\n".join([header, sep, *body])
+
+    payload = (
+        [to_safe(o) for o in obj] if isinstance(obj, (list, tuple)) else to_safe(obj)
+    )
+
+    if output == "json":
+        print(json.dumps(payload, indent=2))
         return
 
-    indent = 2 if pretty_mode else None
-
-    if isinstance(obj, (list, tuple)):
-        payload = [to_safe(o) for o in obj]
-        print(json.dumps(payload, indent=indent))
-        return
-
-    print(json.dumps(to_safe(obj), indent=indent))
+    rows = [
+        flatten(item) if isinstance(item, dict) else {"value": str(item)}
+        for item in (payload if isinstance(payload, list) else [payload])
+    ]
+    print(render_table(rows))
 
 
 def f_prefix(items, q: str, *, kind: str):
@@ -99,7 +117,7 @@ def scene_create(client, args):
     """Create a Scene by uploading a USD file. The client zips USD+empty meta.json internally."""
     file = pathlib.Path(args.file)
     scene = client.scene.create(file, args.image, args.device)
-    f_print(scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
+    f_print(scene, output=args.output)
 
 
 def scene_delete(client, args):
@@ -107,7 +125,7 @@ def scene_delete(client, args):
     scenes = client.scene.search(args.scene)
     scene = f_prefix(scenes, args.scene, kind="scene")
     client.scene.delete(scene)
-    f_print(scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
+    f_print(scene, output=args.output)
 
 
 def scene_list(client, args):
@@ -116,14 +134,14 @@ def scene_list(client, args):
     (the server accepts empty q to list-all; client simply forwards).
     """
     scenes = client.scene.search(args.q or "")
-    f_print(scenes, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
+    f_print(scenes, output=args.output)
 
 
 def scene_show(client, args):
     """Show one Scene by UUID prefix (must be unique)."""
     scenes = client.scene.search(args.scene)
     scene = f_prefix(scenes, args.scene, kind="scene")
-    f_print(scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet)
+    f_print(scene, output=args.output)
 
 
 def scene_archive(client, args):
@@ -132,12 +150,7 @@ def scene_archive(client, args):
     scene = f_prefix(scenes, args.scene, kind="scene")
     out = pathlib.Path(args.output)
     client.scene.archive(scene, out)
-    f_print(
-        {"output": str(out)},
-        json_mode=args.json,
-        pretty_mode=args.pretty,
-        quiet_mode=args.quiet,
-    )
+    f_print({"output": str(out)}, output=args.output)
 
 
 # -------------------
@@ -153,9 +166,7 @@ async def session_create(client, args):
     scenes = client.scene.search(args.scene)
     scene = f_prefix(scenes, args.scene, kind="scene")
     async with client.session.create(scene) as session:
-        f_print(
-            session, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
-        )
+        f_print(session, output=args.output)
 
 
 async def session_delete(client, args):
@@ -163,9 +174,7 @@ async def session_delete(client, args):
     sessions = client.session.search(args.session)
     session = f_prefix(sessions, args.session, kind="session")
     client.session.delete(session)
-    f_print(
-        session, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
-    )
+    f_print(session, output=args.output)
 
 
 async def session_list(client, args):
@@ -174,18 +183,14 @@ async def session_list(client, args):
     Empty q lists all sessions.
     """
     sessions = client.session.search(args.q or "")
-    f_print(
-        sessions, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
-    )
+    f_print(sessions, output=args.output)
 
 
 async def session_show(client, args):
     """Show one Session by UUID prefix (must be unique)."""
     sessions = client.session.search(args.session)
     session = f_prefix(sessions, args.session, kind="session")
-    f_print(
-        session, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
-    )
+    f_print(session, output=args.output)
 
 
 async def session_archive(client, args):
@@ -194,12 +199,7 @@ async def session_archive(client, args):
     session = f_prefix(sessions, args.session, kind="session")
     out = pathlib.Path(args.output)
     client.session.archive(session, out)
-    f_print(
-        {"output": str(out)},
-        json_mode=args.json,
-        pretty_mode=args.pretty,
-        quiet_mode=args.quiet,
-    )
+    f_print({"output": str(out)}, output=args.output)
 
 
 async def session_play(client, args):
@@ -210,9 +210,7 @@ async def session_play(client, args):
     sessions = client.session.search(args.session)
     async with f_prefix(sessions, args.session, kind="session") as session:
         await session.play(model=args.model)
-        f_print(
-            session, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
-        )
+        f_print(session, output=args.output)
 
 
 async def session_stop(client, args):
@@ -223,9 +221,7 @@ async def session_stop(client, args):
     sessions = client.session.search(args.session)
     async with f_prefix(sessions, args.session, kind="session") as session:
         await session.stop()
-        f_print(
-            session, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
-        )
+        f_print(session, output=args.output)
 
 
 async def session_step(client, args):
@@ -575,12 +571,7 @@ async def session_step(client, args):
             pygame.quit()
 
         # We print something on success so CLI users get a confirmation even in quiet setups.
-        f_print(
-            {"status": "ok"},
-            json_mode=args.json,
-            pretty_mode=args.pretty,
-            quiet_mode=args.quiet,
-        )
+        f_print({"status": "ok"}, output=args.output)
 
 
 async def f_proc(*argv: str) -> tuple[str, str]:
@@ -759,12 +750,7 @@ async def server_create(args):
         f_fail(2, "server create requires a compose project name for --base, not a URL")
 
     url = await f_base_start(args)
-    f_print(
-        {"url": url},
-        json_mode=args.json,
-        pretty_mode=args.pretty,
-        quiet_mode=args.quiet,
-    )
+    f_print({"url": url}, output=args.output)
 
 
 async def server_delete(args):
@@ -803,12 +789,7 @@ async def server_delete(args):
         "-v",
         "--remove-orphans",
     )
-    f_print(
-        {"status": "ok", "project": project},
-        json_mode=args.json,
-        pretty_mode=args.pretty,
-        quiet_mode=args.quiet,
-    )
+    f_print({"status": "ok", "project": project}, output=args.output)
 
 
 # -------------------
@@ -837,19 +818,12 @@ async def quick_run(client, args):
         # 1) scene create
         file = pathlib.Path(args.file)
         scene = client.scene.create(file, args.image, args.device)
-        f_print(
-            scene, json_mode=args.json, pretty_mode=args.pretty, quiet_mode=args.quiet
-        )
+        f_print(scene, output=args.output)
         args.scene = str(scene.uuid)
 
         # 2) session create (keep context while we operate)
         async with client.session.create(scene) as session:
-            f_print(
-                session,
-                json_mode=args.json,
-                pretty_mode=args.pretty,
-                quiet_mode=args.quiet,
-            )
+            f_print(session, output=args.output)
             args.session = str(session.uuid)
 
             try:
@@ -877,9 +851,7 @@ async def quick_run(client, args):
                                 "session": str(session_zip),
                             }
                         },
-                        json_mode=args.json,
-                        pretty_mode=args.pretty,
-                        quiet_mode=args.quiet,
+                        output=args.output,
                     )
 
             finally:
@@ -908,11 +880,7 @@ def f_parser():
         choices=["debug", "info", "warning", "error", "critical"],
         default="error",
     )
-
-    flag_parser = argparse.ArgumentParser(add_help=False)
-    flag_parser.add_argument("--json", dest="json", action="store_true")
-    flag_parser.add_argument("--pretty", dest="pretty", action="store_true")
-    flag_parser.add_argument("--quiet", dest="quiet", action="store_true")
+    parser.add_argument("--output", choices=["json", "table"], default="json")
 
     mode_parser = parser.add_subparsers(dest="mode", required=True)
 
@@ -920,21 +888,21 @@ def f_parser():
     scene_parser = mode_parser.add_parser("scene")
     scene_command = scene_parser.add_subparsers(dest="command", required=True)
 
-    scene_create_parser = scene_command.add_parser("create", parents=[flag_parser])
+    scene_create_parser = scene_command.add_parser("create")
     scene_create_parser.add_argument("--file", required=True)
     scene_create_parser.add_argument("--image", default="count")
     scene_create_parser.add_argument("--device", default="cpu")
 
-    scene_delete_parser = scene_command.add_parser("delete", parents=[flag_parser])
+    scene_delete_parser = scene_command.add_parser("delete")
     scene_delete_parser.add_argument("scene")
 
-    scene_list_parser = scene_command.add_parser("list", parents=[flag_parser])
+    scene_list_parser = scene_command.add_parser("list")
     scene_list_parser.add_argument("q", nargs="?")
 
-    scene_show_parser = scene_command.add_parser("show", parents=[flag_parser])
+    scene_show_parser = scene_command.add_parser("show")
     scene_show_parser.add_argument("scene")
 
-    scene_archive_parser = scene_command.add_parser("archive", parents=[flag_parser])
+    scene_archive_parser = scene_command.add_parser("archive")
     scene_archive_parser.add_argument("scene")
     scene_archive_parser.add_argument("output")
 
@@ -942,33 +910,31 @@ def f_parser():
     session_parser = mode_parser.add_parser("session")
     session_command = session_parser.add_subparsers(dest="command", required=True)
 
-    session_create_parser = session_command.add_parser("create", parents=[flag_parser])
+    session_create_parser = session_command.add_parser("create")
     session_create_parser.add_argument("scene")
 
-    session_delete_parser = session_command.add_parser("delete", parents=[flag_parser])
+    session_delete_parser = session_command.add_parser("delete")
     session_delete_parser.add_argument("session")
 
-    session_list_parser = session_command.add_parser("list", parents=[flag_parser])
+    session_list_parser = session_command.add_parser("list")
     session_list_parser.add_argument("q", nargs="?")
 
-    session_show_parser = session_command.add_parser("show", parents=[flag_parser])
+    session_show_parser = session_command.add_parser("show")
     session_show_parser.add_argument("session")
 
-    session_archive_parser = session_command.add_parser(
-        "archive", parents=[flag_parser]
-    )
+    session_archive_parser = session_command.add_parser("archive")
     session_archive_parser.add_argument("session")
     session_archive_parser.add_argument("output")
 
-    session_play_parser = session_command.add_parser("play", parents=[flag_parser])
+    session_play_parser = session_command.add_parser("play")
     session_play_parser.add_argument("session")
     session_play_parser.add_argument("--model", default=None)
 
-    session_stop_parser = session_command.add_parser("stop", parents=[flag_parser])
+    session_stop_parser = session_command.add_parser("stop")
     session_stop_parser.add_argument("session")
 
     # session step (xbox only; hard-coded rate and joystick index for now)
-    session_step_parser = session_command.add_parser("step", parents=[flag_parser])
+    session_step_parser = session_command.add_parser("step")
     session_step_parser.add_argument("session")
     session_step_parser.add_argument("--control", default="xbox", choices=["xbox"])
 
@@ -976,11 +942,11 @@ def f_parser():
     server_parser = mode_parser.add_parser("server")
     server_command = server_parser.add_subparsers(dest="command", required=True)
     # uses --base as compose project name (must NOT be http/https)
-    server_create_parser = server_command.add_parser("create", parents=[flag_parser])
+    server_create_parser = server_command.add_parser("create")
     # uses --base as either http/https URL OR compose project name
-    server_delete_parser = server_command.add_parser("delete", parents=[flag_parser])
+    server_delete_parser = server_command.add_parser("delete")
 
-    quick_parser = mode_parser.add_parser("quick", parents=[flag_parser])
+    quick_parser = mode_parser.add_parser("quick")
     quick_parser.add_argument("--file", required=True)
     quick_parser.add_argument("--image", default="count")
     quick_parser.add_argument("--device", default="cpu")
