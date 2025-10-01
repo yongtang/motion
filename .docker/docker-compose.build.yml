@@ -101,6 +101,7 @@ services:
           exit 0 \n\
         fi \n\
         sleep infinity \n\
+        exec $(python3 -m server.live) \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]

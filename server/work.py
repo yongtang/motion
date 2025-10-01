@@ -47,6 +47,9 @@ async def node_play(meta):
 
     log.info(f"[node_play] session={session} tick={tick} play")
 
+    shutil.rmtree("/run/motion", ignore_errors=True)
+    os.makedirs("/run/motion", exist_ok=True)
+
     shutil.rmtree("/storage/node", ignore_errors=True)
     os.makedirs("/storage/node/scene", exist_ok=True)
 

@@ -48,6 +48,7 @@ services:
       - server
     network_mode: "service:server"
     volumes:
+      - run:/run/motion
       - storage:/storage
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/machine-id:/etc/machine-id:ro
@@ -62,6 +63,7 @@ services:
       - server
     network_mode: "service:server"
     volumes:
+      - run:/run/motion
       - storage:/storage:ro
     environment:
       - MOTION=${MOTION}
