@@ -8,6 +8,7 @@ import math
 import pathlib
 import sys
 import time
+import urllib.parse
 
 import motion
 
@@ -609,8 +610,50 @@ async def f_proc(*argv: str) -> tuple[str, str]:
     return "\n".join(stdout_lines), "\n".join(stderr_lines)
 
 
+async def f_compose() -> dict[str, str]:
+    """
+    Return {project: ip} for compose projects that have exactly one unique, non-empty IP.
+    """
+    stdout, _ = await f_proc("docker", "compose", "ls", "--format", "json")
+    try:
+        data = json.loads(stdout) if stdout.strip() else []
+        if isinstance(data, dict):  # some engines return {"data":[...]}
+            data = data.get("data", [])
+    except Exception as e:
+        f_fail(6, f"failed to parse `docker compose ls` output: {e}")
+
+    projects: list[str] = []
+    for e in data or []:
+        name = e.get("Name") or e.get("name") or e.get("Project") or e.get("project")
+        if name:
+            projects.append(name)
+
+    collected: dict[str, str] = {}
+    for project in projects:
+        stdout, _ = await f_proc("docker", "compose", "-p", project, "ps", "-q")
+        containers = [x.strip() for x in stdout.split("\n") if x.strip()]
+        if not containers:
+            continue
+
+        ips: set[str] = set()
+        for container in containers:
+            stdout, _ = await f_proc(
+                "docker",
+                "inspect",
+                "-f",
+                "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}",
+                container,
+            )
+            ips |= {ip for ip in stdout.split() if ip}
+
+        if len(ips) == 1:
+            collected[project] = next(iter(ips))
+
+    return collected
+
+
 async def f_base_start(args) -> str:
-    """Start docker compose project, wait until healthy, and return base URL."""
+    """Start docker compose project, resolve its single IP via f_compose(), then wait until healthy."""
     if str(args.base).startswith(("http://", "https://")):
         return args.base
 
@@ -620,7 +663,7 @@ async def f_base_start(args) -> str:
     log.info("docker compose up -d …")
     await f_proc("docker", "compose", "-p", project, "-f", compose, "up", "-d")
 
-    # stream logs in background
+    # stream logs in background (non-blocking)
     asyncio.create_task(
         f_proc(
             "docker",
@@ -636,56 +679,37 @@ async def f_base_start(args) -> str:
     )
 
     deadline = time.time() + max(30.0, args.timeout * 6)
-    ip: str | None = None
+
     while True:
-        # discover containers
-        stdout, stderr = await f_proc(
-            "docker", "compose", "-p", project, "-f", compose, "ps", "-q"
-        )
-        containers = [c.strip() for c in stdout.split("\n") if c.strip()]
-        if not containers:
-            if time.time() > deadline:
-                raise TimeoutError("docker compose ps returned no containers")
-            await asyncio.sleep(1)
-            continue
+        ip = (await f_compose()).get(project)
 
-        statuses: dict[str, str] = {}
-        ips: set[str] = set()
-        for container in containers:
-            stdout, stderr = await f_proc(
-                "docker",
-                "inspect",
-                "-f",
-                "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
-                container,
+        if ip:
+            stdout, _ = await f_proc(
+                "docker", "compose", "-p", project, "-f", compose, "ps", "-q"
             )
-            statuses[container] = stdout
-            stdout, stderr = await f_proc(
-                "docker",
-                "inspect",
-                "-f",
-                "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-                container,
-            )
-            ips.add(stdout.strip())
-        ips = {ip for ip in ips if ip}
+            containers = [c.strip() for c in stdout.split("\n") if c.strip()]
+            if containers:
+                statuses: dict[str, str] = {}
+                for container in containers:
+                    stdout, _ = await f_proc(
+                        "docker",
+                        "inspect",
+                        "-f",
+                        "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
+                        container,
+                    )
+                    statuses[container] = stdout.strip()
 
-        log.info(f"health: {statuses}")
+                log.info(f"health: {statuses}")
 
-        if (
-            all(s in ("healthy", "running") for s in statuses.values())
-            and len(ips) == 1
-        ):
-            ip = next(iter(ips))
-            break
+                if all(s in ("healthy", "running") for s in statuses.values()):
+                    log.info(f"Compose project {project} ready at http://{ip}:8080")
+                    return f"http://{ip}:8080"
 
         if time.time() > deadline:
-            raise TimeoutError(f"containers not healthy: {statuses} ips={ips}")
+            raise TimeoutError(f"containers not healthy (project={project}, ip={ip!r})")
 
         await asyncio.sleep(2)
-
-    log.info(f"Compose project {project} ready at http://{ip}:8080")
-    return f"http://{ip}:8080"
 
 
 async def f_base_close(args) -> None:
@@ -708,6 +732,68 @@ async def f_base_close(args) -> None:
         "--remove-orphans",
     )
     log.info(f"Compose project {project} stopped and removed.")
+
+
+async def server_create(args):
+    """
+    Create a server from a docker compose project name (NOT a URL).
+    Reuses f_base_start; prints the reachable URL.
+    """
+    base = str(args.base)
+    if base.startswith(("http://", "https://")):
+        f_fail(2, "server create requires a compose project name for --base, not a URL")
+
+    url = await f_base_start(args)
+    f_print(
+        {"url": url},
+        json_mode=args.json,
+        pretty_mode=args.pretty,
+        quiet_mode=args.quiet,
+    )
+
+
+async def server_delete(args):
+    """
+    Delete (down) a server.
+      - If --base is a URL: resolve project by matching host against f_compose()
+      - If --base is a project name: use it directly (default "motion")
+      - Always bring down with the hard-coded compose file
+    """
+    base = str(args.base)
+    if base.startswith(("http://", "https://")):
+        parsed = urllib.parse.urlparse(base)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            f_fail(2, f"invalid base URL {base!r}")
+        host = parsed.hostname
+
+        mapping = await f_compose()
+        matches = [p for p, ip in mapping.items() if ip == host]
+        if not matches:
+            f_fail(6, f"no compose project found for host {host!r}")
+        if len(matches) > 1:
+            f_fail(4, f"ambiguous host {host!r}, matches: {matches}")
+        project = matches[0]
+    else:
+        project = base or "motion"
+
+    compose = str(importlib.resources.files("motion").joinpath("docker-compose.yml"))
+    await f_proc(
+        "docker",
+        "compose",
+        "-p",
+        project,
+        "-f",
+        compose,
+        "down",
+        "-v",
+        "--remove-orphans",
+    )
+    f_print(
+        {"status": "ok", "project": project},
+        json_mode=args.json,
+        pretty_mode=args.pretty,
+        quiet_mode=args.quiet,
+    )
 
 
 # -------------------
@@ -871,6 +957,14 @@ def f_parser():
     session_step_parser.add_argument("session")
     session_step_parser.add_argument("--control", default="xbox", choices=["xbox"])
 
+    # Server
+    server_parser = mode_parser.add_parser("server")
+    server_command = server_parser.add_subparsers(dest="command", required=True)
+    # uses --base as compose project name (must NOT be http/https)
+    server_create_parser = server_command.add_parser("create", parents=[flag_parser])
+    # uses --base as either http/https URL OR compose project name
+    server_delete_parser = server_command.add_parser("delete", parents=[flag_parser])
+
     quick_parser = mode_parser.add_parser("quick", parents=[flag_parser])
     quick_parser.add_argument("--file", required=True)
     quick_parser.add_argument("--image", default="count")
@@ -929,6 +1023,12 @@ async def main():
             await session_stop(client, args)
         elif args.command == "step":
             await session_step(client, args)
+
+    elif args.mode == "server":
+        if args.command == "create":
+            await server_create(args)
+        elif args.command == "delete":
+            await server_delete(args)
 
     elif args.mode == "quick":
         await quick_run(None, args)
