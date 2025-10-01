@@ -5,14 +5,7 @@ import zipfile
 
 import httpx
 
-from .scene import (
-    Scene,
-    SceneBase,
-    SceneRunnerDeviceSpec,
-    SceneRunnerImageSpec,
-    SceneRunnerSpec,
-    SceneSpec,
-)
+from .scene import Scene, SceneBase, SceneSpec
 from .session import Session, SessionBase
 
 
@@ -41,17 +34,14 @@ class BaseClient:
 
 
 class SceneClient(BaseClient):
-    def create(self, file: str | pathlib.Path, image: str, device: str) -> Scene:
+    def create(self, file: str | pathlib.Path, runner: str) -> Scene:
         file = pathlib.Path(file)
         if not file.is_file():
             raise FileNotFoundError(f"Input file not found: {file}")
 
         # Validate + normalize via SceneSpec (uses enums under the hood)
         spec = SceneSpec(
-            runner=SceneRunnerSpec(
-                image=SceneRunnerImageSpec(image),
-                device=SceneRunnerDeviceSpec(device),
-            )
+            runner=runner,
         )
 
         with tempfile.TemporaryDirectory() as directory:
@@ -70,10 +60,7 @@ class SceneClient(BaseClient):
             with zipf.open("rb") as f:
                 files = {"file": (zipf.name, f, "application/zip")}
                 # Server expects FLAT form fields for multipart
-                data = {
-                    "image": spec.runner.image.value,
-                    "device": spec.runner.device.value,
-                }
+                data = {"runner": spec.runner}
                 r = self._request_("POST", "scene", files=files, data=data)
 
         scene = SceneBase.parse_obj(r.json())

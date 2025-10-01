@@ -22,53 +22,47 @@ def f_fail(code: int, msg: str) -> None:
 
 
 def f_print(obj, *, output: str) -> None:
-    def to_safe(o):
-        if isinstance(o, motion.Session):
-            return {
-                "uuid": str(o.uuid),
-                "scene": str(o.scene.uuid),
-                "joint": o.joint,
-                "camera": o.camera,
-                "link": o.link,
-            }
+    def to_safe_one(o):
         if isinstance(o, motion.Scene):
-            return {
-                "uuid": str(o.uuid),
-                "runner": {
-                    "image": o.runner.image.value,
-                    "device": o.runner.device.value,
-                },
-            }
-        if hasattr(o, "json") and callable(o.json):
-            try:
-                return json.loads(o.json())
-            except Exception:
-                pass
-        return o
+            # downcast to bare pydantic model, then serialize
+            return json.loads(
+                motion.scene.SceneBase(uuid=o.uuid, runner=o.runner).json()
+            )
 
-    def flatten(d, parent_key=""):
-        flat = {}
-        for k, v in (d or {}).items():
-            key = f"{parent_key}.{k}" if parent_key else k
-            if isinstance(v, dict):
-                flat.update(flatten(v, key))
-            else:
-                flat[key] = v
-        return flat
+        if isinstance(o, motion.Session):
+            # downcast to bare pydantic model, then serialize
+            return json.loads(
+                motion.session.SessionBase(
+                    uuid=o.uuid,
+                    scene=o.scene.uuid,
+                    joint=o.joint,
+                    camera=o.camera,
+                    link=o.link,
+                ).json()
+            )
 
-    def render_table(rows: list[dict]) -> str:
+        if isinstance(o, dict):
+            # enforce flat dict; show full offending dict on failure
+            assert all(
+                not isinstance(v, dict) for v in o.values()
+            ), f"Nested dict not allowed: {o}"
+            return o
+
+        raise TypeError(f"Unsupported object type for f_print: {type(o)}")
+
+    # compute payload; JSON will preserve shape, table will normalize later
+    payload = (
+        [to_safe_one(o) for o in obj]
+        if isinstance(obj, (list, tuple))
+        else to_safe_one(obj)
+    )
+
+    def render_table(data):
+        # always render header; normalize to list internally
+        rows = data if isinstance(data, list) else [data]
         if not rows:
             return ""
-        preferred = [
-            "uuid",
-            "scene",
-            "runner.image",
-            "runner.device",
-            "joint",
-            "camera",
-            "link",
-        ]
-        keys = list(dict.fromkeys(preferred + [k for r in rows for k in r.keys()]))
+        keys = list(dict.fromkeys(k for r in rows for k in r.keys()))
         widths = {k: max(len(k), *(len(str(r.get(k, ""))) for r in rows)) for k in keys}
         header = "  ".join(k.ljust(widths[k]) for k in keys)
         sep = "  ".join("-" * widths[k] for k in keys)
@@ -77,19 +71,14 @@ def f_print(obj, *, output: str) -> None:
         ]
         return "\n".join([header, sep, *body])
 
-    payload = (
-        [to_safe(o) for o in obj] if isinstance(obj, (list, tuple)) else to_safe(obj)
-    )
+    def render_json(data):
+        # preserve shape: object stays object; list stays list
+        return json.dumps(data, indent=2)
 
     if output == "json":
-        print(json.dumps(payload, indent=2))
-        return
-
-    rows = [
-        flatten(item) if isinstance(item, dict) else {"value": str(item)}
-        for item in (payload if isinstance(payload, list) else [payload])
-    ]
-    print(render_table(rows))
+        print(render_json(payload))
+    else:
+        print(render_table(payload))
 
 
 def f_prefix(items, q: str, *, kind: str):
@@ -116,7 +105,7 @@ def f_prefix(items, q: str, *, kind: str):
 def scene_create(client, args):
     """Create a Scene by uploading a USD file. The client zips USD+empty meta.json internally."""
     file = pathlib.Path(args.file)
-    scene = client.scene.create(file, args.image, args.device)
+    scene = client.scene.create(file, args.runner)
     f_print(scene, output=args.output)
 
 
@@ -658,6 +647,25 @@ async def f_compose() -> dict[str, str]:
     return collected
 
 
+async def f_base(args) -> str:
+    """
+    Resolve --base to an HTTP URL.
+      - If --base is already http/https, return it.
+      - If --base is a compose project name, find its single IP via f_compose()
+        and return http://<ip>:8080 . Error if not found.
+    """
+    base = str(args.base)
+    if base.startswith(("http://", "https://")):
+        return base
+
+    project = base or "motion"
+    mapping = await f_compose()
+    ip = mapping.get(project)
+    if not ip:
+        f_fail(6, f"no compose project found or no single IP for {project!r}")
+    return f"http://{ip}:8080"
+
+
 async def f_base_start(args) -> str:
     """Start docker compose project, resolve its single IP via f_compose(), then wait until healthy."""
     if str(args.base).startswith(("http://", "https://")):
@@ -817,7 +825,7 @@ async def quick_run(client, args):
     try:
         # 1) scene create
         file = pathlib.Path(args.file)
-        scene = client.scene.create(file, args.image, args.device)
+        scene = client.scene.create(file, args.runner)
         f_print(scene, output=args.output)
         args.scene = str(scene.uuid)
 
@@ -890,8 +898,7 @@ def f_parser():
 
     scene_create_parser = scene_command.add_parser("create")
     scene_create_parser.add_argument("--file", required=True)
-    scene_create_parser.add_argument("--image", default="count")
-    scene_create_parser.add_argument("--device", default="cpu")
+    scene_create_parser.add_argument("--runner", default="count")
 
     scene_delete_parser = scene_command.add_parser("delete")
     scene_delete_parser.add_argument("scene")
@@ -948,8 +955,7 @@ def f_parser():
 
     quick_parser = mode_parser.add_parser("quick")
     quick_parser.add_argument("--file", required=True)
-    quick_parser.add_argument("--image", default="count")
-    quick_parser.add_argument("--device", default="cpu")
+    quick_parser.add_argument("--runner", default="count")
     quick_parser.add_argument("--model", default=None)
     quick_parser.add_argument("--control", default="xbox", choices=["xbox"])
     quick_parser.add_argument(
@@ -973,7 +979,8 @@ async def main():
     logging.basicConfig(level=level, force=True)
     log.setLevel(level)
 
-    client = motion.client(base=args.base, timeout=args.timeout)
+    base = await f_base(args) if args.mode in ("scene", "session") else args.base
+    client = motion.client(base=base, timeout=args.timeout)
 
     if args.mode == "scene":
         if args.command == "create":

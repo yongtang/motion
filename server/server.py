@@ -66,16 +66,13 @@ async def health():
 @app.post("/scene", response_model=motion.scene.SceneBase, status_code=201)
 async def scene_create(
     file: UploadFile = File(...),
-    image: motion.scene.SceneRunnerImageSpec = Form(...),
-    device: motion.scene.SceneRunnerDeviceSpec = Form(...),
+    runner: motion.scene.SceneRunnerSpec = Form(...),
 ) -> motion.scene.SceneBase:
     if file.content_type not in {"application/zip", "application/x-zip-compressed"}:
         log.warning(f"[Scene N/A] Upload rejected: invalid type {file.content_type}")
         raise HTTPException(status_code=415, detail="zip required")
 
-    spec = motion.scene.SceneSpec(
-        runner=motion.scene.SceneRunnerSpec(image=image, device=device)
-    )
+    spec = motion.scene.SceneSpec(runner=runner)
     scene = motion.scene.SceneBase(uuid=uuid.uuid4(), **spec.dict())
 
     storage_kv_set("scene", f"{scene.uuid}.zip", file.file)
@@ -447,14 +444,11 @@ async def session_play(
     log.debug(f"[Session {session.uuid}] Allocation order: {entries}")
 
     chosen = None
-    # Include structured runner (image + device) and tick in the lease payload
+    # Include runner and tick in the lease payload
     data = json.dumps(
         {
             "session": str(session.uuid),
-            "runner": {
-                "image": scene.runner.image.value,
-                "device": scene.runner.device.value,
-            },
+            "runner": scene.runner,
             "model": model,
             "tick": tick,
         },

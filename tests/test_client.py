@@ -13,20 +13,18 @@ def test_client_scene(docker_compose):
     base = f"http://{docker_compose['motion']}:8080"
     client = motion.client(base=base, timeout=5.0)
 
-    # create from USD + image/device (client zips internally and uploads)
+    # create from USD + runner (client zips internally and uploads)
     with tempfile.TemporaryDirectory() as tdir:
         tdir = pathlib.Path(tdir)
         usd_path = tdir / "scene.usd"
         usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
 
-        image = "count"
-        device = "cpu"
-        scene = client.scene.create(usd_path, image, device)
+        runner = "count"
+        scene = client.scene.create(usd_path, runner)
 
     # got a typed Scene back
     assert scene
-    assert scene.runner.image.value == image
-    assert scene.runner.device.value == device
+    assert scene.runner == runner
 
     # search returns the same typed Scene (equality by UUID)
     assert client.scene.search(str(scene.uuid)) == [scene]
@@ -100,8 +98,8 @@ def test_client_scene_search(docker_compose):
         usd_path = tdir / "scene.usd"
         usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
 
-        s1 = client.scene.create(usd_path, image="count", device="cpu")
-        s2 = client.scene.create(usd_path, image="count", device="cpu")
+        s1 = client.scene.create(usd_path, runner="count")
+        s2 = client.scene.create(usd_path, runner="count")
 
     try:
         # Exact search returns the same typed Scene

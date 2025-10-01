@@ -1,9 +1,8 @@
-import json
-import shlex
-import pathlib
-
 import asyncio
+import json
 import os
+import pathlib
+import shlex
 
 
 async def main():

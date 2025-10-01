@@ -12,6 +12,8 @@ import zipfile
 
 import yaml
 
+import motion
+
 from .channel import Channel
 from .node import run_http
 from .storage import storage_kv_get, storage_kv_set
@@ -57,24 +59,31 @@ async def node_play(meta):
         f.write(json.dumps(meta))
     log.info(f"[node_play] meta storage: {meta}")
 
-    data = json.loads(b"".join(storage_kv_get("session", f"{session}.json")))
+    # Load and validate session object from storage
+    session: motion.session.SessionBase = motion.session.SessionBase.parse_raw(
+        b"".join(storage_kv_get("session", f"{session}.json"))
+    )
     with open("/storage/node/session.json", "w") as f:
-        f.write(json.dumps(data))
-    log.info(f"[node_play] session storage: {data}")
+        f.write(session.json())
+    log.info(f"[node_play] session storage: {session}")
 
-    scene = data["scene"]
+    scene = str(session.scene)
     log.info(f"[node_play] scene={scene}")
 
-    data = json.loads(b"".join(storage_kv_get("scene", f"{scene}.json")))
+    # Load and validate scene object from storage
+    scene: motion.scene.SceneBase = motion.scene.SceneBase.parse_raw(
+        b"".join(storage_kv_get("scene", f"{scene}.json"))
+    )
     with open("/storage/node/scene.json", "w") as f:
-        f.write(json.dumps(data))
-    log.info(f"[node_play] scene storage: {data}")
+        f.write(scene.json())
+    log.info(f"[node_play] scene storage: {scene}")
 
-    runner = data["runner"]
+    # Runner is an enum; device is derived (hidden) property
+    runner = scene.runner
     log.info(f"[node_play] runner={runner}")
 
     with tempfile.TemporaryFile() as f:
-        for chunk in storage_kv_get("scene", f"{scene}.zip"):
+        for chunk in storage_kv_get("scene", f"{scene.uuid}.zip"):
             f.write(chunk)
         f.seek(0)
         with zipfile.ZipFile(f) as z:
@@ -86,9 +95,7 @@ async def node_play(meta):
         project = f"{scope}-motion" if scope else "motion"
 
         compose = {"services": {"runner": {}}}
-        compose["services"]["runner"][
-            "image"
-        ] = f'motion/motion-runner-{runner["image"]}'
+        compose["services"]["runner"]["image"] = f"motion/motion-runner-{runner}"
         compose["services"]["runner"]["deploy"] = (
             {
                 "resources": {
@@ -103,7 +110,7 @@ async def node_play(meta):
                     }
                 }
             }
-            if runner["device"] == "cuda"
+            if runner.device == "cuda"
             else {}
         )
         with open("/storage/node/docker-compose.yml", "w") as f:

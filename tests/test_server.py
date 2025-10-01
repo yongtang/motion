@@ -31,7 +31,7 @@ def test_server_scene(docker_compose):
     buf.seek(0)
 
     files = {"file": ("scene.zip", buf, "application/zip")}
-    data = {"image": "count", "device": "cpu"}  # runner form fields
+    data = {"runner": "count"}  # runner form fields
     r = httpx.post(f"{base}/scene", files=files, data=data, timeout=5.0)
     assert r.status_code == 201, r.text
     scene_id = r.json()["uuid"]
@@ -44,16 +44,14 @@ def test_server_scene(docker_compose):
     results = [motion.scene.SceneBase.parse_obj(item) for item in r.json()]
     assert len(results) == 1
     assert str(results[0].uuid) == scene_id
-    assert results[0].runner.image is motion.scene.SceneRunnerImageSpec.count
-    assert results[0].runner.device is motion.scene.SceneRunnerDeviceSpec.cpu
+    assert results[0].runner == "count"
 
     # lookup
     r = httpx.get(f"{base}/scene/{scene_id}", timeout=5.0)
     assert r.status_code == 200
     looked = motion.scene.SceneBase.parse_obj(r.json())
     assert str(looked.uuid) == scene_id
-    assert looked.runner.image is motion.scene.SceneRunnerImageSpec.count
-    assert looked.runner.device is motion.scene.SceneRunnerDeviceSpec.cpu
+    assert looked.runner == "count"
 
     # ARCHIVE (download) -> GET /scene/{uuid}/archive
     r = httpx.get(f"{base}/scene/{scene_id}/archive", timeout=5.0)
@@ -78,8 +76,7 @@ def test_server_scene(docker_compose):
     assert r.status_code == 200
     deleted = motion.scene.SceneBase.parse_obj(r.json())
     assert str(deleted.uuid) == scene_id
-    assert deleted.runner.image is motion.scene.SceneRunnerImageSpec.count
-    assert deleted.runner.device is motion.scene.SceneRunnerDeviceSpec.cpu
+    assert deleted.runner == "count"
 
     # after delete: search empty, lookup/archive 404
     r = httpx.get(f"{base}/scene", params={"q": scene_id}, timeout=5.0)

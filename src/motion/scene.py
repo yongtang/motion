@@ -5,19 +5,19 @@ import pydantic
 from .motionclass import motionclass
 
 
-class SceneRunnerImageSpec(str, enum.Enum):
-    count = "count"
+class SceneRunnerSpec(str, enum.Enum):
     isaac = "isaac"
+    count = "count"
 
+    @property
+    def device(self) -> str:
+        return {
+            "isaac": "cuda",
+            "count": "cpu",
+        }[self.value]
 
-class SceneRunnerDeviceSpec(str, enum.Enum):
-    cpu = "cpu"
-    cuda = "cuda"
-
-
-class SceneRunnerSpec(pydantic.BaseModel):
-    image: SceneRunnerImageSpec
-    device: SceneRunnerDeviceSpec
+    def __str__(self) -> str:
+        return self.value
 
 
 class SceneSpec(pydantic.BaseModel):
