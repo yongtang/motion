@@ -547,7 +547,14 @@ async def session_step(client, args):
                 pose = pose_from_state(state)
 
                 # Send one step message over the session stream
-                await stream.step({"pose": pose, "twist": twist})
+                if args.step == "pose":
+                    step = {"pose": {args.link: pose}}
+                elif args.step == "twist":
+                    step = {"twist": {args.link: twist}}
+                else:
+                    f_fail(5, f"unsupported step type {args.step!r}")
+
+                await stream.step(step)
 
                 if joystick_button(joystick, exit_button):
                     log.info("Exit button pressed. Quitting...")
@@ -944,6 +951,15 @@ def f_parser():
     session_step_parser = session_command.add_parser("step")
     session_step_parser.add_argument("session")
     session_step_parser.add_argument("--control", default="xbox", choices=["xbox"])
+    session_step_parser.add_argument(
+        "--link", required=True, help="Link name of end effector"
+    )
+    session_step_parser.add_argument(
+        "--step",
+        required=True,
+        choices=["pose", "twist"],
+        help="Step data format",
+    )
 
     # Server
     server_parser = mode_parser.add_parser("server")
