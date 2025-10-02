@@ -886,69 +886,75 @@ async def quick_run(client, args):
 
 
 def f_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default="http://127.0.0.1:8080")
-    parser.add_argument("--timeout", type=float, default=10.0)
-    parser.add_argument(
+    # Define common flags, but DO NOT attach to the root parser.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--base", default="http://127.0.0.1:8080")
+    common.add_argument("--timeout", type=float, default=10.0)
+    common.add_argument(
         "--log-level",
         type=str.lower,
         choices=["debug", "info", "warning", "error", "critical"],
         default="error",
     )
-    parser.add_argument("--output", choices=["json", "table"], default="json")
+    common.add_argument("--output", choices=["json", "table"], default="json")
 
+    # Root parser: no common flags here, so they must come after a subcommand.
+    parser = argparse.ArgumentParser()
     mode_parser = parser.add_subparsers(dest="mode", required=True)
 
+    # -------------------
     # Scene
+    # -------------------
     scene_parser = mode_parser.add_parser("scene")
     scene_command = scene_parser.add_subparsers(dest="command", required=True)
 
-    scene_create_parser = scene_command.add_parser("create")
+    scene_create_parser = scene_command.add_parser("create", parents=[common])
     scene_create_parser.add_argument("--file", required=True)
     scene_create_parser.add_argument("--runner", default="count")
 
-    scene_delete_parser = scene_command.add_parser("delete")
+    scene_delete_parser = scene_command.add_parser("delete", parents=[common])
     scene_delete_parser.add_argument("scene")
 
-    scene_list_parser = scene_command.add_parser("list")
+    scene_list_parser = scene_command.add_parser("list", parents=[common])
     scene_list_parser.add_argument("q", nargs="?")
 
-    scene_show_parser = scene_command.add_parser("show")
+    scene_show_parser = scene_command.add_parser("show", parents=[common])
     scene_show_parser.add_argument("scene")
 
-    scene_archive_parser = scene_command.add_parser("archive")
+    scene_archive_parser = scene_command.add_parser("archive", parents=[common])
     scene_archive_parser.add_argument("scene")
     scene_archive_parser.add_argument("output")
 
+    # -------------------
     # Session
+    # -------------------
     session_parser = mode_parser.add_parser("session")
     session_command = session_parser.add_subparsers(dest="command", required=True)
 
-    session_create_parser = session_command.add_parser("create")
+    session_create_parser = session_command.add_parser("create", parents=[common])
     session_create_parser.add_argument("scene")
 
-    session_delete_parser = session_command.add_parser("delete")
+    session_delete_parser = session_command.add_parser("delete", parents=[common])
     session_delete_parser.add_argument("session")
 
-    session_list_parser = session_command.add_parser("list")
+    session_list_parser = session_command.add_parser("list", parents=[common])
     session_list_parser.add_argument("q", nargs="?")
 
-    session_show_parser = session_command.add_parser("show")
+    session_show_parser = session_command.add_parser("show", parents=[common])
     session_show_parser.add_argument("session")
 
-    session_archive_parser = session_command.add_parser("archive")
+    session_archive_parser = session_command.add_parser("archive", parents=[common])
     session_archive_parser.add_argument("session")
     session_archive_parser.add_argument("output")
 
-    session_play_parser = session_command.add_parser("play")
+    session_play_parser = session_command.add_parser("play", parents=[common])
     session_play_parser.add_argument("session")
     session_play_parser.add_argument("--model", default=None)
 
-    session_stop_parser = session_command.add_parser("stop")
+    session_stop_parser = session_command.add_parser("stop", parents=[common])
     session_stop_parser.add_argument("session")
 
-    # session step (xbox only; hard-coded rate and joystick index for now)
-    session_step_parser = session_command.add_parser("step")
+    session_step_parser = session_command.add_parser("step", parents=[common])
     session_step_parser.add_argument("session")
     session_step_parser.add_argument("--control", default="xbox", choices=["xbox"])
     session_step_parser.add_argument(
@@ -961,15 +967,19 @@ def f_parser():
         help="Step data format",
     )
 
+    # -------------------
     # Server
+    # -------------------
     server_parser = mode_parser.add_parser("server")
     server_command = server_parser.add_subparsers(dest="command", required=True)
-    # uses --base as compose project name (must NOT be http/https)
-    server_create_parser = server_command.add_parser("create")
-    # uses --base as either http/https URL OR compose project name
-    server_delete_parser = server_command.add_parser("delete")
 
-    quick_parser = mode_parser.add_parser("quick")
+    server_create_parser = server_command.add_parser("create", parents=[common])
+    server_delete_parser = server_command.add_parser("delete", parents=[common])
+
+    # -------------------
+    # Quick
+    # -------------------
+    quick_parser = mode_parser.add_parser("quick", parents=[common])
     quick_parser.add_argument("--file", required=True)
     quick_parser.add_argument("--runner", default="count")
     quick_parser.add_argument("--model", default=None)

@@ -14,7 +14,7 @@ def test_tool_scene(docker_compose, tmp_path, monkeypatch):
     monkeypatch.setenv("PYTHONPATH", "src")
 
     def run_tool_scene(*args: str):
-        cmd = [sys.executable, "-m", "motion.tool", "--base", base, "scene", *args]
+        cmd = [sys.executable, "-m", "motion.tool", "scene", *args] + ["--base", base]
         return subprocess.run(cmd, text=True, capture_output=True, check=False)
 
     # Prepare a tiny USD file
@@ -115,7 +115,7 @@ async def test_tool_session(scene_on_server, tmp_path, monkeypatch):
     monkeypatch.setenv("PYTHONPATH", "src")
 
     def run_tool_session(*args: str):
-        cmd = [sys.executable, "-m", "motion.tool", "--base", base, "session", *args]
+        cmd = [sys.executable, "-m", "motion.tool", "session", *args] + ["--base", base]
         return subprocess.run(cmd, text=True, capture_output=True, check=False)
 
     # --- Happy path ---
