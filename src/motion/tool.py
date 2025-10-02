@@ -1,24 +1,19 @@
-import argparse
 import asyncio
 import contextlib
 import importlib.resources
 import json
 import logging
 import math
-import pathlib
-import sys
 import time
+import types
+import typing
 import urllib.parse
+
+import typer
 
 import motion
 
 log = logging.getLogger(__name__)
-
-
-def f_fail(code: int, msg: str) -> None:
-    """Print an error and exit with given code."""
-    print(msg, file=sys.stderr)
-    sys.exit(code)
 
 
 def f_print(obj, *, output: str) -> None:
@@ -90,130 +85,12 @@ def f_prefix(items, q: str, *, kind: str):
       - code 4: ambiguous
     """
     matches = [i for i in items if str(i.uuid).startswith(q)]
-    if not matches:
-        f_fail(3, f"{kind} not found for {q!r}")
-    if len(matches) > 1:
-        f_fail(4, f"ambiguous {kind} prefix {q!r}, {len(matches)} matches")
-    return matches[0]
+    assert matches, f"{kind} not found for {q!r}"
+    assert len(matches) == 1, f"ambiguous {kind} prefix {q!r}, {len(matches)} matches"
+    return next(iter(matches))
 
 
-# -------------------
-# Scene commands (sync)
-# -------------------
-
-
-def scene_create(client, args):
-    """Create a Scene by uploading a USD file. The client zips USD+empty meta.json internally."""
-    file = pathlib.Path(args.file)
-    scene = client.scene.create(file, args.runner)
-    f_print(scene, output=args.output)
-
-
-def scene_delete(client, args):
-    """Delete a Scene resolved from a UUID prefix."""
-    scenes = client.scene.search(args.scene)
-    scene = f_prefix(scenes, args.scene, kind="scene")
-    client.scene.delete(scene)
-    f_print(scene, output=args.output)
-
-
-def scene_list(client, args):
-    """
-    List Scenes. If a prefix query (q) is provided, server-side returns all matches
-    (the server accepts empty q to list-all; client simply forwards).
-    """
-    scenes = client.scene.search(args.q or "")
-    f_print(scenes, output=args.output)
-
-
-def scene_show(client, args):
-    """Show one Scene by UUID prefix (must be unique)."""
-    scenes = client.scene.search(args.scene)
-    scene = f_prefix(scenes, args.scene, kind="scene")
-    f_print(scene, output=args.output)
-
-
-def scene_archive(client, args):
-    """Download a Scene archive (zip containing scene.usd + meta.json) to the given output path."""
-    scenes = client.scene.search(args.scene)
-    scene = f_prefix(scenes, args.scene, kind="scene")
-    out = pathlib.Path(args.output)
-    client.scene.archive(scene, out)
-    f_print({"output": str(out)}, output=args.output)
-
-
-# -------------------
-# Session commands (async)
-# -------------------
-
-
-async def session_create(client, args):
-    """
-    Create a Session bound to a Scene (resolved from prefix).
-    Prints the typed Session object (safe JSON) while inside the async context.
-    """
-    scenes = client.scene.search(args.scene)
-    scene = f_prefix(scenes, args.scene, kind="scene")
-    async with client.session.create(scene) as session:
-        f_print(session, output=args.output)
-
-
-async def session_delete(client, args):
-    """Delete a Session resolved from a UUID prefix."""
-    sessions = client.session.search(args.session)
-    session = f_prefix(sessions, args.session, kind="session")
-    client.session.delete(session)
-    f_print(session, output=args.output)
-
-
-async def session_list(client, args):
-    """
-    List Sessions. If a prefix query (q) is provided, server returns all matches.
-    Empty q lists all sessions.
-    """
-    sessions = client.session.search(args.q or "")
-    f_print(sessions, output=args.output)
-
-
-async def session_show(client, args):
-    """Show one Session by UUID prefix (must be unique)."""
-    sessions = client.session.search(args.session)
-    session = f_prefix(sessions, args.session, kind="session")
-    f_print(session, output=args.output)
-
-
-async def session_archive(client, args):
-    """Download a Session archive (zip containing session.json + data.json) to the given output path."""
-    sessions = client.session.search(args.session)
-    session = f_prefix(sessions, args.session, kind="session")
-    out = pathlib.Path(args.output)
-    client.session.archive(session, out)
-    f_print({"output": str(out)}, output=args.output)
-
-
-async def session_play(client, args):
-    """
-    POST /session/{id}/play using the typed async API.
-    Resolved by UUID prefix; prints the session metadata after invoking play().
-    """
-    sessions = client.session.search(args.session)
-    async with f_prefix(sessions, args.session, kind="session") as session:
-        await session.play(model=args.model)
-        f_print(session, output=args.output)
-
-
-async def session_stop(client, args):
-    """
-    POST /session/{id}/stop using the typed async API.
-    Resolved by UUID prefix; prints the session metadata after invoking stop().
-    """
-    sessions = client.session.search(args.session)
-    async with f_prefix(sessions, args.session, kind="session") as session:
-        await session.stop()
-        f_print(session, output=args.output)
-
-
-async def session_step(client, args):
+async def f_step(session, control, step, link):
     """
     Drive a session with step messages using a control scheme.
 
@@ -323,8 +200,7 @@ async def session_step(client, args):
       - We purposely keep the control/physics integrator stateless except for the
         minimal "state" dict, so this remains easy to test and to port.
     """
-    if args.control != "xbox":
-        f_fail(5, f"unsupported control {args.control!r}; only 'xbox' is supported")
+    assert control == "xbox", f"unsupported control {control}; only 'xbox' is supported"
 
     # If pygame is not installed, let the ImportError speak for itself (per your request).
     import pygame
@@ -334,8 +210,7 @@ async def session_step(client, args):
     joystick_index = 0
 
     # Resolve session by prefix and open the step/data stream
-    sessions = client.session.search(args.session)
-    async with f_prefix(sessions, args.session, kind="session") as session:
+    async with session:
         async with session.stream(start=None) as stream:
 
             # -------------------
@@ -478,10 +353,9 @@ async def session_step(client, args):
             pygame.joystick.init()
             if pygame.joystick.get_count() == 0:
                 pygame.quit()
-                f_fail(
-                    7,
-                    "No joystick found (xbox control requires a connected controller)",
-                )
+                assert (
+                    False
+                ), "No joystick found (xbox control requires a connected controller)"
 
             joystick = pygame.joystick.Joystick(joystick_index)
             joystick.init()
@@ -547,12 +421,12 @@ async def session_step(client, args):
                 pose = pose_from_state(state)
 
                 # Send one step message over the session stream
-                if args.step == "pose":
-                    step = {"pose": {args.link: pose}}
-                elif args.step == "twist":
-                    step = {"twist": {args.link: twist}}
+                if step == "pose":
+                    step = {"pose": {link: pose}}
+                elif step == "twist":
+                    step = {"twist": {link: twist}}
                 else:
-                    f_fail(5, f"unsupported step type {args.step!r}")
+                    assert False, f"unsupported step type {step}"
 
                 await stream.step(step)
 
@@ -565,9 +439,6 @@ async def session_step(client, args):
             # Clean up only after normal exit
             joystick.quit()
             pygame.quit()
-
-        # We print something on success so CLI users get a confirmation even in quiet setups.
-        f_print({"status": "ok"}, output=args.output)
 
 
 async def f_proc(*argv: str) -> tuple[str, str]:
@@ -617,12 +488,9 @@ async def f_compose() -> dict[str, str]:
     Return {project: ip} for compose projects that have exactly one unique, non-empty IP.
     """
     stdout, _ = await f_proc("docker", "compose", "ls", "--format", "json")
-    try:
-        data = json.loads(stdout) if stdout.strip() else []
-        if isinstance(data, dict):  # some engines return {"data":[...]}
-            data = data.get("data", [])
-    except Exception as e:
-        f_fail(6, f"failed to parse `docker compose ls` output: {e}")
+    data = json.loads(stdout) if stdout.strip() else []
+    if isinstance(data, dict):  # some engines return {"data":[...]}
+        data = data.get("data", [])
 
     projects: list[str] = []
     for e in data or []:
@@ -654,35 +522,15 @@ async def f_compose() -> dict[str, str]:
     return collected
 
 
-async def f_base(args) -> str:
-    """
-    Resolve --base to an HTTP URL.
-      - If --base is already http/https, return it.
-      - If --base is a compose project name, find its single IP via f_compose()
-        and return http://<ip>:8080 . Error if not found.
-    """
-    base = str(args.base)
+async def f_base_start(base, timeout) -> str:
+    """Start docker compose project, resolve its single IP via f_compose(), then wait until healthy."""
     if base.startswith(("http://", "https://")):
         return base
 
-    project = base or "motion"
-    mapping = await f_compose()
-    ip = mapping.get(project)
-    if not ip:
-        f_fail(6, f"no compose project found or no single IP for {project!r}")
-    return f"http://{ip}:8080"
-
-
-async def f_base_start(args) -> str:
-    """Start docker compose project, resolve its single IP via f_compose(), then wait until healthy."""
-    if str(args.base).startswith(("http://", "https://")):
-        return args.base
-
-    project = args.base or "motion"
     compose = str(importlib.resources.files("motion").joinpath("docker-compose.yml"))
 
-    log.info("docker compose up -d …")
-    await f_proc("docker", "compose", "-p", project, "-f", compose, "up", "-d")
+    log.info("docker compose up -d...")
+    await f_proc("docker", "compose", "-p", base, "-f", compose, "up", "-d")
 
     # stream logs in background (non-blocking)
     task = asyncio.create_task(
@@ -690,7 +538,7 @@ async def f_base_start(args) -> str:
             "docker",
             "compose",
             "-p",
-            project,
+            base,
             "-f",
             compose,
             "logs",
@@ -699,14 +547,14 @@ async def f_base_start(args) -> str:
         )
     )
 
-    deadline = time.time() + max(30.0, args.timeout * 6)
+    deadline = time.time() + max(30.0, timeout * 6)
 
     while True:
-        ip = (await f_compose()).get(project)
+        ip = (await f_compose()).get(base)
 
         if ip:
             stdout, _ = await f_proc(
-                "docker", "compose", "-p", project, "-f", compose, "ps", "-q"
+                "docker", "compose", "-p", base, "-f", compose, "ps", "-q"
             )
             containers = [c.strip() for c in stdout.split("\n") if c.strip()]
             if containers:
@@ -724,87 +572,31 @@ async def f_base_start(args) -> str:
                 log.info(f"health: {statuses}")
 
                 if all(s in ("healthy", "running") for s in statuses.values()):
-                    log.info(f"Compose project {project} ready at http://{ip}:8080")
+                    log.info(f"Compose project {base} ready at http://{ip}:8080")
                     return f"http://{ip}:8080"
 
         if time.time() > deadline:
-            raise TimeoutError(f"containers not healthy (project={project}, ip={ip!r})")
+            raise TimeoutError(f"containers not healthy (project={base}, ip={ip})")
 
         await asyncio.sleep(2)
 
 
-async def f_base_close(args) -> None:
+async def f_base_close(base, timeout) -> None:
     """Stop docker compose project and log output."""
-    if str(args.base).startswith(("http://", "https://")):
+    if base.startswith(("http://", "https://")):
         return
 
-    project = args.base or "motion"
-
-    log.info("docker compose down…")
+    log.info("docker compose down...")
     await f_proc(
         "docker",
         "compose",
         "-p",
-        project,
-        "-f",
-        str(importlib.resources.files("motion").joinpath("docker-compose.yml")),
+        base,
         "down",
         "-v",
         "--remove-orphans",
     )
-    log.info(f"Compose project {project} stopped and removed.")
-
-
-async def server_create(args):
-    """
-    Create a server from a docker compose project name (NOT a URL).
-    Reuses f_base_start; prints the reachable URL.
-    """
-    base = str(args.base)
-    if base.startswith(("http://", "https://")):
-        f_fail(2, "server create requires a compose project name for --base, not a URL")
-
-    url = await f_base_start(args)
-    f_print({"url": url}, output=args.output)
-
-
-async def server_delete(args):
-    """
-    Delete (down) a server.
-      - If --base is a URL: resolve project by matching host against f_compose()
-      - If --base is a project name: use it directly (default "motion")
-      - Always bring down with the hard-coded compose file
-    """
-    base = str(args.base)
-    if base.startswith(("http://", "https://")):
-        parsed = urllib.parse.urlparse(base)
-        if parsed.scheme not in ("http", "https") or not parsed.hostname:
-            f_fail(2, f"invalid base URL {base!r}")
-        host = parsed.hostname
-
-        mapping = await f_compose()
-        matches = [p for p, ip in mapping.items() if ip == host]
-        if not matches:
-            f_fail(6, f"no compose project found for host {host!r}")
-        if len(matches) > 1:
-            f_fail(4, f"ambiguous host {host!r}, matches: {matches}")
-        project = matches[0]
-    else:
-        project = base or "motion"
-
-    compose = str(importlib.resources.files("motion").joinpath("docker-compose.yml"))
-    await f_proc(
-        "docker",
-        "compose",
-        "-p",
-        project,
-        "-f",
-        compose,
-        "down",
-        "-v",
-        "--remove-orphans",
-    )
-    f_print({"status": "ok", "project": project}, output=args.output)
+    log.info(f"Compose project {base} stopped and removed.")
 
 
 # -------------------
@@ -812,7 +604,7 @@ async def server_delete(args):
 # -------------------
 
 
-async def quick_run(client, args):
+async def f_quick(base, timeout, file, runner, model):
     """
     One-shot flow:
       - docker compose up (if base is project name)
@@ -826,229 +618,294 @@ async def quick_run(client, args):
       - scene delete
       - docker compose down (if started)
     """
-    base = await f_base_start(args)
-    client = motion.client(base=base, timeout=args.timeout)
+    base = await f_base_start(base, timeout)
+    client = motion.client(base=base, timeout=timeout)
 
     try:
         # 1) scene create
-        file = pathlib.Path(args.file)
-        scene = client.scene.create(file, args.runner)
-        f_print(scene, output=args.output)
-        args.scene = str(scene.uuid)
+        scene = client.scene.create(file, runner)
 
         # 2) session create (keep context while we operate)
         async with client.session.create(scene) as session:
-            f_print(session, output=args.output)
-            args.session = str(session.uuid)
-
             try:
                 # 3) play
-                await session_play(client, args)
+                await session.play(model=model)
 
                 # 4) drive (xbox loop)
-                await session_step(client, args)
+                await f_step(session, control, link, step)
 
                 # 5) stop
-                await session_stop(client, args)
-
-                # 6) optional archives
-                if args.archive:
-                    outdir = pathlib.Path(args.archive)
-                    outdir.mkdir(parents=True, exist_ok=True)
-                    scene_zip = outdir / f"scene-{scene.uuid}.zip"
-                    session_zip = outdir / f"session-{session.uuid}.zip"
-                    client.scene.archive(scene, scene_zip)
-                    client.session.archive(session, session_zip)
-                    f_print(
-                        {
-                            "archive": {
-                                "scene": str(scene_zip),
-                                "session": str(session_zip),
-                            }
-                        },
-                        output=args.output,
-                    )
+                await session.stop()
 
             finally:
                 with contextlib.suppress(Exception):
-                    await session_delete(client, args)
+                    client.session.delete(session)
 
         with contextlib.suppress(Exception):
-            scene_delete(client, args)
+            client.scene.delete(scene)
 
     finally:
-        await f_base_close(args)
+        await f_base_close(base, timeout)
 
 
-# -------------------
-# Parser
-# -------------------
+# =========================
+# Typer CLI wiring (Python 3.9+)
+# =========================
+
+app = typer.Typer(help="Motion tooling")
+scene_app = typer.Typer(help="Scene commands")
+session_app = typer.Typer(help="Session commands")
+server_app = typer.Typer(help="Server commands")
+
+app.add_typer(scene_app, name="scene")
+app.add_typer(session_app, name="session")
+app.add_typer(server_app, name="server")
 
 
-def f_parser():
-    # Define common flags, but DO NOT attach to the root parser.
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--base", default="http://127.0.0.1:8080")
-    common.add_argument("--timeout", type=float, default=10.0)
-    common.add_argument(
-        "--log-level",
-        type=str.lower,
-        choices=["debug", "info", "warning", "error", "critical"],
-        default="error",
+@app.callback()
+def app_options(
+    context: typer.Context,
+    base: str = typer.Option(
+        "http://127.0.0.1:8080", "--base", help="Base URL or compose project name"
+    ),
+    output: str = typer.Option("json", "--output", help="Output format (json|table)"),
+    timeout: float = typer.Option(10.0, "--timeout", help="Client timeout in seconds"),
+    log_level: str = typer.Option(
+        "error", "--log-level", help="Logging level (debug|info|warning|error|critical)"
+    ),
+):
+    if context.invoked_subcommand != "server" and not base.startswith(
+        ("http://", "https://")
+    ):
+        project = base or "motion"
+        mapping = asyncio.run(f_compose())
+        ip = mapping.get(project)
+        assert ip, f"no compose project found or no single IP for {project!r}"
+        base = f"http://{ip}:8080"
+
+    context.obj = {
+        "base": base,
+        "output": output,
+        "timeout": timeout,
+        "log_level": log_level,
+    }
+    logging.basicConfig(level=getattr(logging, log_level.upper()), force=True)
+
+
+@server_app.callback()
+def server_app_options(context: typer.Context):
+    base = context.obj["base"]
+    if context.invoked_subcommand == "create":
+        assert not base.startswith(
+            ("http://", "https://")
+        ), f"server create requires a compose project name for --base, not a URL: {base}"
+    else:
+        if base.startswith(("http://", "https://")):
+            parsed = urllib.parse.urlparse(base)
+            assert parsed.hostname, f"invalid base URL {base}"
+            host = parsed.hostname
+
+            mapping = asyncio.run(f_compose())
+            matches = [p for p, ip in mapping.items() if ip == host]
+            assert matches, f"no compose project found for host {host}"
+            assert len(matches) == 1, f"ambiguous host {host}, matches: {matches}"
+            context.obj["base"] = next(iter(matches))
+
+
+# =========================
+# Scene wrappers
+# =========================
+@scene_app.command("create", help="Create a Scene by uploading a USD file.")
+def scene_create(
+    context: typer.Context,
+    file: str = typer.Option(..., "--file", help="Path to USD file"),
+    runner: str = typer.Option("count", "--runner", help="Runner type"),
+):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    scene = client.scene.create(file, runner)
+    f_print(scene, output=context.obj["output"])
+
+
+@scene_app.command("delete", help="Delete a Scene resolved from UUID prefix.")
+def scene_delete(context: typer.Context, scene: str):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    scene = f_prefix(client.scene.search(scene), scene, kind="scene")
+    client.scene.delete(scene)
+    f_print(scene, output=context.obj["output"])
+
+
+@scene_app.command("list", help="List Scenes (optionally by prefix query).")
+def scene_list(context: typer.Context, q: typing.Optional[str] = typer.Argument(None)):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    scenes = client.scene.search(q or "")
+    f_print(scenes, output=context.obj["output"])
+
+
+@scene_app.command("show", help="Show one Scene by UUID prefix.")
+def scene_show(context: typer.Context, scene: str):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    scene = f_prefix(client.scene.search(scene), scene, kind="scene")
+    f_print(scene, output=context.obj["output"])
+
+
+@scene_app.command("archive", help="Download a Scene archive (zip) to PATH.")
+def scene_archive(
+    context: typer.Context,
+    scene: str,
+    path: str = typer.Option(..., "--path", help="Path to save scene archive zip"),
+):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    scene = f_prefix(client.scene.search(scene), scene, kind="scene")
+    client.scene.archive(scene, path)
+    f_print({"path": path}, output=context.obj["output"])
+
+
+# =========================
+# Session wrappers
+# =========================
+@session_app.command("create", help="Create a Session bound to a Scene (prefix).")
+def session_create(context: typer.Context, scene: str):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    scene = f_prefix(client.scene.search(scene), scene, kind="scene")
+    session = client.session.create(scene)
+    f_print(session, output=context.obj["output"])
+
+
+@session_app.command("delete", help="Delete a Session resolved from UUID prefix.")
+def session_delete(context: typer.Context, session: str):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    session = f_prefix(client.session.search(session), session, kind="session")
+    client.session.delete(session)
+    f_print(session, output=context.obj["output"])
+
+
+@session_app.command("list", help="List Sessions (optionally by prefix query).")
+def session_list(
+    context: typer.Context, q: typing.Optional[str] = typer.Argument(None)
+):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    sessions = client.session.search(q or "")
+    f_print(sessions, output=context.obj["output"])
+
+
+@session_app.command("show", help="Show one Session by UUID prefix.")
+def session_show(context: typer.Context, session: str):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    session = f_prefix(client.session.search(session), session, kind="session")
+    f_print(session, output=context.obj["output"])
+
+
+@session_app.command("archive", help="Download a Session archive (zip) to PATH.")
+def session_archive(
+    context: typer.Context,
+    session: str,
+    path: str = typer.Option(..., "--path", help="Path to save session archive zip"),
+):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    session = f_prefix(client.session.search(session), session, kind="session")
+    client.session.archive(session, path)
+    f_print({"path": path}, output=context.obj["output"])
+
+
+@session_app.command("play", help="POST /session/{id}/play and print metadata.")
+def session_play(
+    context: typer.Context,
+    session: str,
+    model: typing.Optional[str] = typer.Option(None, "--model"),
+):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    session = f_prefix(client.session.search(session), session, kind="session")
+
+    async def f():
+        async with session:
+            await session.play(model=model)
+
+    asyncio.run(f())
+    f_print(session, output=context.obj["output"])
+
+
+@session_app.command("stop", help="POST /session/{id}/stop.")
+def session_stop(context: typer.Context, session: str):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    session = f_prefix(client.session.search(session), session, kind="session")
+
+    async def f():
+        async with session:
+            await session.stop()
+
+    asyncio.run(f())
+    f_print(session, output=context.obj["output"])
+
+
+@session_app.command("step", help="Drive a session with step messages.")
+def session_step(
+    context: typer.Context,
+    session: str,
+    control: str = typer.Option("xbox", "--control", help="Control scheme"),
+    link: str = typer.Option(..., "--link", help="Link name of end effector"),
+    step: str = typer.Option(..., "--step", help="Step data format: pose|twist"),
+):
+    client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
+    session = f_prefix(client.session.search(session), session, kind="session")
+    asyncio.run(f_step(session, control, step, link))
+    f_print(session, output=context.obj["output"])
+
+
+# =========================
+# Server wrappers
+# =========================
+@server_app.command(
+    "create", help="Start docker compose project and print reachable URL."
+)
+def server_create(context: typer.Context):
+    endpoint = asyncio.run(f_base_start(context.obj["base"], context.obj["timeout"]))
+    f_print(
+        {"endpoint": endpoint, "compose": context.obj["base"]},
+        output=context.obj["output"],
     )
-    common.add_argument("--output", choices=["json", "table"], default="json")
 
-    # Root parser: no common flags here, so they must come after a subcommand.
-    parser = argparse.ArgumentParser()
-    mode_parser = parser.add_subparsers(dest="mode", required=True)
 
-    # -------------------
-    # Scene
-    # -------------------
-    scene_parser = mode_parser.add_parser("scene")
-    scene_command = scene_parser.add_subparsers(dest="command", required=True)
-
-    scene_create_parser = scene_command.add_parser("create", parents=[common])
-    scene_create_parser.add_argument("--file", required=True)
-    scene_create_parser.add_argument("--runner", default="count")
-
-    scene_delete_parser = scene_command.add_parser("delete", parents=[common])
-    scene_delete_parser.add_argument("scene")
-
-    scene_list_parser = scene_command.add_parser("list", parents=[common])
-    scene_list_parser.add_argument("q", nargs="?")
-
-    scene_show_parser = scene_command.add_parser("show", parents=[common])
-    scene_show_parser.add_argument("scene")
-
-    scene_archive_parser = scene_command.add_parser("archive", parents=[common])
-    scene_archive_parser.add_argument("scene")
-    scene_archive_parser.add_argument("output")
-
-    # -------------------
-    # Session
-    # -------------------
-    session_parser = mode_parser.add_parser("session")
-    session_command = session_parser.add_subparsers(dest="command", required=True)
-
-    session_create_parser = session_command.add_parser("create", parents=[common])
-    session_create_parser.add_argument("scene")
-
-    session_delete_parser = session_command.add_parser("delete", parents=[common])
-    session_delete_parser.add_argument("session")
-
-    session_list_parser = session_command.add_parser("list", parents=[common])
-    session_list_parser.add_argument("q", nargs="?")
-
-    session_show_parser = session_command.add_parser("show", parents=[common])
-    session_show_parser.add_argument("session")
-
-    session_archive_parser = session_command.add_parser("archive", parents=[common])
-    session_archive_parser.add_argument("session")
-    session_archive_parser.add_argument("output")
-
-    session_play_parser = session_command.add_parser("play", parents=[common])
-    session_play_parser.add_argument("session")
-    session_play_parser.add_argument("--model", default=None)
-
-    session_stop_parser = session_command.add_parser("stop", parents=[common])
-    session_stop_parser.add_argument("session")
-
-    session_step_parser = session_command.add_parser("step", parents=[common])
-    session_step_parser.add_argument("session")
-    session_step_parser.add_argument("--control", default="xbox", choices=["xbox"])
-    session_step_parser.add_argument(
-        "--link", required=True, help="Link name of end effector"
-    )
-    session_step_parser.add_argument(
-        "--step",
-        required=True,
-        choices=["pose", "twist"],
-        help="Step data format",
+@server_app.command("delete", help="Stop docker compose project.")
+def server_delete(context: typer.Context):
+    asyncio.run(f_base_close(context.obj["base"], context.obj["timeout"]))
+    f_print(
+        {"status": "ok", "compose": context.obj["base"]}, output=context.obj["output"]
     )
 
-    # -------------------
-    # Server
-    # -------------------
-    server_parser = mode_parser.add_parser("server")
-    server_command = server_parser.add_subparsers(dest="command", required=True)
 
-    server_create_parser = server_command.add_parser("create", parents=[common])
-    server_delete_parser = server_command.add_parser("delete", parents=[common])
-
-    # -------------------
-    # Quick
-    # -------------------
-    quick_parser = mode_parser.add_parser("quick", parents=[common])
-    quick_parser.add_argument("--file", required=True)
-    quick_parser.add_argument("--runner", default="count")
-    quick_parser.add_argument("--model", default=None)
-    quick_parser.add_argument("--control", default="xbox", choices=["xbox"])
-    quick_parser.add_argument(
-        "--archive",
-        help="Directory to save both scene and session archives before cleanup",
+# =========================
+# Quick wrapper
+# =========================
+@app.command(
+    "quick",
+    help="One-shot flow: up -> create -> play -> step -> stop -> archive -> down.",
+)
+def quick(
+    context: typer.Context,
+    file: str = typer.Option(..., "--file"),
+    runner: str = typer.Option("count", "--runner"),
+    model: typing.Optional[str] = typer.Option(None, "--model"),
+    control: str = typer.Option("xbox", "--control"),
+    archive: typing.Optional[str] = typer.Option(
+        None, "--archive", help="Directory to store archives"
+    ),
+):
+    args = types.SimpleNamespace(
+        file=file,
+        runner=runner,
+        model=model,
+        control=control,
+        archive=archive,
+        base=context.obj["base"],
+        timeout=context.obj["timeout"],
+        output=context.obj["output"],
+        log_level=context.obj["log_level"],
     )
-
-    return parser
-
-
-# -------------------
-# Main entry
-# -------------------
+    asyncio.run(quick_run(None, args))
 
 
-async def main():
-    parser = f_parser()
-    args = parser.parse_args()
-
-    level = getattr(logging, args.log_level.upper())
-    logging.basicConfig(level=level, force=True)
-    log.setLevel(level)
-
-    base = await f_base(args) if args.mode in ("scene", "session") else args.base
-    client = motion.client(base=base, timeout=args.timeout)
-
-    if args.mode == "scene":
-        if args.command == "create":
-            scene_create(client, args)
-        elif args.command == "delete":
-            scene_delete(client, args)
-        elif args.command == "list":
-            scene_list(client, args)
-        elif args.command == "show":
-            scene_show(client, args)
-        elif args.command == "archive":
-            scene_archive(client, args)
-
-    elif args.mode == "session":
-        if args.command == "create":
-            await session_create(client, args)
-        elif args.command == "delete":
-            await session_delete(client, args)
-        elif args.command == "list":
-            await session_list(client, args)
-        elif args.command == "show":
-            await session_show(client, args)
-        elif args.command == "archive":
-            await session_archive(client, args)
-        elif args.command == "play":
-            await session_play(client, args)
-        elif args.command == "stop":
-            await session_stop(client, args)
-        elif args.command == "step":
-            await session_step(client, args)
-
-    elif args.mode == "server":
-        if args.command == "create":
-            await server_create(args)
-        elif args.command == "delete":
-            await server_delete(args)
-
-    elif args.mode == "quick":
-        await quick_run(None, args)
-
-    return 0
-
-
+# =========================
+# Entry
+# =========================
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    app()

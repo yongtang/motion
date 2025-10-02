@@ -14,7 +14,7 @@ def test_tool_scene(docker_compose, tmp_path, monkeypatch):
     monkeypatch.setenv("PYTHONPATH", "src")
 
     def run_tool_scene(*args: str):
-        cmd = [sys.executable, "-m", "motion.tool", "scene", *args] + ["--base", base]
+        cmd = [sys.executable, "-m", "motion.tool", "--base", base, "scene", *args]
         return subprocess.run(cmd, text=True, capture_output=True, check=False)
 
     # Prepare a tiny USD file
@@ -41,7 +41,7 @@ def test_tool_scene(docker_compose, tmp_path, monkeypatch):
     assert shown["uuid"] == scene_uuid
 
     out_zip = tmp_path / f"{scene_uuid}.zip"
-    p = run_tool_scene("archive", scene_uuid[:8], str(out_zip))
+    p = run_tool_scene("archive", scene_uuid[:8], "--path", str(out_zip))
     assert out_zip.exists() and out_zip.stat().st_size > 0
     with zipfile.ZipFile(out_zip, "r") as z:
         assert "scene.usd" in z.namelist()
@@ -61,7 +61,7 @@ def test_tool_scene(docker_compose, tmp_path, monkeypatch):
     p = run_tool_scene("show", bogus)
     assert p.returncode != 0 and "not found" in p.stderr.lower()
 
-    p = run_tool_scene("archive", bogus, str(out_zip_bogus))
+    p = run_tool_scene("archive", bogus, "--path", str(out_zip_bogus))
     assert p.returncode != 0 and "not found" in p.stderr.lower()
     assert not out_zip_bogus.exists()
 
@@ -115,7 +115,7 @@ async def test_tool_session(scene_on_server, tmp_path, monkeypatch):
     monkeypatch.setenv("PYTHONPATH", "src")
 
     def run_tool_session(*args: str):
-        cmd = [sys.executable, "-m", "motion.tool", "session", *args] + ["--base", base]
+        cmd = [sys.executable, "-m", "motion.tool", "--base", base, "session", *args]
         return subprocess.run(cmd, text=True, capture_output=True, check=False)
 
     # --- Happy path ---
@@ -132,7 +132,7 @@ async def test_tool_session(scene_on_server, tmp_path, monkeypatch):
     assert shown["uuid"] == session_uuid
 
     out_zip = tmp_path / f"{session_uuid}.zip"
-    p = run_tool_session("archive", session_uuid[:8], str(out_zip))
+    p = run_tool_session("archive", session_uuid[:8], "--path", str(out_zip))
     assert out_zip.exists() and out_zip.stat().st_size > 0
     with zipfile.ZipFile(out_zip, "r") as z:
         names = set(z.namelist())
@@ -155,7 +155,7 @@ async def test_tool_session(scene_on_server, tmp_path, monkeypatch):
     p = run_tool_session("show", bogus)
     assert p.returncode != 0 and "not found" in p.stderr.lower()
 
-    p = run_tool_session("archive", bogus, str(out_zip_bogus))
+    p = run_tool_session("archive", bogus, "--path", str(out_zip_bogus))
     assert p.returncode != 0 and "not found" in p.stderr.lower()
     assert not out_zip_bogus.exists()
 
