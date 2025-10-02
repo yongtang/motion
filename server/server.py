@@ -547,7 +547,15 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
         try:
             while True:
                 data = await ws.receive_text()
-                await app.state.channel.publish_step(str(session), data.encode())
+                # validate
+                try:
+                    step = motion.session.SessionStepSpec.parse_obj(json.loads(data))
+                except Exception as e:
+                    log.warning(f"[Session {session}] Invalid step: {e}")
+                    await ws.close(code=1007, reason="invalid step payload")
+                    return
+                # publish normalized JSON (guaranteed schema)
+                await app.state.channel.publish_step(str(session), step.json().encode())
         except WebSocketDisconnect:
             log.info(f"[Session {session}] WS stream recv disconnected")
             raise

@@ -150,10 +150,6 @@ def test_server_session(scene_on_server, model):
         period: float = 0.2,
         retry_backoff: float = 1.0,
     ):
-        """
-        Send a step every `period` seconds for the full `duration`.
-        If the WS drops, reconnect after `retry_backoff` and continue until time is up.
-        """
         loop = asyncio.get_running_loop()
         end = loop.time() + duration
         i = 0
@@ -162,7 +158,9 @@ def test_server_session(scene_on_server, model):
             try:
                 async with websockets.connect(ws_url, ping_interval=None) as ws:
                     while loop.time() < end:
-                        await ws.send(json.dumps({"k": "v", "i": i}))
+                        # minimal valid SessionStepSpec (joint)
+                        step = {"joint": {"j0": float(i)}}
+                        await ws.send(json.dumps(step))
                         i += 1
                         remaining = end - loop.time()
                         if remaining <= 0:
@@ -189,7 +187,10 @@ def test_server_session(scene_on_server, model):
                     try:
                         msg = await asyncio.wait_for(ws.recv(), timeout=1.0)
                         try:
-                            results.append(json.loads(msg))
+                            data = json.loads(msg)
+                            # validate replayed data as SessionStepSpec
+                            motion.session.SessionStepSpec.parse_obj(data)
+                            results.append(data)
                         except Exception:
                             results.append(msg)
                     except asyncio.TimeoutError:

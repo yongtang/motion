@@ -74,7 +74,7 @@ class SessionStepSpec(pydantic.BaseModel):
         super().__init__(**data)
         if sum(v is not None for v in (self.pose, self.twist, self.joint)) != 1:
             raise ValueError(
-                "Must define exactly one from pose={self.pose}, twist={self.twist}, joint={self.joint}"
+                f"Must define exactly one from pose={self.pose}, twist={self.twist}, joint={self.joint}"
             )
 
 
@@ -163,7 +163,13 @@ class SessionStream:
         to = self._timeout_ if timeout is None else float(timeout)
         loop = asyncio.get_running_loop()
         deadline = loop.time() + to
-        msg = json.dumps(payload)
+
+        payload = (
+            SessionStepSpec.parse_obj(payload)
+            if not isinstance(payload, SessionStepSpec)
+            else payload
+        )
+        msg = payload.json()
 
         while True:
             remaining = deadline - loop.time()

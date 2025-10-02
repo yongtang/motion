@@ -37,7 +37,7 @@ async def test_session(scene_on_server, model):
                     msg = json.loads(msg)
                 except Exception:
                     pass
-            await stream.step({"k": "v", "i": 1})
+            await stream.step({"joint": {"j0": 1.0}})
 
         # stop -> wait until stopped
         await session.stop()
