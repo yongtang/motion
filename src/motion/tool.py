@@ -4,15 +4,12 @@ import importlib.resources
 import json
 import logging
 import math
-import pathlib
-import tempfile
 import time
 import types
 import typing
 import urllib.parse
 
 import typer
-import yaml
 
 import motion
 
@@ -903,44 +900,6 @@ def quick(
         log_level=context.obj["log_level"],
     )
     asyncio.run(quick_run(None, args))
-
-
-@app.command(
-    "usd",
-    help="USD assembly",
-)
-def usd(
-    context: typer.Context,
-    file: str = typer.Option(..., "--file"),
-    config: str = typer.Option(..., "--config"),
-):
-    with open(config) as f:
-        config = yaml.safe_load(f.read())
-
-    from omni.isaac.kit import SimulationApp
-
-    simulation_app = SimulationApp({"headless": True})
-    import pxr
-
-    with tempfile.TemporaryDirectory() as directory:
-        # Create stage with a /World root
-        stage = pxr.Usd.Stage.CreateNew(
-            str(pathlib.Path(directory).joinpath("scene.usd"))
-        )
-        world = pxr.UsdGeom.Xform.Define(stage, pxr.Sdf.Path("/World")).GetPrim()
-        stage.SetDefaultPrim(world)
-
-        for background in config["background"]:
-            prim = stage.DefinePrim(pxr.Sdf.Path(background["prim"]))
-            prim.GetReferences().AddReference(assetPath=background["path"])
-        for robot in config["robot"]:
-            prim = stage.DefinePrim(pxr.Sdf.Path(robot["prim"]))
-            prim.GetReferences().AddReference(assetPath=robot["path"])
-        # Flatten to single USD file
-        stage.Export(file, args={"flatten": "true"})
-        simulation_app.close()
-
-    f_print({"usd": file}, output=context.obj["output"])
 
 
 # =========================
