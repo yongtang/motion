@@ -90,7 +90,7 @@ def f_prefix(items, q: str, *, kind: str):
     return next(iter(matches))
 
 
-async def f_step(session, control, step, link):
+async def f_step(session, control, data, link):
     """
     Drive a session with step messages using a control scheme.
 
@@ -225,7 +225,7 @@ async def f_step(session, control, step, link):
                 x = sr * cp * cy - cr * sp * sy
                 y = cr * sp * cy + sr * cp * sy
                 z = cr * cp * sy - sr * sp * cy
-                return (x, y, z, w)
+                return {"x": x, "y": y, "z": z, "w": w}
 
             def joystick_axis_safe(joystick, i: int) -> float:
                 """Return axis i if present; otherwise 0.0 (defensive)."""
@@ -334,17 +334,15 @@ async def f_step(session, control, step, link):
                   position = (translation_x, translation_y, translation_z)
                   orientation = quaternion(rotation_r, rotation_p, rotation_y)  # xyzw
                 """
-                q = euler_to_quaternion_xyzw(
+                position = {
+                    "x": state["translation_x"],
+                    "y": state["translation_y"],
+                    "z": state["translation_z"],
+                }
+                orientation = euler_to_quaternion_xyzw(
                     state["rotation_r"], state["rotation_p"], state["rotation_y"]
                 )
-                return {
-                    "position": (
-                        state["translation_x"],
-                        state["translation_y"],
-                        state["translation_z"],
-                    ),
-                    "orientation": q,
-                }
+                return {"position": position, "orientation": orientation}
 
             # ------------------------------------------------------------------
             # Initialize pygame + joystick (let ImportError/RuntimeError surface)
@@ -421,12 +419,12 @@ async def f_step(session, control, step, link):
                 pose = pose_from_state(state)
 
                 # Send one step message over the session stream
-                if step == "pose":
+                if data == "pose":
                     step = {"pose": {link: pose}}
-                elif step == "twist":
+                elif data == "twist":
                     step = {"twist": {link: twist}}
                 else:
-                    assert False, f"unsupported step type {step}"
+                    assert False, f"unsupported data type {data}"
 
                 await stream.step(step)
 
@@ -843,11 +841,11 @@ def session_step(
     session: str,
     control: str = typer.Option("xbox", "--control", help="Control scheme"),
     link: str = typer.Option(..., "--link", help="Link name of end effector"),
-    step: str = typer.Option(..., "--step", help="Step data format: pose|twist"),
+    data: str = typer.Option(..., "--data", help="Data format: pose|twist"),
 ):
     client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
     session = f_prefix(client.session.search(session), session, kind="session")
-    asyncio.run(f_step(session, control, step, link))
+    asyncio.run(f_step(session, control, data, link))
     f_print(session, output=context.obj["output"])
 
 
