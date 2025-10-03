@@ -225,7 +225,7 @@ async def f_step(session, control, step, link):
                 x = sr * cp * cy - cr * sp * sy
                 y = cr * sp * cy + sr * cp * sy
                 z = cr * cp * sy - sr * sp * cy
-                return (x, y, z, w)
+                return {"x": x, "y": y, "z": z, "w": w}
 
             def joystick_axis_safe(joystick, i: int) -> float:
                 """Return axis i if present; otherwise 0.0 (defensive)."""
@@ -334,17 +334,15 @@ async def f_step(session, control, step, link):
                   position = (translation_x, translation_y, translation_z)
                   orientation = quaternion(rotation_r, rotation_p, rotation_y)  # xyzw
                 """
-                q = euler_to_quaternion_xyzw(
+                position = {
+                    "x": state["translation_x"],
+                    "y": state["translation_y"],
+                    "z": state["translation_z"],
+                }
+                orientation = euler_to_quaternion_xyzw(
                     state["rotation_r"], state["rotation_p"], state["rotation_y"]
                 )
-                return {
-                    "position": (
-                        state["translation_x"],
-                        state["translation_y"],
-                        state["translation_z"],
-                    ),
-                    "orientation": q,
-                }
+                return {"position": position, "orientation": orientation}
 
             # ------------------------------------------------------------------
             # Initialize pygame + joystick (let ImportError/RuntimeError surface)
