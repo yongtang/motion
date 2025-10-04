@@ -45,3 +45,11 @@ enable = [
     "unused-import",
     "unused-wildcard-import",
 ]
+[tool.isort]
+profile = "black"
+skip_glob = [
+    "server/ros/log/*",
+    "server/ros/build/*",
+    "server/ros/install/*",
+]
+

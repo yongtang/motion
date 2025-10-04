@@ -1,6 +1,6 @@
 def main():
-    print('Hi from motion.')
+    print("Hi from motion.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
