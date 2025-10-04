@@ -232,8 +232,7 @@ services:
         COPY LICENSE /app/LICENSE
         COPY pyproject.toml /app/pyproject.toml
         COPY src /app/src
-        COPY server/channel.py /isaac-sim/exts/motion.extension/motion/channel.py
-        COPY server/storage.py /isaac-sim/exts/motion.extension/motion/storage.py
+        COPY server/ros /opt/motion
         WORKDIR /app
         RUN apt -y -qq install \
             python3-venv \
@@ -242,6 +241,7 @@ services:
         RUN python3 -m venv --system-site-packages /opt/python
         RUN /opt/python/bin/python3 -m pip install -e . --no-deps && \
             /opt/python/bin/python3 -m pip install nats-py
+        RUN (cd /opt/motion && /ros_entrypoint.sh colcon build)
         RUN echo '#!/bin/bash \n\
         set -e -x \n\
         if [ -z "$${MOTION}" ]; then \n\
@@ -251,7 +251,9 @@ services:
         fi \n\
         source /opt/python/bin/activate \n\
         source /opt/ros/jazzy/setup.bash \n\
-        ros2 launch moveit_resources_panda_moveit_config demo.launch.py ros2_control_hardware_type:=mock_components \n\
+        source /opt/motion/install/setup.bash \n\
+        ros2 run motion motion \n\
+        sleep infinity \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]

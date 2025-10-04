@@ -352,3 +352,6 @@ tests/test-results/
 
 
 *.swp
+
+/server/ros/install
+/server/ros/log
