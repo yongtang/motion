@@ -7,7 +7,6 @@ import math
 import pathlib
 import tempfile
 import time
-import types
 import typing
 import urllib.parse
 
@@ -604,7 +603,7 @@ async def f_base_close(base, timeout) -> None:
 # -------------------
 
 
-async def f_quick(base, timeout, file, runner, model):
+async def f_quick(base, timeout, file, runner, model, control, data, link, archive):
     """
     One-shot flow:
       - docker compose up (if base is project name)
@@ -613,17 +612,17 @@ async def f_quick(base, timeout, file, runner, model):
       - session play
       - session step (xbox)
       - session stop
-      - (optional) archive both scene and session if --archive is provided
+      - session archive
       - session delete
       - scene delete
       - docker compose down (if started)
     """
-    base = await f_base_start(base, timeout)
+    base = await f_base_start(base=base, timeout=timeout)
     client = motion.client(base=base, timeout=timeout)
 
     try:
         # 1) scene create
-        scene = client.scene.create(file, runner)
+        scene = client.scene.create(file=file, runner=runner)
 
         # 2) session create (keep context while we operate)
         async with client.session.create(scene) as session:
@@ -632,10 +631,13 @@ async def f_quick(base, timeout, file, runner, model):
                 await session.play(model=model)
 
                 # 4) drive (xbox loop)
-                await f_step(session, control, link, step)
+                await f_step(session=session, control=control, data=data, link=link)
 
                 # 5) stop
                 await session.stop()
+
+                # 6) archive
+                client.archive(session=session, file=archive)
 
             finally:
                 with contextlib.suppress(Exception):
@@ -886,22 +888,39 @@ def quick(
     runner: str = typer.Option("count", "--runner"),
     model: typing.Optional[str] = typer.Option(None, "--model"),
     control: str = typer.Option("xbox", "--control"),
+    data: str = typer.Option("data", "--data"),
+    link: str = typer.Option("link", "--link"),
     archive: typing.Optional[str] = typer.Option(
         None, "--archive", help="Directory to store archives"
     ),
 ):
-    args = types.SimpleNamespace(
-        file=file,
-        runner=runner,
-        model=model,
-        control=control,
-        archive=archive,
-        base=context.obj["base"],
-        timeout=context.obj["timeout"],
-        output=context.obj["output"],
-        log_level=context.obj["log_level"],
+    """
+    One-shot flow:
+      - docker compose up (if base is project name)
+      - scene create
+      - session create (context)
+      - session play
+      - session step (xbox)
+      - session stop
+      - session archive
+      - session delete
+      - scene delete
+      - docker compose down (if started)
+    """
+    asyncio.run(
+        f_quick(
+            base=context.obj["base"],
+            timeout=context.obj["timeout"],
+            file=file,
+            runner=runner,
+            model=model,
+            control=control,
+            data=data,
+            link=link,
+            archive=archive,
+        )
     )
-    asyncio.run(quick_run(None, args))
+    f_print({"status": "ok", "archive": archive}, output=context.obj["output"])
 
 
 @app.command(
