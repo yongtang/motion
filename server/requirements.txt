@@ -4,4 +4,3 @@ python-multipart
 aiohttp
 nats-py
 boto3
-pyzmq

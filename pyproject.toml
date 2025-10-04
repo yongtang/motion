@@ -9,6 +9,7 @@ dependencies = [
     "pydantic",
     "websockets",
     "httpx",
+    "typer",
 ]
 
 [project.optional-dependencies]
