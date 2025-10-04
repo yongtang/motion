@@ -4,8 +4,6 @@ import importlib.resources
 import json
 import logging
 import math
-import pathlib
-import tempfile
 import time
 import typing
 import urllib.parse
@@ -921,59 +919,6 @@ def quick(
         )
     )
     f_print({"status": "ok", "archive": archive}, output=context.obj["output"])
-
-
-@app.command(
-    "assembly",
-    help="USD assembly",
-)
-def assembly(
-    context: typer.Context,
-    file: str = typer.Option(..., "--file"),
-    config: str = typer.Option(..., "--config"),
-):
-    import yaml
-
-    with open(config) as f:
-        config = yaml.safe_load(f.read())
-        omniverse = any(
-            e["path"].startswith("omniverse://")
-            for e in (config.get("robot", []) + config.get("background", []))
-        )
-
-    if omniverse:
-        from omni.isaac.kit import SimulationApp
-
-        simulation_app = SimulationApp({"headless": True})
-
-    import pxr
-    import pxr.Sdf
-    import pxr.Usd
-    import pxr.UsdGeom
-
-    try:
-        with tempfile.TemporaryDirectory() as directory:
-            stage = pxr.Usd.Stage.CreateNew(
-                str(pathlib.Path(directory).joinpath("scene.usd"))
-            )
-
-            # Create stage with a /World root
-            world = pxr.UsdGeom.Xform.Define(stage, pxr.Sdf.Path("/World")).GetPrim()
-            stage.SetDefaultPrim(world)
-
-            for background in config.get("background", []):
-                prim = stage.DefinePrim(pxr.Sdf.Path(background["prim"]))
-                prim.GetReferences().AddReference(assetPath=background["path"])
-            for robot in config.get("robot", []):
-                prim = stage.DefinePrim(pxr.Sdf.Path(robot["prim"]))
-                prim.GetReferences().AddReference(assetPath=robot["path"])
-            # Assembly to single USD file
-            stage.Export(file, args={"flatten": "true"})
-    finally:
-        if omniverse:
-            simulation_app.close()
-
-    f_print({"usd": file}, output=context.obj["output"])
 
 
 # =========================
