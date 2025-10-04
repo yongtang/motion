@@ -41,7 +41,6 @@ async def run_norm(session: str, interface: Interface, channel: Channel):
         while True:
             step = await interface.recv()
             log.info(f"[run_node] zmq recv ({step})")
-            await channel.publish_data(session, step)
 
     task = asyncio.create_task(g())
     try:
@@ -73,11 +72,6 @@ async def run_node(session: str, tick: bool):
     channel = Channel()
     await channel.start()
     log.info(f"[run_node] channel start")
-
-    await channel.publish_data(
-        session, json.dumps({"op": "none"}).encode()
-    )  # initial seed
-    log.info(f"[run_node] channel inital data")
 
     # Wait for ROUTER to be ready (server has __PING__/__PONG__ built-in)
     # Send mode exactly once; runner requires it before first real payload
