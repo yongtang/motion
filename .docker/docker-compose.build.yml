@@ -253,7 +253,6 @@ services:
         source /opt/ros/jazzy/setup.bash \n\
         source /opt/motion/install/setup.bash \n\
         ros2 run motion motion \n\
-        sleep infinity \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]
