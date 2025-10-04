@@ -94,7 +94,7 @@ services:
         COPY server /app/server
         WORKDIR /app
         RUN echo -e '#!/bin/bash \n\
-        set -e \n\
+        set -e -x \n\
         if [ -z "$${MOTION}" ]; then \n\
           echo "MOTION not set, sleeping" \n\
           sleep infinity \n\
@@ -123,7 +123,7 @@ services:
         WORKDIR /app
         RUN pip install pyzmq numpy nats-py
         RUN echo '#!/bin/bash \n\
-        set -e \n\
+        set -e -x \n\
         if [ -z "$${MOTION}" ]; then \n\
           echo "MOTION not set, sleeping" \n\
           sleep infinity \n\
@@ -145,7 +145,7 @@ services:
         COPY LICENSE /app/LICENSE
         WORKDIR /app
         RUN echo '#!/bin/bash \n\
-        set -e \n\
+        set -e -x \n\
         if [ -z "$${MOTION}" ]; then \n\
           echo "MOTION not set, sleeping" \n\
           sleep infinity \n\
@@ -172,7 +172,7 @@ services:
         RUN pip install -e . && \
             pip install -r server/requirements.txt
         RUN echo '#!/bin/bash \n\
-        set -e \n\
+        set -e -x \n\
         if [ -z "$${MOTION}" ]; then \n\
           echo "MOTION not set, sleeping" \n\
           sleep infinity \n\
@@ -204,7 +204,7 @@ services:
         RUN /isaac-sim/python.sh -m pip install -e . --no-deps && \
             /isaac-sim/python.sh -m pip install nats-py
         RUN echo '#!/bin/bash \n\
-        set -e \n\
+        set -e -x \n\
         if [ -z "$${MOTION}" ]; then \n\
           echo "MOTION not set, sleeping" \n\
           sleep infinity \n\
@@ -212,6 +212,49 @@ services:
         fi \n\
         sleep infinity \n\
         echo /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers \n\
+        exit 0' >/entrypoint.sh
+        RUN chmod +x /entrypoint.sh
+        ENTRYPOINT ["/entrypoint.sh"]
+        HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
+  runner-ros:
+    image: motion/motion-runner-ros
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM ros:jazzy
+        RUN apt -y -qq update && \
+            apt -y -qq install \
+            ros-jazzy-moveit-servo \
+            ros-jazzy-moveit-configs-utils \
+            ros-jazzy-moveit-resources-panda-description \
+            ros-jazzy-moveit-resources-panda-moveit-config \
+            ros-jazzy-ros2-control \
+            ros-jazzy-ros2-controllers \
+            ros-jazzy-launch-param-builder
+        COPY LICENSE /app/LICENSE
+        COPY pyproject.toml /app/pyproject.toml
+        COPY src /app/src
+        COPY server/channel.py /isaac-sim/exts/motion.extension/motion/channel.py
+        COPY server/storage.py /isaac-sim/exts/motion.extension/motion/storage.py
+        WORKDIR /app
+        RUN apt -y -qq install \
+            python3-venv \
+            python3-typer \
+            python3-httpx
+        RUN python3 -m venv --system-site-packages /opt/python
+        RUN /opt/python/bin/python3 -m pip install -e . --no-deps && \
+            /opt/python/bin/python3 -m pip install nats-py
+        RUN echo '#!/bin/bash \n\
+        set -e -x \n\
+        if [ -z "$${MOTION}" ]; then \n\
+          echo "MOTION not set, sleeping" \n\
+          sleep infinity \n\
+          exit 0 \n\
+        fi \n\
+        source /opt/python/bin/activate \n\
+        source /opt/ros/jazzy/setup.bash \n\
+        sleep infinity \n\
+        echo ros2 launch moveit_servo demo_joint_jog.launch.py \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]
