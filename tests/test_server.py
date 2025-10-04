@@ -31,7 +31,7 @@ def test_server_scene(docker_compose):
     buf.seek(0)
 
     files = {"file": ("scene.zip", buf, "application/zip")}
-    data = {"runner": "count"}  # runner form fields
+    data = {"runner": "counter"}  # runner form fields
     r = httpx.post(f"{base}/scene", files=files, data=data, timeout=5.0)
     assert r.status_code == 201, r.text
     scene_id = r.json()["uuid"]
@@ -44,14 +44,14 @@ def test_server_scene(docker_compose):
     results = [motion.scene.SceneBase.parse_obj(item) for item in r.json()]
     assert len(results) == 1
     assert str(results[0].uuid) == scene_id
-    assert results[0].runner == "count"
+    assert results[0].runner == "counter"
 
     # lookup
     r = httpx.get(f"{base}/scene/{scene_id}", timeout=5.0)
     assert r.status_code == 200
     looked = motion.scene.SceneBase.parse_obj(r.json())
     assert str(looked.uuid) == scene_id
-    assert looked.runner == "count"
+    assert looked.runner == "counter"
 
     # ARCHIVE (download) -> GET /scene/{uuid}/archive
     r = httpx.get(f"{base}/scene/{scene_id}/archive", timeout=5.0)
@@ -76,7 +76,7 @@ def test_server_scene(docker_compose):
     assert r.status_code == 200
     deleted = motion.scene.SceneBase.parse_obj(r.json())
     assert str(deleted.uuid) == scene_id
-    assert deleted.runner == "count"
+    assert deleted.runner == "counter"
 
     # after delete: search empty, lookup/archive 404
     r = httpx.get(f"{base}/scene", params={"q": scene_id}, timeout=5.0)

@@ -240,7 +240,7 @@ def scene_on_server(docker_compose):
 
         scene: motion.Scene = api.scene.create(
             file=usd_path,
-            runner="count",
+            runner="counter",
         )
 
     # sanity

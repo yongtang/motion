@@ -27,7 +27,7 @@ def test_tool_scene(docker_compose, tmp_path, monkeypatch):
         "--file",
         str(usd_path),
         "--runner",
-        "count",
+        "counter",
     )
     assert p.returncode == 0, p.stderr
     scene_uuid = json.loads(p.stdout.strip())["uuid"]

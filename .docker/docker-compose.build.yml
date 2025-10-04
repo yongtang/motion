@@ -156,8 +156,8 @@ services:
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl", "-sf", "http://127.0.0.1:9999/health"]
-  runner-count:
-    image: motion/motion-runner-count
+  runner-counter:
+    image: motion/motion-runner-counter
     build:
       context: ..
       dockerfile_inline: |
@@ -178,7 +178,7 @@ services:
           sleep infinity \n\
           exit 0 \n\
         fi \n\
-        python -m server.count \n\
+        python -m server.counter \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]

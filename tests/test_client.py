@@ -19,7 +19,7 @@ def test_client_scene(docker_compose):
         usd_path = tdir / "scene.usd"
         usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
 
-        runner = "count"
+        runner = "counter"
         scene = client.scene.create(usd_path, runner)
 
     # got a typed Scene back
@@ -98,8 +98,8 @@ def test_client_scene_search(docker_compose):
         usd_path = tdir / "scene.usd"
         usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
 
-        s1 = client.scene.create(usd_path, runner="count")
-        s2 = client.scene.create(usd_path, runner="count")
+        s1 = client.scene.create(usd_path, runner="counter")
+        s2 = client.scene.create(usd_path, runner="counter")
 
     try:
         # Exact search returns the same typed Scene

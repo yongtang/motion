@@ -6,14 +6,15 @@ from .motionclass import motionclass
 
 
 class SceneRunnerSpec(str, enum.Enum):
+    ros = "ros"
     isaac = "isaac"
-    count = "count"
+    counter = "counter"
 
     @property
     def device(self) -> str:
         return {
             "isaac": "cuda",
-            "count": "cpu",
+            "counter": "cpu",
         }[self.value]
 
     def __str__(self) -> str:

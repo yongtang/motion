@@ -102,8 +102,8 @@ async def node_play(meta):
                     "reservations": {
                         "devices": [
                             {
-                                "driver": "nvidia",
                                 "count": "all",
+                                "driver": "nvidia",
                                 "capabilities": ["gpu"],
                             }
                         ]

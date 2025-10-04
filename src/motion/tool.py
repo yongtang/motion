@@ -721,7 +721,7 @@ def server_app_options(context: typer.Context):
 def scene_create(
     context: typer.Context,
     file: str = typer.Option(..., "--file", help="Path to USD file"),
-    runner: str = typer.Option("count", "--runner", help="Runner type"),
+    runner: str = typer.Option("counter", "--runner", help="Runner type"),
 ):
     client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
     scene = client.scene.create(file, runner)
@@ -885,7 +885,7 @@ def server_delete(context: typer.Context):
 def quick(
     context: typer.Context,
     file: str = typer.Option(..., "--file"),
-    runner: str = typer.Option("count", "--runner"),
+    runner: str = typer.Option("counter", "--runner"),
     model: typing.Optional[str] = typer.Option(None, "--model"),
     control: str = typer.Option("xbox", "--control"),
     data: str = typer.Option("data", "--data"),

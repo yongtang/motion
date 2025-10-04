@@ -8,4 +8,4 @@ def test_scene(scene_on_server):
     assert isinstance(scene, motion.Scene)
     assert scene.base == base.rstrip("/")
     assert scene.uuid
-    assert scene.runner == "count"
+    assert scene.runner == "counter"

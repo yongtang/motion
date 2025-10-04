@@ -17,7 +17,7 @@ async def run_tick(session: str, interface: Interface, channel: Channel):
     """
 
     for i in itertools.count():
-        data = json.dumps({"joint": {"count": i}}, sort_keys=True).encode()
+        data = json.dumps({"joint": {"counter": i}}, sort_keys=True).encode()
 
         log.info(f"[run_tick] channel send ({data})")
         await channel.publish_data(session, data)
@@ -47,7 +47,7 @@ async def run_norm(session: str, interface: Interface, channel: Channel):
     try:
 
         for i in itertools.count():
-            data = json.dumps({"joint": {"count": i}}, sort_keys=True).encode()
+            data = json.dumps({"joint": {"counter": i}}, sort_keys=True).encode()
 
             log.info(f"[run_tick] channel send ({data})")
             await channel.publish_data(session, data)
