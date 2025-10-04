@@ -224,13 +224,11 @@ services:
         FROM ros:jazzy
         RUN apt -y -qq update && \
             apt -y -qq install \
-            ros-jazzy-moveit-servo \
-            ros-jazzy-moveit-configs-utils \
+            ros-jazzy-moveit \
             ros-jazzy-moveit-resources-panda-description \
             ros-jazzy-moveit-resources-panda-moveit-config \
             ros-jazzy-ros2-control \
-            ros-jazzy-ros2-controllers \
-            ros-jazzy-launch-param-builder
+            ros-jazzy-ros2-controllers
         COPY LICENSE /app/LICENSE
         COPY pyproject.toml /app/pyproject.toml
         COPY src /app/src
@@ -253,8 +251,7 @@ services:
         fi \n\
         source /opt/python/bin/activate \n\
         source /opt/ros/jazzy/setup.bash \n\
-        sleep infinity \n\
-        echo ros2 launch moveit_servo demo_joint_jog.launch.py \n\
+        ros2 launch moveit_resources_panda_moveit_config demo.launch.py ros2_control_hardware_type:=mock_components \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]
