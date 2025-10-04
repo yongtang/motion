@@ -22,9 +22,9 @@ async def run_tick(session: str, interface: Interface, channel: Channel):
         log.info(f"[run_tick] channel send ({data})")
         await channel.publish_data(session, data)
 
-        log.info(f"[run_tick] zmq send ({data})")
+        log.info(f"[run_tick] send ({data})")
         step = await interface.tick(data)
-        log.info(f"[run_tick] zmq recv ({step})")
+        log.info(f"[run_tick] recv ({step})")
 
         await asyncio.sleep(1)
 
@@ -40,7 +40,7 @@ async def run_norm(session: str, interface: Interface, channel: Channel):
     async def g():
         while True:
             step = await interface.recv()
-            log.info(f"[run_node] zmq recv ({step})")
+            log.info(f"[run_node] recv ({step})")
 
     task = asyncio.create_task(g())
     try:
@@ -51,7 +51,7 @@ async def run_norm(session: str, interface: Interface, channel: Channel):
             log.info(f"[run_tick] channel send ({data})")
             await channel.publish_data(session, data)
 
-            log.info(f"[run_tick] zmq send ({data})")
+            log.info(f"[run_tick] send ({data})")
             await interface.send(data)
 
             await asyncio.sleep(1)
@@ -76,7 +76,7 @@ async def run_node(session: str, tick: bool):
     # Wait for ROUTER to be ready (server has __PING__/__PONG__ built-in)
     # Send mode exactly once; runner requires it before first real payload
     await interface.ready(timeout=2.0, max=300)
-    log.info(f"[run_node] zmq ready")
+    log.info(f"[run_node] ready")
 
     try:
         if tick:
@@ -86,7 +86,7 @@ async def run_node(session: str, tick: bool):
     finally:
         log.info(f"[run_node] channel close")
         await channel.close()
-        log.info(f"[run_node] zmq close")
+        log.info(f"[run_node] close")
         await interface.close()
 
 

@@ -121,7 +121,7 @@ services:
         COPY server/runner.py /app/server/runner.py
         COPY server/channel.py /app/server/channel.py
         WORKDIR /app
-        RUN pip install pyzmq numpy nats-py
+        RUN pip install numpy nats-py
         RUN echo '#!/bin/bash \n\
         set -e -x \n\
         if [ -z "$${MOTION}" ]; then \n\
@@ -195,6 +195,7 @@ services:
         COPY pyproject.toml /app/pyproject.toml
         COPY src /app/src
         COPY server/channel.py /isaac-sim/exts/motion.extension/motion/channel.py
+        COPY server/interface.py /isaac-sim/exts/motion.extension/motion/interface.py
         COPY server/storage.py /isaac-sim/exts/motion.extension/motion/storage.py
         COPY server/extension.py /isaac-sim/exts/motion.extension/motion/extension.py
         COPY server/extension.toml /isaac-sim/exts/motion.extension/config/extension.toml
@@ -233,6 +234,8 @@ services:
         COPY pyproject.toml /app/pyproject.toml
         COPY src /app/src
         COPY server/ros /opt/motion
+        COPY server/channel.py /opt/motion/src/motion/motion/channel.py
+        COPY server/interface.py /opt/motion/src/motion/motion/interface.py
         WORKDIR /app
         RUN apt -y -qq install \
             python3-venv \
