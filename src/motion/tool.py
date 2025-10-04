@@ -932,28 +932,7 @@ def assembly(
     file: str = typer.Option(..., "--file"),
     config: str = typer.Option(..., "--config"),
 ):
-    import pxr
-    import pxr.Sdf
-    import pxr.Usd
-    import pxr.UsdGeom
     import yaml
-
-    @contextlib.contextmanager
-    def f_stage(omniverse):
-        with tempfile.TemporaryDirectory() as directory:
-            stage = pxr.Usd.Stage.CreateNew(
-                str(pathlib.Path(directory).joinpath("scene.usd"))
-            )
-            if omniverse:
-                from omni.isaac.kit import SimulationApp
-
-                simulation_app = SimulationApp({"headless": True})
-                try:
-                    yield stage
-                finally:
-                    simulation_app.close()
-            else:
-                yield stage
 
     with open(config) as f:
         config = yaml.safe_load(f.read())
@@ -961,19 +940,38 @@ def assembly(
             e["path"].startswith("omniverse://")
             for e in (config.get("robot", []) + config.get("background", []))
         )
-    with f_stage(omniverse=omniverse) as stage:
-        # Create stage with a /World root
-        world = pxr.UsdGeom.Xform.Define(stage, pxr.Sdf.Path("/World")).GetPrim()
-        stage.SetDefaultPrim(world)
 
-        for background in config.get("background", []):
-            prim = stage.DefinePrim(pxr.Sdf.Path(background["prim"]))
-            prim.GetReferences().AddReference(assetPath=background["path"])
-        for robot in config.get("robot", []):
-            prim = stage.DefinePrim(pxr.Sdf.Path(robot["prim"]))
-            prim.GetReferences().AddReference(assetPath=robot["path"])
-        # Assembly to single USD file
-        stage.Export(file, args={"flatten": "true"})
+    if omniverse:
+        from omni.isaac.kit import SimulationApp
+
+        simulation_app = SimulationApp({"headless": True})
+
+    import pxr
+    import pxr.Sdf
+    import pxr.Usd
+    import pxr.UsdGeom
+
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            stage = pxr.Usd.Stage.CreateNew(
+                str(pathlib.Path(directory).joinpath("scene.usd"))
+            )
+
+            # Create stage with a /World root
+            world = pxr.UsdGeom.Xform.Define(stage, pxr.Sdf.Path("/World")).GetPrim()
+            stage.SetDefaultPrim(world)
+
+            for background in config.get("background", []):
+                prim = stage.DefinePrim(pxr.Sdf.Path(background["prim"]))
+                prim.GetReferences().AddReference(assetPath=background["path"])
+            for robot in config.get("robot", []):
+                prim = stage.DefinePrim(pxr.Sdf.Path(robot["prim"]))
+                prim.GetReferences().AddReference(assetPath=robot["path"])
+            # Assembly to single USD file
+            stage.Export(file, args={"flatten": "true"})
+    finally:
+        if omniverse:
+            simulation_app.close()
 
     f_print({"usd": file}, output=context.obj["output"])
 
