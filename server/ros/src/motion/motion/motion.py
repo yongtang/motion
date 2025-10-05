@@ -68,13 +68,6 @@ def main(args=None):
         channel = Channel()
         asyncio.run_coroutine_threadsafe(channel.start(), loop).result()
         try:
-            data = {}
-            data = json.dumps(data)
-            data = data.encode()
-            asyncio.run_coroutine_threadsafe(
-                channel.publish_data(session, data), loop
-            ).result()
-
             rclpy.init(args=args)
 
             node = Motion(
