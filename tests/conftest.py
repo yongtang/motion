@@ -4,7 +4,6 @@ import json
 import os
 import pathlib
 import subprocess
-import tempfile
 import time
 import uuid
 
@@ -225,7 +224,7 @@ def browser_run(docker_compose, scope):
 
 
 @pytest.fixture(scope="session")
-def scene_on_server(docker_compose):
+def scene_on_server(docker_compose, tmp_path_factory):
     """
     Create a Scene on the server using the typed client (POST /scene via SceneClient).
     Returns: (base_url, Scene)
@@ -233,15 +232,15 @@ def scene_on_server(docker_compose):
     base = f"http://{docker_compose['motion']}:8080"
     api = motion.client(base, timeout=10.0)
 
+    tmp_path = tmp_path_factory.mktemp("scene_on_server")
     # Create a temporary USD file; the client will zip + attach meta.json internally.
-    with tempfile.TemporaryDirectory() as td:
-        usd_path = pathlib.Path(td) / "scene.usd"
-        usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
+    usd_path = pathlib.Path(tmp_path).joinpath("scene.usd")
+    usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
 
-        scene: motion.Scene = api.scene.create(
-            file=usd_path,
-            runner="counter",
-        )
+    scene: motion.Scene = api.scene.create(
+        file=usd_path,
+        runner="counter",
+    )
 
     # sanity
     assert isinstance(scene, motion.Scene)

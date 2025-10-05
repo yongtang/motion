@@ -18,7 +18,7 @@ def test_tool_scene(docker_compose, tmp_path, monkeypatch):
         return subprocess.run(cmd, text=True, capture_output=True, check=False)
 
     # Prepare a tiny USD file
-    usd_path = tmp_path / "scene.usd"
+    usd_path = tmp_path.joinpath("scene.usd")
     usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
 
     # --- Happy path ---
@@ -40,7 +40,7 @@ def test_tool_scene(docker_compose, tmp_path, monkeypatch):
     shown = json.loads(p.stdout.strip())
     assert shown["uuid"] == scene_uuid
 
-    out_zip = tmp_path / f"{scene_uuid}.zip"
+    out_zip = tmp_path.joinpath(f"{scene_uuid}.zip")
     p = run_tool_scene("archive", scene_uuid[:8], "--path", str(out_zip))
     assert out_zip.exists() and out_zip.stat().st_size > 0
     with zipfile.ZipFile(out_zip, "r") as z:
@@ -56,7 +56,7 @@ def test_tool_scene(docker_compose, tmp_path, monkeypatch):
 
     # --- Negative: bogus show/archive ---
     bogus = str(uuid.uuid4())
-    out_zip_bogus = tmp_path / f"{bogus}.zip"
+    out_zip_bogus = tmp_path.joinpath(f"{bogus}.zip")
 
     p = run_tool_scene("show", bogus)
     assert p.returncode != 0 and "not found" in p.stderr.lower()
@@ -131,7 +131,7 @@ async def test_tool_session(scene_on_server, tmp_path, monkeypatch):
     shown = json.loads(p.stdout.strip())
     assert shown["uuid"] == session_uuid
 
-    out_zip = tmp_path / f"{session_uuid}.zip"
+    out_zip = tmp_path.joinpath(f"{session_uuid}.zip")
     p = run_tool_session("archive", session_uuid[:8], "--path", str(out_zip))
     assert out_zip.exists() and out_zip.stat().st_size > 0
     with zipfile.ZipFile(out_zip, "r") as z:
@@ -150,7 +150,7 @@ async def test_tool_session(scene_on_server, tmp_path, monkeypatch):
 
     # --- Negative: bogus show/archive ---
     bogus = str(uuid.uuid4())
-    out_zip_bogus = tmp_path / f"{bogus}.zip"
+    out_zip_bogus = tmp_path.joinpath(f"{bogus}.zip")
 
     p = run_tool_session("show", bogus)
     assert p.returncode != 0 and "not found" in p.stderr.lower()

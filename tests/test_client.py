@@ -1,6 +1,4 @@
 import json
-import pathlib
-import tempfile
 import uuid
 import zipfile
 
@@ -9,18 +7,16 @@ import pytest
 import motion
 
 
-def test_client_scene(docker_compose):
+def test_client_scene(docker_compose, tmp_path):
     base = f"http://{docker_compose['motion']}:8080"
     client = motion.client(base=base, timeout=5.0)
 
     # create from USD + runner (client zips internally and uploads)
-    with tempfile.TemporaryDirectory() as tdir:
-        tdir = pathlib.Path(tdir)
-        usd_path = tdir / "scene.usd"
-        usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
+    usd_path = tmp_path.joinpath("scene.usd")
+    usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
 
-        runner = "counter"
-        scene = client.scene.create(usd_path, runner)
+    runner = "counter"
+    scene = client.scene.create(usd_path, runner)
 
     # got a typed Scene back
     assert scene
@@ -30,10 +26,9 @@ def test_client_scene(docker_compose):
     assert client.scene.search(str(scene.uuid)) == [scene]
 
     # archive via client API and confirm file exists and is non-empty
-    with tempfile.TemporaryDirectory() as tdir:
-        out = pathlib.Path(tdir) / f"{scene.uuid}.zip"
-        client.scene.archive(scene, out)
-        assert out.exists() and out.stat().st_size > 0
+    out = tmp_path.joinpath(f"{scene.uuid}.zip")
+    client.scene.archive(scene, out)
+    assert out.exists() and out.stat().st_size > 0
 
     # search for a random uuid should be empty
     bogus = str(uuid.uuid4())
@@ -48,7 +43,7 @@ def test_client_scene(docker_compose):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("model", ["bounce", "remote"])
-async def test_client_session(scene_on_server, model):
+async def test_client_session(scene_on_server, model, tmp_path):
     base, scene = scene_on_server
     client = motion.client(base=base, timeout=5.0)
 
@@ -68,38 +63,35 @@ async def test_client_session(scene_on_server, model):
         await session.wait("stop", timeout=60.0)
 
         # archive and validate JSONL
-        with tempfile.TemporaryDirectory() as tdir:
-            out = pathlib.Path(tdir) / f"{session.uuid}.zip"
-            client.session.archive(session, out)  # sync call is fine inside async block
-            assert out.exists() and out.stat().st_size > 0
+        out = tmp_path.joinpath(f"{session.uuid}.zip")
+        client.session.archive(session, out)  # sync call is fine inside async block
+        assert out.exists() and out.stat().st_size > 0
 
-            with zipfile.ZipFile(out, "r") as z:
-                names = set(z.namelist())
-                assert "session.json" in names, "archive missing session.json"
-                assert "data.json" in names, "archive missing data.json"
-                content = z.read("data.json").decode("utf-8", errors="ignore")
-                lines = [ln for ln in content.splitlines() if ln.strip()]
-                assert lines, "data.json empty"
-                for ln in lines:
-                    json.loads(ln)  # each line parses
+        with zipfile.ZipFile(out, "r") as z:
+            names = set(z.namelist())
+            assert "session.json" in names, "archive missing session.json"
+            assert "data.json" in names, "archive missing data.json"
+            content = z.read("data.json").decode("utf-8", errors="ignore")
+            lines = [ln for ln in content.splitlines() if ln.strip()]
+            assert lines, "data.json empty"
+            for ln in lines:
+                json.loads(ln)  # each line parses
 
         # delete and verify search is empty after
         assert client.session.delete(session) is None
         assert client.session.search(str(session.uuid)) == []
 
 
-def test_client_scene_search(docker_compose):
+def test_client_scene_search(docker_compose, tmp_path):
     base = f"http://{docker_compose['motion']}:8080"
     client = motion.client(base=base, timeout=5.0)
 
     # Create TWO additional scenes so we can test prefix + all
-    with tempfile.TemporaryDirectory() as tdir:
-        tdir = pathlib.Path(tdir)
-        usd_path = tdir / "scene.usd"
-        usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
+    usd_path = tmp_path.joinpath("scene.usd")
+    usd_path.write_text("#usda 1.0\ndef X {\n}\n", encoding="utf-8")
 
-        s1 = client.scene.create(usd_path, runner="counter")
-        s2 = client.scene.create(usd_path, runner="counter")
+    s1 = client.scene.create(usd_path, runner="counter")
+    s2 = client.scene.create(usd_path, runner="counter")
 
     try:
         # Exact search returns the same typed Scene

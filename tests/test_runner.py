@@ -20,7 +20,7 @@ import server.runner
     ],
 )
 def test_runner(tmp_path, monkeypatch, tick, sync):
-    sockfile = tmp_path / "runner.sock"
+    sockfile = tmp_path.joinpath("runner.sock")
     monkeypatch.setenv("RUNNER_SOCK", str(sockfile))
 
     def run_server(n):
