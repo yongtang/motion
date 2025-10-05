@@ -20,7 +20,6 @@ def context():
     sock.bind(file)
     sock.listen(1)
 
-    conn = None
     try:
         conn, _ = sock.accept()
 
@@ -33,19 +32,20 @@ def context():
                 buf = conn.recv(1024 * 1024)  # 1 MiB cap for control
                 if not buf:
                     return {}
-                return json.loads(buf.decode("utf-8"))
+                return json.loads(buf.decode())
 
             def step(self, o):
                 # Always reply (blocking). Client-side policy handles congestion.
-                payload = json.dumps(o).encode("utf-8")
+                payload = json.dumps(o).encode()
                 conn.sendall(payload)
 
-        yield Context()
+        try:
+            yield Context()
+        finally:
+            with contextlib.suppress(Exception):
+                conn.close()
 
     finally:
-        with contextlib.suppress(Exception):
-            if conn is not None:
-                conn.close()
         with contextlib.suppress(Exception):
             sock.close()
         with contextlib.suppress(FileNotFoundError):

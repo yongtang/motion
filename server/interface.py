@@ -64,7 +64,8 @@ class Interface:
                     if (i + 1) % 10 == 0:
                         log.info(f"[ready(async)] still waiting… tries={i+1}")
                     await asyncio.sleep(timeout)
-            raise TimeoutError(f"Unix socket server not ready: {e}")
+            else:
+                raise TimeoutError(f"Unix socket server not ready: {e}")
 
         async def f_async_close():
             log.info("[interface] close(async)")
@@ -108,7 +109,8 @@ class Interface:
                     # backoff
                     with contextlib.suppress(Exception):
                         time.sleep(timeout)
-            raise TimeoutError(f"Unix socket server not ready: {e}")
+            else:
+                raise TimeoutError(f"Unix socket server not ready: {e}")
 
         def f_sync_close():
             log.info("[interface] close(sync)")
@@ -125,7 +127,7 @@ class Interface:
 
         def f_sync_recv():
             # non-blocking poll; return None if nothing
-            with contextlib.suppress(BlockingIOError, InterruptedError):
+            with contextlib.suppress(BlockingIOError, InterruptedError, TimeoutError):
                 return self._sock_.recv(1024 * 1024, socket.MSG_DONTWAIT)
             return None
 

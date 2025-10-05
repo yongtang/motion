@@ -6,7 +6,7 @@ import logging
 import math
 import time
 import typing
-import urllib.parse
+import urllib
 
 import typer
 

@@ -4,6 +4,7 @@ import datetime
 import enum
 import json
 import random
+import urllib
 
 import httpx
 import pydantic
@@ -269,10 +270,18 @@ class Session(SessionBase):
             self._base_, self.uuid, timeout=self._timeout_, start=start
         )
 
-    async def play(self, model: str | None = None):
-        r = await self._request_(
-            "POST", f"session/{self.uuid}/play" + (f"?model={model}" if model else "")
-        )
+    async def play(self, model: str | None = None, tick: bool | None = None):
+        params = {
+            k: v
+            for k, v in {
+                "model": model,
+                "tick": str(tick).lower() if tick is not None else None,
+            }.items()
+            if v is not None
+        }
+        query = f"?{urllib.parse.urlencode(params)}" if params else ""
+
+        r = await self._request_("POST", f"session/{self.uuid}/play{query}")
         return r.json()
 
     async def stop(self):

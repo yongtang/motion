@@ -13,6 +13,7 @@ class SceneRunnerSpec(str, enum.Enum):
     @property
     def device(self) -> str:
         return {
+            "ros": "cpu",
             "isaac": "cuda",
             "counter": "cpu",
         }[self.value]
