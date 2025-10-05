@@ -1,44 +1,97 @@
+import asyncio
+import json
+import threading
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
+from .channel import Channel
+from .interface import Interface
+
 
 class Motion(Node):
 
-    def __init__(self):
+    def __init__(self, session, channel, interface, loop):
         super().__init__("motion")
-        self.subscription = self.create_subscription(
-            String, "topic", self.listener_callback, 10
-        )
+        self.session = session
+        self.channel = channel
+        self.interface = interface
+        self.loop = loop
 
-        self.publisher_ = self.create_publisher(String, "topic", 10)
-        timer_period = 0.5  # seconds
-        self.timer = self.create_timer(timer_period, self.timer_callback)
-        self.i = 0
+        self.subscription = self.create_subscription(
+            String, "joint_states", self.listener_callback, 10
+        )
+        self.publisher = self.create_publisher(String, "joint_trajectory", 10)
+        self.timer = self.create_timer(0.5, self.timer_callback)
 
     def timer_callback(self):
+        data = self.interface.recv()
+        self.get_logger().info(f'Interface recv: "{data}"')
+        if data is None:
+            return
+        data = data.decode()
+        data = json.loads(data)
         msg = String()
-        msg.data = "Hello World: %d" % self.i
-        self.publisher_.publish(msg)
-        self.get_logger().info('Publishing: "%s"' % msg.data)
-        self.i += 1
+        msg.data = f"{data['ros']}"
+        self.publisher.publish(msg)
+        self.get_logger().info(f'Publishing: "{msg.data}"')
 
     def listener_callback(self, msg):
-        self.get_logger().info('I heard: "%s"' % msg.data)
+        self.get_logger().info(f'I heard: "{msg.data}"')
+        data = {"ros": msg.data}
+        data = json.dumps(data)
+        data = data.encode()
+        asyncio.run_coroutine_threadsafe(
+            self.channel.publish_data(self.session, data), self.loop
+        ).result()
+        self.get_logger().info(f'Channel send: "{data}"')
+        self.interface.send(data)
+        self.get_logger().info(f'Interface send: "{data}"')
 
 
 def main(args=None):
-    rclpy.init(args=args)
+    with open("/storage/node/node.json", "r") as f:
+        meta = json.loads(f.read())
 
-    node = Motion()
+    session, tick = meta["session"], meta["tick"]
+    assert not tick, f"meta={meta}"
 
-    rclpy.spin(node)
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
 
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
-    node.destroy_node()
-    rclpy.shutdown()
+    interface = Interface(tick=tick, sync=True)
+    interface.ready()
+
+    try:
+        channel = Channel()
+        asyncio.run_coroutine_threadsafe(channel.start(), loop).result()
+        try:
+            data = {}
+            data = json.dumps(data)
+            data = data.encode()
+            asyncio.run_coroutine_threadsafe(
+                channel.publish_data(session, data), loop
+            ).result()
+
+            rclpy.init(args=args)
+
+            node = Motion(
+                session=session, channel=channel, interface=interface, loop=loop
+            )
+
+            rclpy.spin(node)
+
+            # Destroy the node explicitly
+            # (optional - otherwise it will be done automatically
+            # when the garbage collector destroys the node object)
+            node.destroy_node()
+            rclpy.shutdown()
+        finally:
+            asyncio.run_coroutine_threadsafe(channel.close(), loop)
+    finally:
+        interface.close()
 
 
 if __name__ == "__main__":

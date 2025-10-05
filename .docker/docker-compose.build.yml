@@ -252,10 +252,10 @@ services:
           sleep infinity \n\
           exit 0 \n\
         fi \n\
-        source /opt/python/bin/activate \n\
         source /opt/ros/jazzy/setup.bash \n\
         source /opt/motion/install/setup.bash \n\
-        ros2 run motion motion \n\
+        source /opt/python/bin/activate \n\
+        python3 -m motion.motion \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]
