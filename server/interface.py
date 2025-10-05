@@ -23,7 +23,7 @@ class Interface:
     All instances expose ready() and close() (bound to closures).
     """
 
-    def __init__(self, tick: bool = False, sync: bool = False):
+    def __init__(self, tick: bool, sync: bool):
         assert not (sync and tick), "sync=True cannot be used with tick=True"
 
         self._file_ = os.environ.get("RUNNER_SOCK", "/run/motion/runner.sock")

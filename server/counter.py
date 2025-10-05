@@ -66,7 +66,7 @@ async def run_node(session: str, tick: bool):
     log.info(f"[run_node] session={session} tick={tick}")
 
     # ZMQ DEALER (encapsulated by Interface)
-    interface = Interface(tick=tick)
+    interface = Interface(tick=tick, sync=False)
 
     # Channel
     channel = Channel()

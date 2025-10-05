@@ -38,7 +38,7 @@ def test_runner(tmp_path, monkeypatch, tick, sync):
     if tick:
 
         async def client():
-            interface = server.interface.Interface(tick=True)
+            interface = server.interface.Interface(tick=True, sync=False)
             await interface.ready(timeout=2.0, max=60)
 
             reply_b = await interface.tick(json.dumps(payload).encode("utf-8"))
@@ -51,7 +51,7 @@ def test_runner(tmp_path, monkeypatch, tick, sync):
 
     else:
         if sync:
-            interface = server.interface.Interface(sync=True)
+            interface = server.interface.Interface(tick=False, sync=True)
             interface.ready(timeout=2.0, max=60)
 
             data = json.dumps(payload).encode("utf-8")
@@ -98,7 +98,7 @@ def test_runner(tmp_path, monkeypatch, tick, sync):
         else:
 
             async def client():
-                interface = server.interface.Interface(tick=False)
+                interface = server.interface.Interface(tick=False, sync=False)
                 await interface.ready(timeout=2.0, max=60)
 
                 data = json.dumps(payload).encode("utf-8")
