@@ -233,9 +233,9 @@ services:
         COPY LICENSE /app/LICENSE
         COPY pyproject.toml /app/pyproject.toml
         COPY src /app/src
-        COPY server/ros /opt/motion
-        COPY server/channel.py /opt/motion/src/motion/motion/channel.py
-        COPY server/interface.py /opt/motion/src/motion/motion/interface.py
+        COPY server/ros /opt/ros/motion/src
+        COPY server/channel.py /opt/ros/motion/src/ros/channel.py
+        COPY server/interface.py /opt/ros/motion/src/ros/interface.py
         WORKDIR /app
         RUN apt -y -qq install \
             python3-venv \
@@ -244,7 +244,7 @@ services:
         RUN python3 -m venv --system-site-packages /opt/python
         RUN /opt/python/bin/python3 -m pip install -e . --no-deps && \
             /opt/python/bin/python3 -m pip install nats-py
-        RUN (cd /opt/motion && /ros_entrypoint.sh colcon build)
+        RUN (cd /opt/ros/motion && /ros_entrypoint.sh colcon build)
         RUN echo '#!/bin/bash \n\
         set -e -x \n\
         if [ -z "$${MOTION}" ]; then \n\
@@ -253,9 +253,9 @@ services:
           exit 0 \n\
         fi \n\
         source /opt/ros/jazzy/setup.bash \n\
-        source /opt/motion/install/setup.bash \n\
+        source /opt/ros/motion/install/setup.bash \n\
         source /opt/python/bin/activate \n\
-        python3 -m motion.motion \n\
+        python3 -m ros.motion \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]

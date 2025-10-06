@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = "motion"
+package_name = "ros"
 
 setup(
     name=package_name,
@@ -22,6 +22,6 @@ setup(
         ],
     },
     entry_points={
-        "console_scripts": ["motion = motion.motion:main"],
+        "console_scripts": ["motion = ros.motion:main"],
     },
 )
