@@ -225,6 +225,7 @@ services:
         FROM ros:jazzy
         RUN apt -y -qq update && \
             apt -y -qq install \
+            parallel \
             ros-jazzy-moveit \
             ros-jazzy-moveit-resources-panda-description \
             ros-jazzy-moveit-resources-panda-moveit-config \
@@ -255,7 +256,8 @@ services:
         source /opt/ros/jazzy/setup.bash \n\
         source /opt/ros/motion/install/setup.bash \n\
         source /opt/python/bin/activate \n\
-        python3 -m ros.motion \n\
+        echo ros2 launch moveit_resources_panda_moveit_config demo.launch.py \n\
+        parallel --halt now,done=1 --halt now,fail=1 -j0 ::: "python3 -m ros.motion" \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]
