@@ -76,7 +76,10 @@ class Interface:
         async def f_async_tick(data: bytes) -> bytes:
             loop = asyncio.get_running_loop()
             await loop.sock_sendall(self._sock_, data)
-            return await loop.sock_recv(self._sock_, 1024 * 1024)
+            data = await loop.sock_recv(self._sock_, 1024 * 1024)
+            if not data:
+                raise ConnectionAbortedError("Socket closed by peer (EOF)")
+            return data
 
         async def f_async_send(data: bytes):
             # best-effort; drop if busy
@@ -87,7 +90,10 @@ class Interface:
 
         async def f_async_recv() -> bytes:
             loop = asyncio.get_running_loop()
-            return await loop.sock_recv(self._sock_, 1024 * 1024)
+            data = await loop.sock_recv(self._sock_, 1024 * 1024)
+            if not data:
+                raise ConnectionAbortedError("Socket closed by peer (EOF)")
+            return data
 
         # ---------------- sync closures -----------------
         def f_sync_ready(timeout: float = 2.0, max: int = 300):
@@ -128,7 +134,10 @@ class Interface:
         def f_sync_recv():
             # non-blocking poll; return None if nothing
             with contextlib.suppress(BlockingIOError, InterruptedError, TimeoutError):
-                return self._sock_.recv(1024 * 1024, socket.MSG_DONTWAIT)
+                data = self._sock_.recv(1024 * 1024, socket.MSG_DONTWAIT)
+                if not data:
+                    raise ConnectionAbortedError("Socket closed by peer (EOF)")
+                return data
             return None
 
         # --- bind depending on mode ---
