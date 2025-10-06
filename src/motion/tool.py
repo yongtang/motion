@@ -658,10 +658,12 @@ app = typer.Typer(help="Motion tooling")
 scene_app = typer.Typer(help="Scene commands")
 session_app = typer.Typer(help="Session commands")
 server_app = typer.Typer(help="Server commands")
+quick_app = typer.Typer(help="Quick", invoke_without_command=True)
 
 app.add_typer(scene_app, name="scene")
 app.add_typer(session_app, name="session")
 app.add_typer(server_app, name="server")
+app.add_typer(quick_app, name="quick")
 
 
 @app.callback()
@@ -882,11 +884,8 @@ def server_delete(context: typer.Context):
 # =========================
 # Quick wrapper
 # =========================
-@app.command(
-    "quick",
-    help="One-shot flow: up -> create -> play -> step -> stop -> archive -> down.",
-)
-def quick(
+@quick_app.callback()
+def quick_callback(
     context: typer.Context,
     file: str = typer.Option(..., "--file"),
     runner: str = typer.Option("counter", "--runner"),
@@ -915,6 +914,23 @@ def quick(
       - scene delete
       - docker compose down (if started)
     """
+    base = context.obj["base"]
+    if context.invoked_subcommand == "create":
+        assert not base.startswith(
+            ("http://", "https://")
+        ), f"server create requires a compose project name for --base, not a URL: {base}"
+    else:
+        if base.startswith(("http://", "https://")):
+            parsed = urllib.parse.urlparse(base)
+            assert parsed.hostname, f"invalid base URL {base}"
+            host = parsed.hostname
+
+            mapping = asyncio.run(f_compose())
+            matches = [p for p, ip in mapping.items() if ip == host]
+            assert matches, f"no compose project found for host {host}"
+            assert len(matches) == 1, f"ambiguous host {host}, matches: {matches}"
+            context.obj["base"] = next(iter(matches))
+
     asyncio.run(
         f_quick(
             base=context.obj["base"],
