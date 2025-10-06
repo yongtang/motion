@@ -5,25 +5,14 @@ import pydantic
 from .motionclass import motionclass
 
 
-class SceneRunnerSpec(str, enum.Enum):
+class RunnerSpec(str, enum.Enum):
     ros = "ros"
     isaac = "isaac"
     counter = "counter"
 
-    @property
-    def device(self) -> str:
-        return {
-            "ros": "cpu",
-            "isaac": "cuda",
-            "counter": "cpu",
-        }[self.value]
-
-    def __str__(self) -> str:
-        return self.value
-
 
 class SceneSpec(pydantic.BaseModel):
-    runner: SceneRunnerSpec
+    runner: RunnerSpec
 
 
 class SceneBase(SceneSpec):
@@ -41,7 +30,7 @@ class Scene(SceneBase):
         self,
         base: str,
         uuid: pydantic.UUID4,
-        runner: SceneRunnerSpec,
+        runner: RunnerSpec,
         timeout: float = 5.0,
     ):
         super().__init__(uuid=uuid, runner=runner)

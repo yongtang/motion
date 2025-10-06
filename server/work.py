@@ -45,9 +45,17 @@ async def f_proc(node, prefix):
 
 
 async def node_play(meta):
-    session, tick = meta["session"], meta["tick"]
+    session, runner, device, model, tick = (
+        meta["session"],
+        meta["runner"],
+        meta["device"],
+        meta["model"],
+        meta["tick"],
+    )
 
-    log.info(f"[node_play] session={session} tick={tick} play")
+    log.info(
+        f"[node_play] session={session} runner={runner} device={device} model={model} tick={tick} play"
+    )
 
     shutil.rmtree("/run/motion", ignore_errors=True)
     os.makedirs("/run/motion", exist_ok=True)
@@ -77,10 +85,7 @@ async def node_play(meta):
     with open("/storage/node/scene.json", "w") as f:
         f.write(scene.json())
     log.info(f"[node_play] scene storage: {scene}")
-
-    # Runner is an enum; device is derived (hidden) property
-    runner = scene.runner
-    log.info(f"[node_play] runner={runner}")
+    assert scene.runner == runner
 
     with tempfile.TemporaryFile() as f:
         for chunk in storage_kv_get("scene", f"{scene.uuid}.zip"):
@@ -110,7 +115,7 @@ async def node_play(meta):
                     }
                 }
             }
-            if runner.device == "cuda"
+            if device == "cuda"
             else {}
         )
         with open("/storage/node/docker-compose.yml", "w") as f:
@@ -144,9 +149,17 @@ async def node_play(meta):
 
 
 async def node_stop(meta):
-    session, tick = meta["session"], meta["tick"]
+    session, runner, device, model, tick = (
+        meta["session"],
+        meta["runner"],
+        meta["device"],
+        meta["model"],
+        meta["tick"],
+    )
 
-    log.info(f"[node_stop] session={session} tick={tick} stop")
+    log.info(
+        f"[node_play] session={session} runner={runner} device={device} model={model} tick={tick} play"
+    )
 
     def f_node():
         scope = os.environ.get("SCOPE")

@@ -4,6 +4,7 @@ import datetime
 import enum
 import json
 import random
+import typing
 import urllib
 
 import httpx
@@ -11,13 +12,48 @@ import pydantic
 import websockets
 
 from .motionclass import motionclass
-from .scene import Scene, SceneBase
+from .scene import RunnerSpec, Scene, SceneBase
+
+
+class DeviceSpec(str, enum.Enum):
+    cpu = "cpu"
+    cuda = "cuda"
 
 
 class ModelSpec(str, enum.Enum):
     model = "model"
     bounce = "bounce"
     remote = "remote"
+
+
+class RosNodeSpec(pydantic.BaseModel):
+    session: pydantic.UUID4
+    runner: typing.Literal[RunnerSpec.ros]
+    device: DeviceSpec = DeviceSpec.cpu
+    model: ModelSpec
+    tick: typing.Literal[False] = False
+
+
+class IsaacNodeSpec(pydantic.BaseModel):
+    session: pydantic.UUID4
+    runner: typing.Literal[RunnerSpec.isaac]
+    device: typing.Literal[DeviceSpec.cuda] = DeviceSpec.cuda
+    model: ModelSpec
+    tick: bool = True
+
+
+class CounterNodeSpec(pydantic.BaseModel):
+    session: pydantic.UUID4
+    runner: typing.Literal[RunnerSpec.counter]
+    device: DeviceSpec = DeviceSpec.cpu
+    model: ModelSpec
+    tick: bool = True
+
+
+SessionNodeSpec = typing.Annotated[
+    RosNodeSpec | IsaacNodeSpec | CounterNodeSpec,
+    pydantic.Field(discriminator="runner"),
+]
 
 
 class SessionStatusSpec(str, enum.Enum):
@@ -270,10 +306,16 @@ class Session(SessionBase):
             self._base_, self.uuid, timeout=self._timeout_, start=start
         )
 
-    async def play(self, model: str | None = None, tick: bool | None = None):
+    async def play(
+        self,
+        device: str | None = None,
+        model: str | None = None,
+        tick: bool | None = None,
+    ):
         params = {
             k: v
             for k, v in {
+                "device": device,
                 "model": model,
                 "tick": str(tick).lower() if tick is not None else None,
             }.items()

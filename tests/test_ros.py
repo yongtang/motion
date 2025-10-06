@@ -71,7 +71,7 @@ async def test_ros(scope, docker_compose, runner, model, tmp_path):
         assert session.link == ["*"]
 
         # drive lifecycle via the async API
-        await session.play(model=model, tick=False)
+        await session.play(device="cpu", model=model, tick=False)
         for i in range(60):  # retry up to 30 times
             await f(i)
             stdout = await g()

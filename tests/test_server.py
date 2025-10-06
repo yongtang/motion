@@ -121,7 +121,7 @@ def test_server_session(scene_on_server, model):
                     return
             time.sleep(interval_s)
         raise AssertionError(
-            f"Timed out waiting for state={want_spec.value}. last_state={getattr(last, 'value', last)}"
+            f"Timed out waiting for state={want_spec}. last_state={getattr(last, 'value', last)}"
         )
 
     def f_archive_lines(session: str):
@@ -215,7 +215,7 @@ def test_server_session(scene_on_server, model):
 
     r = httpx.post(
         f"{base}/session/{session}/play",
-        params={"model": model},
+        params={"device": "cpu", "model": model},
         timeout=5.0,
     )
     assert r.status_code == 200
@@ -264,7 +264,7 @@ def test_server_session(scene_on_server, model):
 
     r = httpx.post(
         f"{base}/session/{session2}/play",
-        params={"model": model},
+        params={"device": "cpu", "model": model},
         timeout=5.0,
     )
     assert r.status_code == 200

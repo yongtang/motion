@@ -56,7 +56,7 @@ async def test_client_session(scene_on_server, model, tmp_path):
         assert session.link == ["*"]
 
         # drive lifecycle via the async API
-        await session.play(model=model)  # requires play(model: str | None = None)
+        await session.play(device="cpu", model=model)
         await session.wait("play", timeout=300.0)
 
         await session.stop()

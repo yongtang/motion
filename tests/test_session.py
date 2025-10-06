@@ -22,9 +22,7 @@ async def test_session(scene_on_server, model):
         assert session.link == ["*"]
 
         # start -> wait until playing
-        await session.play(
-            model=model
-        )  # if play(model=...) not merged yet, call await session.play()
+        await session.play(device="cpu", model=model)
         await session.wait("play", timeout=300.0)
 
         # duplex stream: receive one message, then send one step

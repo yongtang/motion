@@ -601,7 +601,9 @@ async def f_base_close(base, timeout) -> None:
 # -------------------
 
 
-async def f_quick(base, timeout, file, runner, model, control, data, link, archive):
+async def f_quick(
+    base, timeout, file, runner, device, model, tick, control, data, link, archive
+):
     """
     One-shot flow:
       - docker compose up (if base is project name)
@@ -626,7 +628,7 @@ async def f_quick(base, timeout, file, runner, model, control, data, link, archi
         async with client.session.create(scene) as session:
             try:
                 # 3) play
-                await session.play(model=model)
+                await session.play(device=device, model=model, tick=tick)
 
                 # 4) drive (xbox loop)
                 await f_step(session=session, control=control, data=data, link=link)
@@ -811,14 +813,18 @@ def session_archive(
 def session_play(
     context: typer.Context,
     session: str,
-    model: typing.Optional[str] = typer.Option(None, "--model"),
+    device: typing.Optional[str] = typer.Option(None, "--device", help="cpu|cuda"),
+    model: typing.Optional[str] = typer.Option(
+        None, "--model", help="model|bounce|remote"
+    ),
+    tick: typing.Optional[bool] = typer.Option(None, "--tick/--no-tick"),
 ):
     client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
     session = f_prefix(client.session.search(session), session, kind="session")
 
     async def f():
         async with session:
-            await session.play(model=model)
+            await session.play(device=device, model=model, tick=tick)
 
     asyncio.run(f())
     f_print(session, output=context.obj["output"])
@@ -884,7 +890,11 @@ def quick(
     context: typer.Context,
     file: str = typer.Option(..., "--file"),
     runner: str = typer.Option("counter", "--runner"),
-    model: typing.Optional[str] = typer.Option(None, "--model"),
+    device: typing.Optional[str] = typer.Option(None, "--device", help="cpu|cuda"),
+    model: typing.Optional[str] = typer.Option(
+        None, "--model", help="model|bounce|remote"
+    ),
+    tick: typing.Optional[bool] = typer.Option(None, "--tick/--no-tick"),
     control: str = typer.Option("xbox", "--control"),
     data: str = typer.Option("data", "--data"),
     link: str = typer.Option("link", "--link"),
@@ -911,7 +921,9 @@ def quick(
             timeout=context.obj["timeout"],
             file=file,
             runner=runner,
+            device=device,
             model=model,
+            tick=tick,
             control=control,
             data=data,
             link=link,

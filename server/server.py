@@ -66,13 +66,14 @@ async def health():
 @app.post("/scene", response_model=motion.scene.SceneBase, status_code=201)
 async def scene_create(
     file: UploadFile = File(...),
-    runner: motion.scene.SceneRunnerSpec = Form(...),
+    runner: motion.scene.RunnerSpec = Form(...),
 ) -> motion.scene.SceneBase:
     if file.content_type not in {"application/zip", "application/x-zip-compressed"}:
         log.warning(f"[Scene N/A] Upload rejected: invalid type {file.content_type}")
         raise HTTPException(status_code=415, detail="zip required")
 
     spec = motion.scene.SceneSpec(runner=runner)
+
     scene = motion.scene.SceneBase(uuid=uuid.uuid4(), **spec.dict())
 
     storage_kv_set("scene", f"{scene.uuid}.zip", file.file)
@@ -388,20 +389,22 @@ async def session_status(
 @app.post("/session/{session:uuid}/play", response_model=motion.session.SessionBase)
 async def session_play(
     session: pydantic.UUID4,
+    device: motion.session.DeviceSpec = Query(..., description="cpu or cuda"),
     model: motion.session.ModelSpec = Query(
         motion.session.ModelSpec.remote,
-        description="Execution model to use: 'model', 'bounce', or 'remote'.",
+        description="Execution model: 'model', 'bounce', or 'remote'.",
     ),
     tick: bool = Query(True, description="Enable tick mode."),
 ) -> motion.session.SessionBase:
     ttl = 3600  # one hour lease
+
     # 1) ensure session exists
     try:
         session = motion.session.SessionBase.parse_raw(
             b"".join(storage_kv_get("session", f"{session}.json"))
         )
         log.info(
-            f"[Session {session.uuid}] Play requested (scene={session.scene}, tick={tick})"
+            f"[Session {session.uuid}] Play requested (scene={session.scene}, device={device}, model={model}, tick={tick})"
         )
     except FileNotFoundError:
         log.warning(f"[Session {session}] Not found for play")
@@ -421,12 +424,29 @@ async def session_play(
         )
         raise HTTPException(status_code=404, detail=f"Scene {session.scene} not found")
 
+    # 2.5) normalize & validate lease payload
+    available = {
+        motion.scene.RunnerSpec.ros: motion.session.RosNodeSpec,
+        motion.scene.RunnerSpec.isaac: motion.session.IsaacNodeSpec,
+        motion.scene.RunnerSpec.counter: motion.session.CounterNodeSpec,
+    }
+    payload = {
+        "session": session.uuid,
+        "runner": scene.runner,
+        "device": device,
+        "model": model,
+        "tick": tick,
+    }
+    try:
+        spec = available[scene.runner](**payload)
+    except pydantic.ValidationError:
+        raise HTTPException(status_code=422, detail="invalid session node parameters")
+
     # 3) extract full list, then filter to node ids
     entries = list(storage_kv_scan("node", "meta/"))
     log.info(
         f"[Session {session.uuid}] Registry scan returned {len(entries)} keys under meta/"
     )
-
     entries = list(
         map(
             lambda e: e[len("meta/") : -len(".json")],
@@ -434,7 +454,6 @@ async def session_play(
         )
     )
     log.info(f"[Session {session.uuid}] Nodes discovered: {len(entries)}")
-
     if not entries:
         log.info(f"[Session {session.uuid}] No nodes registered")
         raise HTTPException(status_code=503, detail="No nodes registered")
@@ -444,22 +463,14 @@ async def session_play(
     log.debug(f"[Session {session.uuid}] Allocation order: {entries}")
 
     chosen = None
-    # Include runner and tick in the lease payload
-    data = json.dumps(
-        {
-            "session": str(session.uuid),
-            "runner": scene.runner,
-            "model": model,
-            "tick": tick,
-        },
-        sort_keys=True,
-    ).encode()
+    data = spec.json().encode()
 
     for node in entries:
         if storage_kv_acquire("node", f"node/{node}.json", data, ttl=ttl):
             chosen = node
             log.info(
-                f"[Session {session.uuid}] Lease acquired on node={chosen} (tick={tick})"
+                f"[Session {session.uuid}] Lease acquired on node={chosen} "
+                f"(device={spec.device}, model={spec.model}, tick={spec.tick})"
             )
             break
         else:
