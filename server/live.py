@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import pathlib
-import shlex
 
 
 async def main():
@@ -16,10 +15,10 @@ async def main():
     with open(file, "r") as f:
         camera = json.loads(f.read())
 
-    live = ["parallel --halt now,done=1 -j 0 :::"]
+    live = ["parallel --halt now,done=1 --halt now,fail=1 -j 0 :::"]
     for name, entry in camera.items():
         width, height = entry["width"], entry["height"]
-        live.append(shlex.quote(f"echo {name} {width} {height}"))
+        live.append(f"echo {name} {width} {height}")
 
     print(" ".join(live))
 

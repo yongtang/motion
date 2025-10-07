@@ -1,6 +1,9 @@
 import asyncio
 import contextlib
+import functools
+import itertools
 import json
+import logging
 import traceback
 
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
@@ -12,72 +15,49 @@ import omni.usd
 import pxr
 
 from .channel import Channel
+from .interface import Interface
 
 
-async def run_node(session):
-    channel = Channel()
-    await channel.start()
-    print("[run_node] Channel started")
-
-    await channel.publish_data(session, json.dumps({"op": "none"}))
-    print(f"[run_node] Sent none to {session}")
-
-    async def f(msg):
-        print(f"[callback] [Echo {session}] Step: {msg}")
-        step = json.loads(msg.data)
-        data = json.dumps(step)
-        print(f"[callback] [Echo {session}] Step->data ({len(data)} bytes): {data}")
-
-        await channel.publish_data(session, data)
-        print(f"[callback] [Echo {session}] Published")
-
-    subscribe = await channel.subscribe_step(session, f)
-    print(f"[run_node] Subscribed for {session}")
-
-    try:
-        print("[run_node] Waiting for events")
-        await asyncio.Future()
-    finally:
-        await subscribe.unsubscribe()
-        print(f"[run_node] Unsubscribed for {session}")
-        await channel.close()
-        print("[run_node] Channel closed")
+async def run_tick(session, interface, channel):
+    assert False
 
 
-async def main():
-    print("[motion.extension] Loading stage")
+async def run_norm(session, interface, channel):
+    assert False
+
+
+async def run_call(session, call):
+    print(f"[motion.extension] [run_call] Loaded session {session}")
+
     with open("/storage/node/session.json", "r") as f:
         metadata = json.loads(f.read())
-    session = metadata["uuid"]
-    print(f"[motion.extension] Loaded session {session}")
+    print(f"[motion.extension] [run_call] Loaded metadata {metadata}")
+
+    camera = metadata["camera"]
+    print(f"[motion.extension] [run_call] Loaded camera {camera}")
 
     ctx = omni.usd.get_context()
     if ctx.get_stage():
-        print("[motion.extension] Closing existing stage...")
+        print("[motion.extension] [run_call] Closing existing stage...")
         await ctx.close_stage_async()
-        print("[motion.extension] Existing stage closed")
+        print("[motion.extension] [run_call] Existing stage closed")
+        await omni.kit.app.get_app().next_update_async()
 
-    def f_event(event, e):
-        print(f"[motion.extension] Stage event {omni.usd.StageEventType(e.type)}")
-        if omni.usd.StageEventType(e.type) == omni.usd.StageEventType.OPENED:
-            print("[motion.extension] Stage opened")
-            event.set()
-
-    print("[motion.extension] Opening stage...")
+    print("[motion.extension] [run_call] Opening stage...")
     await ctx.open_stage_async(
         "file:///storage/node/scene/scene.usd",
         load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,
     )
 
-    print("[motion.extension] Waiting stage...")
+    print("[motion.extension] [run_call] Waiting stage...")
     stage = ctx.get_stage()
     while stage is None:
-        print("[motion.extension] Waiting loading...")
+        print("[motion.extension] [run_call] Waiting loading...")
         await omni.kit.app.get_app().next_update_async()
         stage = ctx.get_stage()
     assert stage
 
-    print(f"[motion.extension] Stage loaded")
+    print(f"[motion.extension] [run_call] Stage loaded")
 
     camera = (
         {
@@ -88,46 +68,102 @@ async def main():
         if "*" in camera
         else camera
     )
-    print(f"[motion.extension] Camera: {camera}")
+    print(f"[motion.extension] [run_call] Camera: {camera}")
 
-    camera = {
+    with open("/run/motion/camera.json", "w") as f:
+        f.write(json.dumps(camera))
+    print(f"[motion.extension] [run_call] Camera: /run/motion/camera.json")
+
+    render = {
         e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
         for e, v in camera.items()
     }
+    print(f"[motion.extension] [run_call] Render: {render}")
 
     writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
     writer.initialize(
         rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
         rtsp_rgb=True,
     )
-    writer.attach(list(camera.values()))
-    print(f"[motion.extension] Camera attached")
+    print(f"[motion.extension] [run_call] Writer: {writer}")
 
-    annotator = omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
-    print(f"[motion.extension] Camera annotator attached")
-    annotator.attach(list(camera.values()))
+    annotator = {
+        e: omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
+        for e, v in camera.items()
+    }
+    print(f"[motion.extension] [run_call] Annotator: {annotator}")
 
-    print(f"[motion.extension] Timeline play")
+    writer.attach(list(render.values()))
+    print(f"[motion.extension] [run_call] Writer attached")
+
+    for k, v in render.items():
+        annotator[k].attach(v)
+    print(f"[motion.extension] [run_call] Annotator attached")
+
+    print(f"[motion.extension] [run_call] Timeline playing")
     omni.timeline.get_timeline_interface().play()
-
-    print(f"[motion.extension] Wait")
-    await asyncio.Future()
-    print(f"[motion.extension] Wait")
+    print(f"[motion.extension] [run_call] Timeline in play")
 
     try:
-        print("[motion.extension] [Node] Running")
-        await run_node(session)
-        print("[motion.extension] [Node] Stopped")
+        await asyncio.sleep(float("inf"))
+        print("[motion.extension] [run_call] Running")
+        await call()
+        print("[motion.extension] [run_call] Stopped")
     except Exception as e:
-        print(f"[motion.extension] [Exception]: {e}")
+        print(f"[motion.extension] [run_call] [Exception]: {e}")
         traceback.print_exec()
     finally:
         with contextlib.suppress(Exception):
-            annotator.detach(list(camera.values()))
-        print(f"[motion.extension] Camera annotator detached")
+            for k, v in camera.items():
+                annotator[k].detach(v)
+        print(f"[motion.extension] [run_call] Camera annotator detached")
         with contextlib.suppress(Exception):
             writer.detach(list(camera.values()))
-        print(f"[motion.extension] Camera detached")
+        print(f"[motion.extension] [run_call] Camera detached")
+
+
+async def run_node(session: str, tick: bool):
+    print(f"[motion.extension] [run_node] session={session} tick={tick}")
+
+    # ZMQ DEALER (encapsulated by Interface)
+    interface = Interface(tick=tick, sync=False)
+
+    # Channel
+    channel = Channel()
+    await channel.start()
+    print(f"[motion.extension] [run_node] channel start")
+
+    # Wait for ROUTER to be ready (server has __PING__/__PONG__ built-in)
+    # Send mode exactly once; runner requires it before first real payload
+    await interface.ready(timeout=2.0, max=300)
+    print(f"[motion.extension] [run_node] ready")
+
+    try:
+        await run_call(
+            session,
+            (
+                functools.partial(run_tick, session, interface, channel)
+                if tick
+                else functools.partial(run_norm, session, interface, channel)
+            ),
+        )
+    except Exception as e:
+        print(f"[motion.extension] [run_node] [Exception]: {e}")
+        traceback.print_exec()
+    finally:
+        print(f"[motion.extension] [run_node] channel close")
+        await channel.close()
+        print(f"[motion.extension] [run_node] close")
+        await interface.close()
+
+
+async def main():
+    with open("/storage/node/node.json", "r") as f:
+        meta = json.loads(f.read())
+    print(f"[motion.extension] [main] meta={meta}")
+
+    session, tick = meta["session"], meta["tick"]
+    await run_node(session, tick)
 
 
 class MotionExtension(omni.ext.IExt):
