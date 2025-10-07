@@ -89,7 +89,7 @@ def f_prefix(items, q: str, *, kind: str):
     return next(iter(matches))
 
 
-async def f_step(session, control, data, link):
+async def f_step(session, control, effector, data):
     """
     Drive a session with step messages using a control scheme.
 
@@ -419,9 +419,9 @@ async def f_step(session, control, data, link):
 
                 # Send one step message over the session stream
                 if data == "pose":
-                    step = {"pose": {link: pose}}
+                    step = {"pose": {effector: pose}}
                 elif data == "twist":
-                    step = {"twist": {link: twist}}
+                    step = {"twist": {effector: twist}}
                 else:
                     assert False, f"unsupported data type {data}"
 
@@ -602,7 +602,20 @@ async def f_base_close(base, timeout) -> None:
 
 
 async def f_quick(
-    base, timeout, file, runner, device, model, tick, control, data, link, archive
+    base,
+    timeout,
+    file,
+    runner,
+    joint,
+    camera,
+    link,
+    device,
+    model,
+    tick,
+    control,
+    effector,
+    data,
+    archive,
 ):
     """
     One-shot flow:
@@ -625,13 +638,17 @@ async def f_quick(
         scene = client.scene.create(file=file, runner=runner)
 
         # 2) session create (keep context while we operate)
-        async with client.session.create(scene) as session:
+        async with client.session.create(
+            scene, joint=joint, camera=camera, link=link
+        ) as session:
             try:
                 # 3) play
                 await session.play(device=device, model=model, tick=tick)
 
                 # 4) drive (xbox loop)
-                await f_step(session=session, control=control, data=data, link=link)
+                await f_step(
+                    session=session, control=control, effector=effector, data=data
+                )
 
                 # 5) stop
                 await session.stop()
@@ -887,12 +904,12 @@ def session_step(
     context: typer.Context,
     session: str,
     control: str = typer.Option("xbox", "--control", help="Control scheme"),
-    link: str = typer.Option(..., "--link", help="Link name of end effector"),
+    effector: str = typer.Option(..., "--link", help="Link name of end effector"),
     data: str = typer.Option(..., "--data", help="Data format: pose|twist"),
 ):
     client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
     session = f_prefix(client.session.search(session), session, kind="session")
-    asyncio.run(f_step(session, control, data, link))
+    asyncio.run(f_step(session=session, control=control, effector=effector, data=data))
     f_print(session, output=context.obj["output"])
 
 
@@ -926,14 +943,25 @@ def quick_callback(
     context: typer.Context,
     file: str = typer.Option(..., "--file"),
     runner: str = typer.Option("counter", "--runner"),
+    joint: typing.Optional[typing.List[str]] = typer.Option(
+        None, "--joint", help="Repeatable: --joint j1 --joint j2"
+    ),
+    camera: typing.Optional[typing.List[str]] = typer.Option(
+        None,
+        "--camera",
+        help="Repeatable: --camera name=widthxheight (e.g. front=640x480)",
+    ),
+    link: typing.Optional[typing.List[str]] = typer.Option(
+        None, "--link", help="Repeatable: --link ee --link gripper"
+    ),
     device: typing.Optional[str] = typer.Option(None, "--device", help="cpu|cuda"),
     model: typing.Optional[str] = typer.Option(
         None, "--model", help="model|bounce|remote"
     ),
     tick: typing.Optional[bool] = typer.Option(None, "--tick/--no-tick"),
     control: str = typer.Option("xbox", "--control"),
+    effector: str = typer.Option(..., "--effector", help="Link name of end effector"),
     data: str = typer.Option("data", "--data"),
-    link: str = typer.Option("link", "--link"),
     archive: typing.Optional[str] = typer.Option(
         None, "--archive", help="Directory to store archives"
     ),
@@ -968,18 +996,37 @@ def quick_callback(
             assert len(matches) == 1, f"ambiguous host {host}, matches: {matches}"
             context.obj["base"] = next(iter(matches))
 
+    # Parse cameras into {name: {"width": int, "height": int}}
+    def f(entry):
+        try:
+            name, size = entry.split("=", 1)
+            width, height = size.lower().split("x", 1)
+            width, height = int(width), int(height)
+        except Exception:
+            raise typer.BadParameter(
+                f"--camera must be in name=widthxheight format, got {entry!r}"
+            )
+        if width <= 0 or height <= 0:
+            raise typer.BadParameter("--camera width/height must be > 0")
+        return (name, {"width": width, "height": height})
+
+    camera = dict(f(entry) for entry in camera) if camera else None
+
     asyncio.run(
         f_quick(
             base=context.obj["base"],
             timeout=context.obj["timeout"],
             file=file,
             runner=runner,
+            joint=joint,
+            camera=camera,
+            link=link,
             device=device,
             model=model,
             tick=tick,
             control=control,
+            effector=effector,
             data=data,
-            link=link,
             archive=archive,
         )
     )
