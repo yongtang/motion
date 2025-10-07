@@ -767,11 +767,48 @@ def scene_archive(
 # =========================
 # Session wrappers
 # =========================
+
+
 @session_app.command("create", help="Create a Session bound to a Scene (prefix).")
-def session_create(context: typer.Context, scene: str):
+def session_create(
+    context: typer.Context,
+    scene: str,
+    joint: typing.Optional[typing.List[str]] = typer.Option(
+        None,
+        "--joint",
+        help="Repeatable: --joint j1 --joint j2",
+    ),
+    camera: typing.Optional[typing.List[str]] = typer.Option(
+        None,
+        "--camera",
+        help="Repeatable: --camera name=widthxheight (e.g. front=640x480)",
+    ),
+    link: typing.Optional[typing.List[str]] = typer.Option(
+        None,
+        "--link",
+        help="Repeatable: --link ee --link gripper",
+    ),
+):
     client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
     scene = f_prefix(client.scene.search(scene), scene, kind="scene")
-    session = client.session.create(scene)
+
+    # Parse cameras into {name: {"width": int, "height": int}}
+    def f(entry):
+        try:
+            name, size = entry.split("=", 1)
+            width, height = size.lower().split("x", 1)
+            width, height = int(width), int(height)
+        except Exception:
+            raise typer.BadParameter(
+                f"--camera must be in name=widthxheight format, got {entry!r}"
+            )
+        if width <= 0 or height <= 0:
+            raise typer.BadParameter("--camera width/height must be > 0")
+        return (name, {"width": width, "height": height})
+
+    camera = dict(f(entry) for entry in camera) if camera else None
+
+    session = client.session.create(scene, joint=joint, camera=camera, link=link)
     f_print(session, output=context.obj["output"])
 
 
