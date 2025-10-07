@@ -194,11 +194,9 @@ services:
         COPY LICENSE /app/LICENSE
         COPY pyproject.toml /app/pyproject.toml
         COPY src /app/src
+        COPY server/isaac /isaac-sim/exts/motion.extension
         COPY server/channel.py /isaac-sim/exts/motion.extension/motion/channel.py
         COPY server/interface.py /isaac-sim/exts/motion.extension/motion/interface.py
-        COPY server/storage.py /isaac-sim/exts/motion.extension/motion/storage.py
-        COPY server/extension.py /isaac-sim/exts/motion.extension/motion/extension.py
-        COPY server/extension.toml /isaac-sim/exts/motion.extension/config/extension.toml
         ENV ACCEPT_EULA=Y
         ENV PRIVACY_CONSENT=Y
         WORKDIR /app
@@ -211,8 +209,7 @@ services:
           sleep infinity \n\
           exit 0 \n\
         fi \n\
-        sleep infinity \n\
-        echo /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers \n\
+        /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]
