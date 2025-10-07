@@ -4,6 +4,7 @@ import threading
 
 import rclpy
 from rclpy.node import Node
+from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
 from .channel import Channel
@@ -20,7 +21,7 @@ class Motion(Node):
         self.loop = loop
 
         self.subscription = self.create_subscription(
-            String, "joint_states", self.listener_callback, 10
+            JointState, "joint_states", self.listener_callback, 10
         )
         self.publisher = self.create_publisher(String, "joint_trajectory", 10)
         self.timer = self.create_timer(0.5, self.timer_callback)
@@ -33,13 +34,13 @@ class Motion(Node):
         data = data.decode()
         data = json.loads(data)
         msg = String()
-        msg.data = f"{data['ros']}"
+        msg.data = f"{data['joint']}"
         self.publisher.publish(msg)
         self.get_logger().info(f'Publishing: "{msg.data}"')
 
     def listener_callback(self, msg):
-        self.get_logger().info(f'I heard: "{msg.data}"')
-        data = {"ros": msg.data}
+        self.get_logger().info(f'I heard: "{msg}"')
+        data = {"joint": dict(zip(msg.name, msg.position))}
         data = json.dumps(data)
         data = data.encode()
         asyncio.run_coroutine_threadsafe(

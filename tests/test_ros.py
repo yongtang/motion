@@ -11,27 +11,7 @@ import motion
 @pytest.mark.parametrize("runner", ["ros"])
 @pytest.mark.parametrize("model", ["bounce"])
 async def test_ros(scope, docker_compose, runner, model, tmp_path):
-    async def f(i):
-        proc = await asyncio.create_subprocess_exec(
-            "docker",
-            "exec",
-            "-i",
-            f"{scope}-runner",
-            "/ros_entrypoint.sh",
-            "ros2",
-            "topic",
-            "pub",
-            "--once",
-            "/joint_states",
-            "std_msgs/msg/String",
-            f"data: 'Hello World: {i}'",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-        return stdout.decode()
-
-    async def g():
+    async def f():
         proc = await asyncio.create_subprocess_exec(
             "docker",
             "exec",
@@ -73,14 +53,13 @@ async def test_ros(scope, docker_compose, runner, model, tmp_path):
         # drive lifecycle via the async API
         await session.play(device="cpu", model=model, tick=False)
         for i in range(60):  # retry up to 30 times
-            await f(i)
-            stdout = await g()
+            stdout = await f()
             print(f"{stdout}")
-            if "Hello World" in stdout:
+            if "panda_finger_joint1" in stdout:
                 break
             await asyncio.sleep(2)
         else:
-            assert False, "Did not see 'Hello World' after {i} retries"
+            assert False, "Did not see 'panda_finger_joint1' after {i} retries"
         await session.wait("play", timeout=300.0)
 
         await session.stop()
