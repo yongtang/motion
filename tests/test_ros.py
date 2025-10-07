@@ -23,6 +23,7 @@ async def test_ros(scope, docker_compose, runner, model, tmp_path):
             "echo",
             "--once",
             "/joint_trajectory",
+            "--full-length",
             "--timeout",
             "3",
             stdout=asyncio.subprocess.PIPE,
@@ -55,8 +56,8 @@ async def test_ros(scope, docker_compose, runner, model, tmp_path):
         stdout = []
         for i in range(120):  # retry up to 120 times
             stdout.append(await f())
-            print(f"{stdout}")
-            if "panda_finger_joint1" in "".join(stdout):
+            print("\n".join(stdout))
+            if "panda_finger_joint1" in "\n".join(stdout):
                 break
             await asyncio.sleep(2)
         else:
