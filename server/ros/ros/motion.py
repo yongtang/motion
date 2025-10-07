@@ -3,9 +3,10 @@ import json
 import threading
 
 import rclpy
+from builtin_interfaces.msg import Duration
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from std_msgs.msg import String
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from .channel import Channel
 from .interface import Interface
@@ -23,7 +24,7 @@ class Motion(Node):
         self.subscription = self.create_subscription(
             JointState, "joint_states", self.listener_callback, 10
         )
-        self.publisher = self.create_publisher(String, "joint_trajectory", 10)
+        self.publisher = self.create_publisher(JointTrajectory, "joint_trajectory", 10)
         self.timer = self.create_timer(0.5, self.timer_callback)
 
     def timer_callback(self):
@@ -33,10 +34,16 @@ class Motion(Node):
             return
         data = data.decode()
         data = json.loads(data)
-        msg = String()
-        msg.data = f"{data['joint']}"
+
+        keys, values = zip(*data["joint"].items())
+        point = JointTrajectoryPoint()
+        point.time_from_start = Duration(sec=0)
+        point.positions = values
+        msg = JointTrajectory()
+        msg.joint_names = keys
+        msg.points = [point]
         self.publisher.publish(msg)
-        self.get_logger().info(f'Publishing: "{msg.data}"')
+        self.get_logger().info(f'Publishing: "{msg}"')
 
     def listener_callback(self, msg):
         self.get_logger().info(f'I heard: "{msg}"')

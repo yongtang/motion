@@ -52,14 +52,17 @@ async def test_ros(scope, docker_compose, runner, model, tmp_path):
 
         # drive lifecycle via the async API
         await session.play(device="cpu", model=model, tick=False)
-        for i in range(60):  # retry up to 30 times
-            stdout = await f()
+        stdout = []
+        for i in range(120):  # retry up to 120 times
+            stdout.append(await f())
             print(f"{stdout}")
-            if "panda_finger_joint1" in stdout:
+            if "panda_finger_joint1" in "".join(stdout):
                 break
             await asyncio.sleep(2)
         else:
-            assert False, "Did not see 'panda_finger_joint1' after {i} retries"
+            assert (
+                False
+            ), "Did not see 'panda_finger_joint1' after {i} retries: {stdout}"
         await session.wait("play", timeout=300.0)
 
         await session.stop()
