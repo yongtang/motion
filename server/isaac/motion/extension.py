@@ -7,6 +7,7 @@ import logging
 import traceback
 
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
+import numpy
 import omni.ext
 import omni.kit
 import omni.replicator.core
@@ -99,6 +100,40 @@ async def run_call(session, call):
     for k, v in render.items():
         annotator[k].attach(v)
     print(f"[motion.extension] [run_call] Annotator attached")
+
+    def f_annotator(e):
+        print(f"[motion.extension] [run_call] Annotator callback")
+        for k, v in annotator.items():
+            data = numpy.asarray(v.get_data())
+            print(
+                f"[motion.extension] [run_call] Annotator callback data - {k} {data.dtype}/{data.shape}"
+            )
+            # Expect H×W×C with C = 3 (BGR) or 4 (BGRA). Otherwise skip.
+            if (
+                data.ndim != 3
+                or data.shape[2] not in (3, 4)  # channel count must be 3 or 4
+                or data.shape[0] <= 0  # height must be > 0
+                or data.shape[1] <= 0  # width must be > 0
+            ):
+                continue
+            if data.dtype is not numpy.uint8:
+                continue
+            if data.shape[2] == 4:
+                # BGRA -> RGBA
+                data = data[..., [2, 1, 0, 3]]
+            else:
+                # BGR -> RGB
+                data = data[..., [2, 1, 0]]
+            data = numpy.ascontiguousarray(data)
+            print(
+                f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
+            )
+
+    sub = (
+        omni.kit.app.get_app()
+        .get_update_event_stream()
+        .create_subscription_to_pop(f_annotator)
+    )
 
     print(f"[motion.extension] [run_call] Timeline playing")
     omni.timeline.get_timeline_interface().play()
