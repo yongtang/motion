@@ -68,6 +68,13 @@ async def run_call(session, call):
         prim_paths_expr=("/World/**" if "*" in joint else joint)
     )
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
+    articulated_prims = []
+    for prim in stage.Traverse():
+      # Check if prim can be articulated
+      if prim_utils.is_prim_path_articulated(prim.GetPath().pathString):
+        articulated_prims.append(prim)
+
+    print(f"[motion.extension] [run_call] Articulated prims: {[prim.GetPath() for prim in articulated_prims]}")
 
     camera = (
         {
