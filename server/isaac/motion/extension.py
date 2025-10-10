@@ -11,6 +11,7 @@ import numpy
 import omni.ext
 import omni.kit
 import omni.replicator.core
+import omni.isaac.core
 import omni.timeline
 import omni.usd
 import pxr
@@ -37,6 +38,9 @@ async def run_call(session, call):
     camera = metadata["camera"]
     print(f"[motion.extension] [run_call] Loaded camera {camera}")
 
+    joint = metadata["joint"]
+    print(f"[motion.extension] [run_call] Loaded joint {joint}")
+
     ctx = omni.usd.get_context()
     if ctx.get_stage():
         print("[motion.extension] [run_call] Closing existing stage...")
@@ -59,6 +63,11 @@ async def run_call(session, call):
     assert stage
 
     print(f"[motion.extension] [run_call] Stage loaded")
+
+    articulation = omni.isaac.core.articulations.Articulation(
+        prim_paths_expr=("/World/**" if "*" in joint else joint)
+    )
+    print(f"[motion.extension] [run_call] Articulation: {articulation}")
 
     camera = (
         {
