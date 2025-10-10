@@ -152,8 +152,10 @@ async def run_call(session, call):
                 f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
             )
         print(f"[motion.extension] [run_call] Articulation callback")
-        joint = dict(zip(articulation.dof_names, articulation.get_joint_positions()))
-        print(f"[motion.extension] [run_call] Articulation callback - {joint}")
+        #joint = dict(zip(articulation.dof_names, articulation.get_joint_positions()))
+        x = articulation.dof_names
+        y = articulation.get_joint_positions()
+        print(f"[motion.extension] [run_call] Articulation callback - {x} {y}")
 
     sub = (
         omni.kit.app.get_app()
