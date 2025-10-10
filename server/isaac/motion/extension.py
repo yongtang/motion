@@ -68,8 +68,6 @@ async def run_call(session, call):
         prim_paths_expr=("/World/**" if "*" in joint else joint)
     )
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
-    articulation.initialize()
-    print(f"[motion.extension] [run_call] Articulation initialized")
 
     camera = (
         {
@@ -139,6 +137,9 @@ async def run_call(session, call):
             print(
                 f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
             )
+        print(f"[motion.extension] [run_call] Articulation callback")
+        joint = dict(zip(articulation.dof_names, articulation.get_joint_position()))
+        print(f"[motion.extension] [run_call] Articulation callback - {joint}")
 
     sub = (
         omni.kit.app.get_app()
