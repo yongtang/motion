@@ -68,6 +68,7 @@ async def run_call(session, call):
         prim_paths_expr=("/World/**" if "*" in joint else joint)
     )
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
+    import omni.isaac.core.utils.prims as prim_utils
     articulated_prims = []
     for prim in stage.Traverse():
       # Check if prim can be articulated
