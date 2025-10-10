@@ -64,6 +64,9 @@ async def run_call(session, call):
 
     print(f"[motion.extension] [run_call] Stage loaded")
 
+    prim = stage.GetDefaultPrim()
+    print(f"[motion.extension] [run_call] Prim: {prim}")
+
     articulation = isaacsim.core.prims.Articulation(
         prim_paths_expr=("/World/Scene/ur10/**" if "*" in joint else joint)
     )
