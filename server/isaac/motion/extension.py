@@ -67,8 +67,9 @@ async def run_call(session, call):
     articulation = isaacsim.core.prims.Articulation(
         prim_paths_expr=("/World/**" if "*" in joint else joint)
     )
-    articulation.initialize()
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
+    articulation.initialize()
+    print(f"[motion.extension] [run_call] Articulation initialized")
 
     camera = (
         {
