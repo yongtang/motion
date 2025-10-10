@@ -6,12 +6,12 @@ import json
 import logging
 import traceback
 
+import isaacsim.core.prims
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
 import numpy
 import omni.ext
 import omni.kit
 import omni.replicator.core
-from omni.isaac.core import articulations
 import omni.timeline
 import omni.usd
 import pxr
@@ -64,9 +64,10 @@ async def run_call(session, call):
 
     print(f"[motion.extension] [run_call] Stage loaded")
 
-    articulation = articulations.Articulation(
+    articulation = isaacsim.core.prims.Articulation(
         prim_paths_expr=("/World/**" if "*" in joint else joint)
     )
+    articulation.initialize()
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
 
     camera = (
