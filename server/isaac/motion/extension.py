@@ -11,7 +11,7 @@ import numpy
 import omni.ext
 import omni.kit
 import omni.replicator.core
-import omni.isaac.core
+from omni.isaac.core import articulations
 import omni.timeline
 import omni.usd
 import pxr
@@ -64,7 +64,7 @@ async def run_call(session, call):
 
     print(f"[motion.extension] [run_call] Stage loaded")
 
-    articulation = omni.isaac.core.articulations.Articulation(
+    articulation = articulations.Articulation(
         prim_paths_expr=("/World/**" if "*" in joint else joint)
     )
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
