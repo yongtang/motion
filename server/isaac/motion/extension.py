@@ -68,7 +68,7 @@ async def run_call(session, call):
     print(f"[motion.extension] [run_call] Prim: {prim}")
 
     articulation = isaacsim.core.prims.Articulation(
-        prim_paths_expr=("/World/Scene/ur10/**" if "*" in joint else joint)
+        prim_paths_expr=("/panda/**" if "*" in joint else joint)
     )
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
     import omni.isaac.core.utils.prims as prim_utils
