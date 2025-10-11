@@ -6,6 +6,7 @@ import json
 import logging
 import traceback
 
+import isaacsim.core.experimental.prims
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
 import numpy
 import omni.ext
@@ -37,6 +38,12 @@ async def run_call(session, call):
     camera = metadata["camera"]
     print(f"[motion.extension] [run_call] Loaded camera {camera}")
 
+    joint = metadata["joint"]
+    print(f"[motion.extension] [run_call] Loaded joint {joint}")
+
+    link = metadata["link"]
+    print(f"[motion.extension] [run_call] Loaded link {link}")
+
     ctx = omni.usd.get_context()
     if ctx.get_stage():
         print("[motion.extension] [run_call] Closing existing stage...")
@@ -59,6 +66,15 @@ async def run_call(session, call):
     assert stage
 
     print(f"[motion.extension] [run_call] Stage loaded")
+
+    link = isaacsim.core.experimental.prims.XformPrim(
+        paths=(
+            [str(e.GetPath()) for e in stage.Traverse() if e.GetTypeName() == "Xform"]
+            if "*" in link
+            else link
+        )
+    )
+    print(f"[motion.extension] [run_call] Link: {link.paths} - {link}")
 
     camera = (
         {
@@ -128,8 +144,13 @@ async def run_call(session, call):
             print(
                 f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
             )
+        print(f"[motion.extension] [run_call] Link callback")
+        position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
+        print(
+            f"[motion.extension] [run_call] Link callback - {link.paths} {position.dtype}/{position.shape} /{quaternion.dtype}/{quaternion.shape}"
+        )
 
-    sub = (
+    subscription = (
         omni.kit.app.get_app()
         .get_update_event_stream()
         .create_subscription_to_pop(f_annotator)
