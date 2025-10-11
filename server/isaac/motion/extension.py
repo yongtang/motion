@@ -67,6 +67,13 @@ async def run_call(session, call):
 
     print(f"[motion.extension] [run_call] Stage loaded")
 
+    articulation = [
+        str(e.GetPath())
+        for e in stage.Traverse()
+        if e.HasAPI(pxr.UsdPhysics.ArticulationRootAPI)
+    ]
+    print(f"[motion.extension] [run_call] Articulation: {articulation}")
+
     link = isaacsim.core.experimental.prims.XformPrim(
         paths=(
             [str(e.GetPath()) for e in stage.Traverse() if e.GetTypeName() == "Xform"]
