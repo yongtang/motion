@@ -168,9 +168,9 @@ async def run_call(session, call):
                 f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
             )
         print(f"[motion.extension] [run_call] Link callback")
-        position, orientation = link.get_world_poses()
+        position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
         print(
-            f"[motion.extension] [run_call] Link callback - {link.paths} {position}/{orientation}"
+            f"[motion.extension] [run_call] Link callback - {link.paths} {position.dtype}/{position.shape} /{quaternion.dtype}/{quaternion.shape}"
         )
 
         print(f"[motion.extension] [run_call] Articulation callback")
