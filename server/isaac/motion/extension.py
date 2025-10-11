@@ -69,7 +69,7 @@ async def run_call(session, call):
     print(f"[motion.extension] [run_call] Stage loaded")
 
     link = isaacsim.core.experimental.prims.XformPrim(
-        prim_paths_expr=(
+        paths=(
             [str(e.GetPath()) for e in stage.Traverse() if e.GetTypeName() == "Xform"]
             if "*" in link
             else link
