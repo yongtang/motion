@@ -168,6 +168,13 @@ async def run_call(session, call):
             print(
                 f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
             )
+        print(f"[motion.extension] [run_call] Link callback")
+        for k, v in link.items():
+            position, orientation = v.get_world_pose()
+            print(
+                f"[motion.extension] [run_call] Link callback - {k} {position}/{orientation}"
+            )
+
         print(f"[motion.extension] [run_call] Articulation callback")
         # joint = dict(zip(articulation.dof_names, articulation.get_joint_positions()))
         x = articulation.dof_names
