@@ -68,15 +68,14 @@ async def run_call(session, call):
 
     print(f"[motion.extension] [run_call] Stage loaded")
 
-    link = {
-        prim: isaacsim.core.experimental.prims.XformPrim(prim)
-        for prim in (
+    link = isaacsim.core.experimental.prims.XformPrim(
+        prim_paths=(
             [str(e.GetPath()) for e in stage.Traverse() if e.GetTypeName() == "Xform"]
             if "*" in link
             else link
         )
-    }
-    print(f"[motion.extension] [run_call] Link: {link}")
+    )
+    print(f"[motion.extension] [run_call] Link: {link.prim_paths} - {link}")
 
     prim = stage.GetDefaultPrim()
     print(f"[motion.extension] [run_call] Prim: {prim}")
@@ -169,11 +168,10 @@ async def run_call(session, call):
                 f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
             )
         print(f"[motion.extension] [run_call] Link callback")
-        for k, v in link.items():
-            position, orientation = v.get_world_pose()
-            print(
-                f"[motion.extension] [run_call] Link callback - {k} {position}/{orientation}"
-            )
+        position, orientation = link.get_world_poses()
+        print(
+            f"[motion.extension] [run_call] Link callback - {link.prim_paths} {position}/{orientation}"
+        )
 
         print(f"[motion.extension] [run_call] Articulation callback")
         # joint = dict(zip(articulation.dof_names, articulation.get_joint_positions()))
