@@ -74,6 +74,10 @@ async def run_call(session, call):
     ]
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
 
+    articulation = isaacsim.core.experimental.prims.Articulation(articulation)
+    print(f"[motion.extension] [run_call] Articulation Link: {articulation.link_paths}")
+    print(f"[motion.extension] [run_call] Articulation Joint: {articulation.dof_paths}")
+
     link = isaacsim.core.experimental.prims.XformPrim(
         paths=(
             [str(e.GetPath()) for e in stage.Traverse() if e.GetTypeName() == "Xform"]
@@ -151,6 +155,10 @@ async def run_call(session, call):
             print(
                 f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
             )
+        print(f"[motion.extension] [run_call] Articulation callback")
+        state = dict(zip(articulation.dof_paths, articulation.get_dof_positions()))
+        print(f"[motion.extension] [run_call] Articulation callback - state: {state}")
+
         print(f"[motion.extension] [run_call] Link callback")
         position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
         print(
