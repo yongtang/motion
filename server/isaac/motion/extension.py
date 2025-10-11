@@ -6,6 +6,7 @@ import json
 import logging
 import traceback
 
+import isaacsim.core.experimental.prims
 import isaacsim.core.prims
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
 import numpy
@@ -41,6 +42,9 @@ async def run_call(session, call):
     joint = metadata["joint"]
     print(f"[motion.extension] [run_call] Loaded joint {joint}")
 
+    link = metadata["link"]
+    print(f"[motion.extension] [run_call] Loaded link {link}")
+
     ctx = omni.usd.get_context()
     if ctx.get_stage():
         print("[motion.extension] [run_call] Closing existing stage...")
@@ -64,11 +68,22 @@ async def run_call(session, call):
 
     print(f"[motion.extension] [run_call] Stage loaded")
 
+    link = {
+        prim: isaacsim.core.experimental.prims.XformPrim(prim)
+        for prim in (
+            [str(e.GetPath()) for e in stage.Traverse() if e.GetTypeName() == "Xform"]
+            if "*" in link
+            else link
+        )
+    }
+    print(f"[motion.extension] [run_call] Link: {link}")
+
     prim = stage.GetDefaultPrim()
     print(f"[motion.extension] [run_call] Prim: {prim}")
 
     articulation = isaacsim.core.prims.Articulation(
-        prim_paths_expr=("/panda/**" if "*" in joint else joint)
+        prim_paths_expr=["/panda"]
+        # prim_paths_expr=("/panda/**" if "*" in joint else joint)
     )
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
     import omni.isaac.core.utils.prims as prim_utils
@@ -77,11 +92,13 @@ async def run_call(session, call):
 
     articulated_prims = []
     for prim in stage.Traverse():
-      # Check if prim can be articulated
-      if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
-        articulated_prims.append(prim)
+        # Check if prim can be articulated
+        if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
+            articulated_prims.append(prim)
 
-    print(f"[motion.extension] [run_call] Articulated prims: {[prim.GetPath() for prim in articulated_prims]}")
+    print(
+        f"[motion.extension] [run_call] Articulated prims: {[prim.GetPath() for prim in articulated_prims]}"
+    )
 
     camera = (
         {
@@ -152,7 +169,7 @@ async def run_call(session, call):
                 f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
             )
         print(f"[motion.extension] [run_call] Articulation callback")
-        #joint = dict(zip(articulation.dof_names, articulation.get_joint_positions()))
+        # joint = dict(zip(articulation.dof_names, articulation.get_joint_positions()))
         x = articulation.dof_names
         y = articulation.get_joint_positions()
         print(f"[motion.extension] [run_call] Articulation callback - {x} {y}")
