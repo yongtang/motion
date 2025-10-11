@@ -74,14 +74,17 @@ async def run_call(session, call):
     ]
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
 
+    articulation = isaacsim.core.experimental.prims.Articulation(articulation)
+    print(f"[motion.extension] [run_call] Articulation Joint: {articulation.dof_paths}")
+
     link = isaacsim.core.experimental.prims.XformPrim(
         paths=(
-            [str(e.GetPath()) for e in stage.Traverse() if e.GetTypeName() == "Xform"]
+            list(itertools.chain.from_iterable(articulation.link_paths))
             if "*" in link
             else link
         )
     )
-    print(f"[motion.extension] [run_call] Link: {link.paths} - {link}")
+    print(f"[motion.extension] [run_call] Link: {link.paths}")
 
     camera = (
         {
@@ -151,11 +154,45 @@ async def run_call(session, call):
             print(
                 f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
             )
+        print(f"[motion.extension] [run_call] Articulation callback")
+        state = dict(
+            zip(
+                list(itertools.chain.from_iterable(articulation.dof_paths)),
+                list(
+                    itertools.chain.from_iterable(
+                        numpy.array(articulation.get_dof_positions()).tolist()
+                    )
+                ),
+            )
+        )
+        state = (
+            state if "*" in joint else {k: v for k, v in state.items() if k in joint}
+        )
+        print(f"[motion.extension] [run_call] Articulation callback - state: {state}")
+
         print(f"[motion.extension] [run_call] Link callback")
         position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
-        print(
-            f"[motion.extension] [run_call] Link callback - {link.paths} {position.dtype}/{position.shape} /{quaternion.dtype}/{quaternion.shape}"
-        )
+        position, quaternion = (
+            numpy.array(position),
+            numpy.array(quaternion)[:, [1, 2, 3, 0]],
+        )  # quaternion: x, y, z, w
+        pose = {
+            e: {
+                "position": {
+                    "x": p[0],
+                    "y": p[1],
+                    "z": p[2],
+                },
+                "orientation": {
+                    "x": q[0],
+                    "y": q[1],
+                    "z": q[2],
+                    "w": q[3],
+                },
+            }
+            for e, p, q in zip(link.paths, position, quaternion)
+        }
+        print(f"[motion.extension] [run_call] Link callback - pose: {pose}")
 
     subscription = (
         omni.kit.app.get_app()
