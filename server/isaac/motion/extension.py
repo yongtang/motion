@@ -75,7 +75,7 @@ async def run_call(session, call):
             else link
         )
     )
-    print(f"[motion.extension] [run_call] Link: {link.prim_paths} - {link}")
+    print(f"[motion.extension] [run_call] Link: {link.paths} - {link}")
 
     prim = stage.GetDefaultPrim()
     print(f"[motion.extension] [run_call] Prim: {prim}")
@@ -170,7 +170,7 @@ async def run_call(session, call):
         print(f"[motion.extension] [run_call] Link callback")
         position, orientation = link.get_world_poses()
         print(
-            f"[motion.extension] [run_call] Link callback - {link.prim_paths} {position}/{orientation}"
+            f"[motion.extension] [run_call] Link callback - {link.paths} {position}/{orientation}"
         )
 
         print(f"[motion.extension] [run_call] Articulation callback")
