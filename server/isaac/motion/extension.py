@@ -127,40 +127,62 @@ async def run_call(session, call):
         annotator[k].attach(v)
     print(f"[motion.extension] [run_call] Annotator attached")
 
-    def f_annotator(e):
+    def f_data(e):
         print(f"[motion.extension] [run_call] Annotator callback")
-        for k, v in annotator.items():
-            data = numpy.asarray(v.get_data())
-            print(
-                f"[motion.extension] [run_call] Annotator callback data - {k} {data.dtype}/{data.shape}"
+        entries = {n: numpy.asarray(e.get_data()) for n, e in annotator.items()}
+        # Expect numpy.uint8 or numpy.float64
+        assert all(e.dtype in (numpy.uint8, numpy.float64) for e in entries.values()), {
+            n: e.dtype for n, e in entries.items()
+        }
+
+        # Expect H×W×C with C = 3 (BGR) or 4 (BGRA).
+        assert all(
+            (
+                (e.ndim == 1 and e.shape[0] == 0)
+                or (
+                    e.ndim == 3
+                    and e.shape[0] > 0
+                    and e.shape[1] > 0
+                    and e.shape[2] in (3, 4)
+                )
             )
-            # Expect H×W×C with C = 3 (BGR) or 4 (BGRA). Otherwise skip.
-            if (
-                data.ndim != 3
-                or data.shape[2] not in (3, 4)  # channel count must be 3 or 4
-                or data.shape[0] <= 0  # height must be > 0
-                or data.shape[1] <= 0  # width must be > 0
-            ):
-                continue
-            if data.dtype is not numpy.uint8:
-                continue
-            if data.shape[2] == 4:
-                # BGRA -> RGBA
-                data = data[..., [2, 1, 0, 3]]
-            else:
-                # BGR -> RGB
-                data = data[..., [2, 1, 0]]
-            data = numpy.ascontiguousarray(data)
-            print(
-                f"[motion.extension] [run_call] Annotator callback done - {k} {data.dtype}/{data.shape}"
+            for e in entries.values()
+        ), {n: e.shape for n, e in entries.items()}
+        # BGRA/BGR -> RGBA/RGB
+        entries = {
+            n: (
+                e
+                if e.size == 0
+                else (e[..., [2, 1, 0]] if e.shape[2] == 3 else e[..., [2, 1, 0, 3]])
             )
+            for n, e in entries.items()
+        }
+        # numpy.uint8
+        entries = {
+            n: (
+                (numpy.clip(e, 0.0, 1.0) * 255).astype(numpy.uint8)
+                if e.dtype is not numpy.uint8
+                else e
+            )
+            for n, e in entries.items()
+        }
+        entries = {n: numpy.ascontiguousarray(e) for n, e in entries.items()}
+        entries = {
+            n: {
+                "dtype": e.dtype,
+                "shape": e.shape,
+            }
+            for n, e in entries.items()
+        }
+        print(f"[motion.extension] [run_call] Annotator callback - camera: {entries}")
+
         print(f"[motion.extension] [run_call] Articulation callback")
         state = dict(
             zip(
                 list(itertools.chain.from_iterable(articulation.dof_paths)),
                 list(
                     itertools.chain.from_iterable(
-                        numpy.array(articulation.get_dof_positions()).tolist()
+                        numpy.asarray(articulation.get_dof_positions()).tolist()
                     )
                 ),
             )
@@ -173,8 +195,8 @@ async def run_call(session, call):
         print(f"[motion.extension] [run_call] Link callback")
         position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
         position, quaternion = (
-            numpy.array(position),
-            numpy.array(quaternion)[:, [1, 2, 3, 0]],
+            numpy.asarray(position),
+            numpy.asarray(quaternion)[:, [1, 2, 3, 0]],
         )  # quaternion: x, y, z, w
         pose = {
             e: {
@@ -197,7 +219,7 @@ async def run_call(session, call):
     subscription = (
         omni.kit.app.get_app()
         .get_update_event_stream()
-        .create_subscription_to_pop(f_annotator)
+        .create_subscription_to_pop(f_data)
     )
 
     print(f"[motion.extension] [run_call] Timeline playing")
