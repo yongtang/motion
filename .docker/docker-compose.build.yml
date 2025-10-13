@@ -87,6 +87,7 @@ services:
             gstreamer-plugins-rs \
             gstreamer-devel \
             gstreamer-libnice \
+            python3-aiohttp \
             gnu_parallel \
             ffmpeg
         COPY LICENSE /app/LICENSE
@@ -95,20 +96,13 @@ services:
         COPY server /app/server
         WORKDIR /app
         RUN echo -e '#!/bin/bash \n\
-        set  -x \n\
+        set -e -x \n\
         if [ -z "$${MOTION}" ]; then \n\
           echo "MOTION not set, sleeping" \n\
           sleep infinity \n\
           exit 0 \n\
         fi \n\
-        echo python3 -m server.live \n\
-        until ffprobe -v error -rtsp_transport tcp rtsp://127.0.0.1:8554/RTSPWriter_World_Scene_CameraA_rgb >/dev/null 2>&1; do \n\
-        echo "Waiting for RTSP mount..." \n\
-        sleep 2 \n\
-        done \n\
-        echo gst-launch-1.0 -e rtspsrc location="rtsp://127.0.0.1:8554/RTSPWriter_World_Scene_CameraA_rgb" protocols=tcp latency=200 tcp-timeout=0 name=src  src. ! application/x-rtp,media=video,encoding-name=H265 !  rtph265depay ! h265parse config-interval=-1 !  mp4mux faststart=true streamable=true !  filesink location=/out_hevc.mp4 \n\
-        gst-launch-1.0 -e rtspsrc location="rtsp://127.0.0.1:8554/RTSPWriter_World_Scene_CameraA_rgb" protocols=tcp latency=200 tcp-timeout=0 name=src  src. ! application/x-rtp,media=video,encoding-name=H265 !  rtph265depay ! h265parse config-interval=-1 !  splitmuxsink location="/out-%05d.mp4"  max-size-time=$((5*60*1000000000))  muxer=mp4mux \n\
-        sleep infinity \n\
+        python3 -m server.live \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]
