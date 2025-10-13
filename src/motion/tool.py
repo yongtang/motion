@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import importlib.resources
+import itertools
 import json
 import logging
 import math
@@ -87,6 +88,14 @@ def f_prefix(items, q: str, *, kind: str):
     assert matches, f"{kind} not found for {q!r}"
     assert len(matches) == 1, f"ambiguous {kind} prefix {q!r}, {len(matches)} matches"
     return next(iter(matches))
+
+
+async def f_data(session):
+    async with session.stream(start=1) as stream:
+        for i in itertools.count():
+            with contextlib.suppress(asyncio.TimeoutError):
+                msg = await stream.data()
+                log.info(f"Data: {msg}")
 
 
 async def f_step(session, control, effector, data):
@@ -646,8 +655,14 @@ async def f_quick(
                 await session.play(device=device, model=model, tick=tick)
 
                 # 4) drive (xbox loop)
-                await f_step(
-                    session=session, control=control, effector=effector, data=data
+                await asyncio.gather(
+                    f_data(session=session),
+                    f_step(
+                        session=session,
+                        control=control,
+                        effector=effector,
+                        data=data,
+                    ),
                 )
 
                 # 5) stop

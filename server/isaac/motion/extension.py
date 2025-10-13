@@ -20,12 +20,153 @@ from .channel import Channel
 from .interface import Interface
 
 
-async def run_tick(session, interface, channel):
-    assert False
+def f_data(e, session, interface, channel, articulation, joint, link, annotator):
+    print(f"[motion.extension] [run_call] Annotator callback")
+    entries = {n: numpy.asarray(e.get_data()) for n, e in annotator.items()}
+    # Expect numpy.uint8 or numpy.float64
+    assert all(e.dtype in (numpy.uint8, numpy.float64) for e in entries.values()), {
+        n: e.dtype for n, e in entries.items()
+    }
+
+    # Expect H×W×C with C = 3 (BGR) or 4 (BGRA).
+    assert all(
+        (
+            (e.ndim == 1 and e.shape[0] == 0)
+            or (
+                e.ndim == 3
+                and e.shape[0] > 0
+                and e.shape[1] > 0
+                and e.shape[2] in (3, 4)
+            )
+        )
+        for e in entries.values()
+    ), {n: e.shape for n, e in entries.items()}
+    # BGRA/BGR -> RGBA/RGB
+    entries = {
+        n: (
+            e
+            if e.size == 0
+            else (e[..., [2, 1, 0]] if e.shape[2] == 3 else e[..., [2, 1, 0, 3]])
+        )
+        for n, e in entries.items()
+    }
+    # numpy.uint8
+    entries = {
+        n: (
+            (numpy.clip(e, 0.0, 1.0) * 255).astype(numpy.uint8)
+            if e.dtype is not numpy.uint8
+            else e
+        )
+        for n, e in entries.items()
+    }
+    entries = {n: numpy.ascontiguousarray(e) for n, e in entries.items()}
+    entries = {
+        n: {
+            "dtype": str(e.dtype),
+            "shape": str(e.shape),
+        }
+        for n, e in entries.items()
+    }
+    print(f"[motion.extension] [run_call] Annotator callback - camera: {entries}")
+
+    print(f"[motion.extension] [run_call] Articulation callback")
+    state = dict(
+        zip(
+            list(itertools.chain.from_iterable(articulation.dof_paths)),
+            list(
+                itertools.chain.from_iterable(
+                    numpy.asarray(articulation.get_dof_positions()).tolist()
+                )
+            ),
+        )
+    )
+    state = state if "*" in joint else {k: v for k, v in state.items() if k in joint}
+    print(f"[motion.extension] [run_call] Articulation callback - state: {state}")
+
+    print(f"[motion.extension] [run_call] Link callback")
+    position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
+    position, quaternion = (
+        numpy.asarray(position),
+        numpy.asarray(quaternion)[:, [1, 2, 3, 0]],
+    )  # quaternion: x, y, z, w
+    pose = {
+        e: {
+            "position": {
+                "x": float(p[0]),
+                "y": float(p[1]),
+                "z": float(p[2]),
+            },
+            "orientation": {
+                "x": float(q[0]),
+                "y": float(q[1]),
+                "z": float(q[2]),
+                "w": float(q[3]),
+            },
+        }
+        for e, p, q in zip(link.paths, position, quaternion)
+    }
+    print(f"[motion.extension] [run_call] Link callback - pose: {pose}")
+    try:
+        data = json.dumps(
+            {
+                "joint": state,
+                "camera": entries,
+                "pose": pose,
+            },
+            sort_keys=True,
+        ).encode()
+        omni.kit.async_engine.run_coroutine(channel.publish_data(session, data))
+        print(f"[motion.extension] [run_call] Channel callback: done - {data}")
+    except Exception as e:
+        print(f"[motion.extension] [run_call] Channel callback: {e}")
+        raise
 
 
-async def run_norm(session, interface, channel):
-    assert False
+async def run_tick(session, interface, channel, articulation, joint, link, annotator):
+    print(f"[motion.extension] [run_call] [run_tick] subscription")
+    subscription = (
+        omni.kit.app.get_app()
+        .get_update_event_stream()
+        .create_subscription_to_pop(
+            functools.partial(
+                f_data,
+                session=session,
+                interface=interface,
+                channel=channel,
+                articulation=articulation,
+                joint=joint,
+                link=link,
+                annotator=annotator,
+            )
+        )
+    )
+    print(f"[motion.extension] [run_call] [run_tick] Timeline playing")
+    omni.timeline.get_timeline_interface().play()
+    print(f"[motion.extension] [run_call] [run_tick] Timeline in play")
+    await asyncio.sleep(float("inf"))
+
+
+async def run_norm(session, interface, channel, articulation, joint, link, annotator):
+    print(f"[motion.extension] [run_call] [run_norm] subscription")
+    subscription = (
+        omni.kit.app.get_app()
+        .get_update_event_stream()
+        .create_subscription_to_pop(
+            functools.partial(
+                f_data,
+                session=session,
+                interface=interface,
+                channel=channel,
+                articulation=articulation,
+                joint=joint,
+                link=link,
+                annotator=annotator,
+            )
+        )
+    )
+    print(f"[motion.extension] [run_call] [run_norm] Timeline playing")
+    omni.timeline.get_timeline_interface().play()
+    print(f"[motion.extension] [run_call] [run_norm] Timeline in play")
 
 
 async def run_call(session, call):
@@ -127,110 +268,13 @@ async def run_call(session, call):
         annotator[k].attach(v)
     print(f"[motion.extension] [run_call] Annotator attached")
 
-    def f_data(e):
-        print(f"[motion.extension] [run_call] Annotator callback")
-        entries = {n: numpy.asarray(e.get_data()) for n, e in annotator.items()}
-        # Expect numpy.uint8 or numpy.float64
-        assert all(e.dtype in (numpy.uint8, numpy.float64) for e in entries.values()), {
-            n: e.dtype for n, e in entries.items()
-        }
-
-        # Expect H×W×C with C = 3 (BGR) or 4 (BGRA).
-        assert all(
-            (
-                (e.ndim == 1 and e.shape[0] == 0)
-                or (
-                    e.ndim == 3
-                    and e.shape[0] > 0
-                    and e.shape[1] > 0
-                    and e.shape[2] in (3, 4)
-                )
-            )
-            for e in entries.values()
-        ), {n: e.shape for n, e in entries.items()}
-        # BGRA/BGR -> RGBA/RGB
-        entries = {
-            n: (
-                e
-                if e.size == 0
-                else (e[..., [2, 1, 0]] if e.shape[2] == 3 else e[..., [2, 1, 0, 3]])
-            )
-            for n, e in entries.items()
-        }
-        # numpy.uint8
-        entries = {
-            n: (
-                (numpy.clip(e, 0.0, 1.0) * 255).astype(numpy.uint8)
-                if e.dtype is not numpy.uint8
-                else e
-            )
-            for n, e in entries.items()
-        }
-        entries = {n: numpy.ascontiguousarray(e) for n, e in entries.items()}
-        entries = {
-            n: {
-                "dtype": e.dtype,
-                "shape": e.shape,
-            }
-            for n, e in entries.items()
-        }
-        print(f"[motion.extension] [run_call] Annotator callback - camera: {entries}")
-
-        print(f"[motion.extension] [run_call] Articulation callback")
-        state = dict(
-            zip(
-                list(itertools.chain.from_iterable(articulation.dof_paths)),
-                list(
-                    itertools.chain.from_iterable(
-                        numpy.asarray(articulation.get_dof_positions()).tolist()
-                    )
-                ),
-            )
-        )
-        state = (
-            state if "*" in joint else {k: v for k, v in state.items() if k in joint}
-        )
-        print(f"[motion.extension] [run_call] Articulation callback - state: {state}")
-
-        print(f"[motion.extension] [run_call] Link callback")
-        position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
-        position, quaternion = (
-            numpy.asarray(position),
-            numpy.asarray(quaternion)[:, [1, 2, 3, 0]],
-        )  # quaternion: x, y, z, w
-        pose = {
-            e: {
-                "position": {
-                    "x": p[0],
-                    "y": p[1],
-                    "z": p[2],
-                },
-                "orientation": {
-                    "x": q[0],
-                    "y": q[1],
-                    "z": q[2],
-                    "w": q[3],
-                },
-            }
-            for e, p, q in zip(link.paths, position, quaternion)
-        }
-        print(f"[motion.extension] [run_call] Link callback - pose: {pose}")
-
-    subscription = (
-        omni.kit.app.get_app()
-        .get_update_event_stream()
-        .create_subscription_to_pop(f_data)
-    )
-
-    print(f"[motion.extension] [run_call] Timeline playing")
-    omni.timeline.get_timeline_interface().play()
-    print(f"[motion.extension] [run_call] Timeline in play")
-
     try:
-        await asyncio.sleep(float("inf"))
-        print("[motion.extension] [run_call] Running")
-        await call()
-        print("[motion.extension] [run_call] Stopped")
+        print(f"[motion.extension] [run_call] Callback call")
+        await call(
+            articulation=articulation, joint=joint, link=link, annotator=annotator
+        )
+        print(f"[motion.extension] [run_call] Callback done")
+
     except Exception as e:
         print(f"[motion.extension] [run_call] [Exception]: {e}")
         traceback.print_exec()
@@ -264,9 +308,13 @@ async def run_node(session: str, tick: bool):
         await run_call(
             session,
             (
-                functools.partial(run_tick, session, interface, channel)
+                functools.partial(
+                    run_tick, session=session, interface=interface, channel=channel
+                )
                 if tick
-                else functools.partial(run_norm, session, interface, channel)
+                else functools.partial(
+                    run_norm, session=session, interface=interface, channel=channel
+                )
             ),
         )
     except Exception as e:
