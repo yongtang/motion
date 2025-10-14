@@ -20,7 +20,7 @@ from .channel import Channel
 from .interface import Interface
 
 
-def f_data(e, session, interface, channel, articulation, joint, link, annotator):
+def f_data(e, session, interface, channel, articulation, joint, link, annotator, loop):
     print(f"[motion.extension] [run_call] Annotator callback")
     entries = {n: numpy.asarray(e.get_data()) for n, e in annotator.items()}
     # Expect numpy.uint8 or numpy.float64
@@ -116,16 +116,18 @@ def f_data(e, session, interface, channel, articulation, joint, link, annotator)
             sort_keys=True,
         ).encode()
         print(f"[motion.extension] [run_call] Callback: {data}")
-        omni.kit.async_engine.run_coroutine(channel.publish_data(session, data))
+        asyncio.run_coroutine_threadsafe(channel.publish_data(session, data), loop)
         print(f"[motion.extension] [run_call] Channel callback done")
-        omni.kit.async_engine.run_coroutine(interface.send(data))
+        asyncio.run_coroutine_threadsafe(interface.send(data), loop)
         print(f"[motion.extension] [run_call] Interface callback done")
     except Exception as e:
         print(f"[motion.extension] [run_call] Callback: {e}")
         raise
 
 
-async def run_tick(session, interface, channel, articulation, joint, link, annotator):
+async def run_tick(
+    session, interface, channel, articulation, joint, link, annotator, loop
+):
     print(f"[motion.extension] [run_call] [run_tick] subscription")
     subscription = (
         omni.kit.app.get_app()
@@ -140,6 +142,7 @@ async def run_tick(session, interface, channel, articulation, joint, link, annot
                 joint=joint,
                 link=link,
                 annotator=annotator,
+                loop=loop,
             )
         )
     )
@@ -149,7 +152,9 @@ async def run_tick(session, interface, channel, articulation, joint, link, annot
     await asyncio.sleep(float("inf"))
 
 
-async def run_norm(session, interface, channel, articulation, joint, link, annotator):
+async def run_norm(
+    session, interface, channel, articulation, joint, link, annotator, loop
+):
     print(f"[motion.extension] [run_call] [run_norm] subscription")
     subscription = (
         omni.kit.app.get_app()
@@ -164,13 +169,22 @@ async def run_norm(session, interface, channel, articulation, joint, link, annot
                 joint=joint,
                 link=link,
                 annotator=annotator,
+                loop=loop,
             )
         )
     )
     print(f"[motion.extension] [run_call] [run_norm] Timeline playing")
     omni.timeline.get_timeline_interface().play()
     print(f"[motion.extension] [run_call] [run_norm] Timeline in play")
-    await asyncio.sleep(float("inf"))
+
+    while True:
+        await omni.kit.app.get_app().next_update_async()
+        step = await interface.recv()
+        print(f"[motion.extension] [run_call] [run_norm] Step {step}")
+        if step is None:
+            continue
+        step = json.loads(step.decode())
+        print(f"[motion.extension] [run_call] [run_norm] Step data={step}")
 
 
 async def run_call(session, call):
@@ -313,16 +327,26 @@ async def run_node(session: str, tick: bool):
     await interface.ready(timeout=2.0, max=300)
     print(f"[motion.extension] [run_node] ready")
 
+    loop = asyncio.get_running_loop()
+
     try:
         await run_call(
             session,
             (
                 functools.partial(
-                    run_tick, session=session, interface=interface, channel=channel
+                    run_tick,
+                    session=session,
+                    interface=interface,
+                    channel=channel,
+                    loop=loop,
                 )
                 if tick
                 else functools.partial(
-                    run_norm, session=session, interface=interface, channel=channel
+                    run_norm,
+                    session=session,
+                    interface=interface,
+                    channel=channel,
+                    loop=loop,
                 )
             ),
         )
