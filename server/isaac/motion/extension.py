@@ -115,10 +115,13 @@ def f_data(e, session, interface, channel, articulation, joint, link, annotator)
             },
             sort_keys=True,
         ).encode()
+        print(f"[motion.extension] [run_call] Callback: {data}")
         omni.kit.async_engine.run_coroutine(channel.publish_data(session, data))
-        print(f"[motion.extension] [run_call] Channel callback: done - {data}")
+        print(f"[motion.extension] [run_call] Channel callback done")
+        omni.kit.async_engine.run_coroutine(interface.send(data))
+        print(f"[motion.extension] [run_call] Interface callback done")
     except Exception as e:
-        print(f"[motion.extension] [run_call] Channel callback: {e}")
+        print(f"[motion.extension] [run_call] Callback: {e}")
         raise
 
 
