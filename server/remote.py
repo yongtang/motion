@@ -43,6 +43,8 @@ async def main():
                 data = context.data()
                 log.info(f"[main] recv data={data}")
 
+                await asyncio.sleep(1)
+
                 # model: remote from step
                 step = json.loads(await q.get())
                 log.info(f"[main] model data={data} step={step}")

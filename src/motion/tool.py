@@ -90,15 +90,7 @@ def f_prefix(items, q: str, *, kind: str):
     return next(iter(matches))
 
 
-async def f_data(session):
-    async with session.stream(start=1) as stream:
-        for i in itertools.count():
-            with contextlib.suppress(asyncio.TimeoutError):
-                msg = await stream.data()
-                log.info(f"Data: {msg}")
-
-
-async def f_step(session, control, effector, data):
+async def f_step(session, control, effector, data, callback):
     """
     Drive a session with step messages using a control scheme.
 
@@ -402,6 +394,7 @@ async def f_step(session, control, effector, data):
             )
 
             while True:
+                await callback(period)
                 now = time.time()
                 dt = max(0.001, min(now - state["last"], 0.5))
                 state["last"] = now
@@ -439,8 +432,6 @@ async def f_step(session, control, effector, data):
                 if joystick_button(joystick, exit_button):
                     log.info("Exit button pressed. Quitting...")
                     break
-
-                await asyncio.sleep(period)
 
             # Clean up only after normal exit
             joystick.quit()
@@ -655,15 +646,44 @@ async def f_quick(
                 await session.play(device=device, model=model, tick=tick)
 
                 # 4) drive (xbox loop)
-                await asyncio.gather(
-                    f_data(session=session),
-                    f_step(
-                        session=session,
-                        control=control,
-                        effector=effector,
-                        data=data,
-                    ),
-                )
+                async with session.stream(start=1) as stream:
+                    if tick:
+
+                        async def f_data(period):
+                            for i in itertools.count():
+                                log.info(f"Data: wait {i}")
+                                with contextlib.suppress(asyncio.TimeoutError):
+                                    msg = await stream.data()
+                                    log.info(f"Data: {msg}")
+                                    return
+
+                        await f_step(
+                            session=session,
+                            control=control,
+                            effector=effector,
+                            data=data,
+                            callback=f_data,
+                        )
+
+                    else:
+
+                        async def f_data():
+                            for i in itertools.count():
+                                log.info(f"Data: wait {i}")
+                                with contextlib.suppress(asyncio.TimeoutError):
+                                    msg = await stream.data()
+                                    log.info(f"Data: {msg}")
+
+                        await asyncio.gather(
+                            f_data(),
+                            f_step(
+                                session=session,
+                                control=control,
+                                effector=effector,
+                                data=data,
+                                callback=asyncio.sleep,
+                            ),
+                        )
 
                 # 5) stop
                 await session.stop()
@@ -924,7 +944,15 @@ def session_step(
 ):
     client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
     session = f_prefix(client.session.search(session), session, kind="session")
-    asyncio.run(f_step(session=session, control=control, effector=effector, data=data))
+    asyncio.run(
+        f_step(
+            session=session,
+            control=control,
+            effector=effector,
+            data=data,
+            callback=asyncio.sleep,
+        )
+    )
     f_print(session, output=context.obj["output"])
 
 
