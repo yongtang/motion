@@ -3,7 +3,6 @@ import contextlib
 import functools
 import itertools
 import json
-import logging
 import traceback
 
 import isaacsim.core.experimental.prims
@@ -20,7 +19,9 @@ from .channel import Channel
 from .interface import Interface
 
 
-def f_data(e, session, interface, channel, articulation, joint, link, annotator, loop):
+def f_data(
+    e, session, interface, channel, articulation, joint, link, annotator, callback
+):
     print(f"[motion.extension] [run_call] Annotator callback")
     entries = {n: numpy.asarray(e.get_data()) for n, e in annotator.items()}
     # Expect numpy.uint8 or numpy.float64
@@ -106,55 +107,65 @@ def f_data(e, session, interface, channel, articulation, joint, link, annotator,
         for e, p, q in zip(link.paths, position, quaternion)
     }
     print(f"[motion.extension] [run_call] Link callback - pose: {pose}")
-    try:
-        data = json.dumps(
-            {
-                "joint": state,
-                "camera": entries,
-                "pose": pose,
-            },
-            sort_keys=True,
-        ).encode()
-        print(f"[motion.extension] [run_call] Callback: {data}")
-        asyncio.run_coroutine_threadsafe(channel.publish_data(session, data), loop)
-        print(f"[motion.extension] [run_call] Channel callback done")
-        asyncio.run_coroutine_threadsafe(interface.send(data), loop)
-        print(f"[motion.extension] [run_call] Interface callback done")
-    except Exception as e:
-        print(f"[motion.extension] [run_call] Callback: {e}")
-        raise
+    data = json.dumps(
+        {
+            "joint": state,
+            "camera": entries,
+            "pose": pose,
+        },
+        sort_keys=True,
+    ).encode()
+    print(f"[motion.extension] [run_call] Callback: {data}")
+
+    return callback(data) if callback is not None else data
 
 
 async def run_tick(
     session, interface, channel, articulation, joint, link, annotator, loop
 ):
-    print(f"[motion.extension] [run_call] [run_tick] subscription")
-    subscription = (
-        omni.kit.app.get_app()
-        .get_update_event_stream()
-        .create_subscription_to_pop(
-            functools.partial(
-                f_data,
-                session=session,
-                interface=interface,
-                channel=channel,
-                articulation=articulation,
-                joint=joint,
-                link=link,
-                annotator=annotator,
-                loop=loop,
-            )
-        )
-    )
     print(f"[motion.extension] [run_call] [run_tick] Timeline playing")
     omni.timeline.get_timeline_interface().play()
     print(f"[motion.extension] [run_call] [run_tick] Timeline in play")
-    await asyncio.sleep(float("inf"))
+    while True:
+        await omni.kit.app.get_app().next_update_async()
+        data = f_data(
+            None,
+            session=session,
+            interface=interface,
+            channel=channel,
+            articulation=articulation,
+            joint=joint,
+            link=link,
+            annotator=annotator,
+            callback=None,
+        )
+        try:
+            print(f"[motion.extension] [run_call] [run_tick] Data {data}")
+            await channel.publish_data(session, data)
+            print(f"[motion.extension] [run_call] [run_tick] Channel callback done")
+            step = await interface.tick(data)
+            print(f"[motion.extension] [run_call] [run_tick] Interface step {step}")
+            step = json.loads(step.decode())
+            print(f"[motion.extension] [run_call] [run_tick] Step data={step}")
+        except Exception as e:
+            print(f"[motion.extension] [run_call] [run_tick] Callback: {e}")
+        print(f"[motion.extension] [run_call] [run_tick] Data done")
 
 
 async def run_norm(
     session, interface, channel, articulation, joint, link, annotator, loop
 ):
+    def callback(data):
+        try:
+            print(f"[motion.extension] [run_call] [run_norm] Data {data}")
+            asyncio.run_coroutine_threadsafe(channel.publish_data(session, data), loop)
+            print(f"[motion.extension] [run_call] [run_norm] Channel callback done")
+            asyncio.run_coroutine_threadsafe(interface.send(data), loop)
+            print(f"[motion.extension] [run_call] [run_norm] Interface callback done")
+        except Exception as e:
+            print(f"[motion.extension] [run_call] [run_norm] Callback: {e}")
+            raise
+
     print(f"[motion.extension] [run_call] [run_norm] subscription")
     subscription = (
         omni.kit.app.get_app()
@@ -169,7 +180,7 @@ async def run_norm(
                 joint=joint,
                 link=link,
                 annotator=annotator,
-                loop=loop,
+                callback=callback,
             )
         )
     )
