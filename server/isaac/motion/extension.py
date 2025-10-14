@@ -170,6 +170,7 @@ async def run_norm(session, interface, channel, articulation, joint, link, annot
     print(f"[motion.extension] [run_call] [run_norm] Timeline playing")
     omni.timeline.get_timeline_interface().play()
     print(f"[motion.extension] [run_call] [run_norm] Timeline in play")
+    await asyncio.sleep(float("inf"))
 
 
 async def run_call(session, call):
@@ -264,12 +265,14 @@ async def run_call(session, call):
     }
     print(f"[motion.extension] [run_call] Annotator: {annotator}")
 
-    writer.attach(list(render.values()))
-    print(f"[motion.extension] [run_call] Writer attached")
-
-    for k, v in render.items():
-        annotator[k].attach(v)
-    print(f"[motion.extension] [run_call] Annotator attached")
+    if len(render):
+        writer.attach(list(render.values()))
+        print(f"[motion.extension] [run_call] Writer attached")
+        for k, v in render.items():
+            annotator[k].attach(v)
+        print(f"[motion.extension] [run_call] Annotator attached")
+    else:
+        print(f"[motion.extension] [run_call] Writer/Annotator attach skipped")
 
     try:
         print(f"[motion.extension] [run_call] Callback call")
@@ -282,13 +285,16 @@ async def run_call(session, call):
         print(f"[motion.extension] [run_call] [Exception]: {e}")
         traceback.print_exec()
     finally:
-        with contextlib.suppress(Exception):
-            for k, v in camera.items():
-                annotator[k].detach(v)
-        print(f"[motion.extension] [run_call] Camera annotator detached")
-        with contextlib.suppress(Exception):
-            writer.detach(list(camera.values()))
-        print(f"[motion.extension] [run_call] Camera detached")
+        if len(render):
+            with contextlib.suppress(Exception):
+                for k, v in render.items():
+                    annotator[k].detach(v)
+            print(f"[motion.extension] [run_call] Camera annotator detached")
+            with contextlib.suppress(Exception):
+                writer.detach(list(camera.values()))
+            print(f"[motion.extension] [run_call] Camera detached")
+        else:
+            print(f"[motion.extension] [run_call] Writer/Annotator detach skipped")
 
 
 async def run_node(session: str, tick: bool):
