@@ -1,4 +1,5 @@
 import asyncio
+import os
 import contextlib
 import functools
 import itertools
@@ -306,6 +307,14 @@ async def run_call(session, call):
         with tempfile.TemporaryDirectory() as directory:
             print(f"[motion.extension] [run_call] Kinematics")
             xml = urdf("/storage/node/scene/scene.usd")
+            for e, entry in xml.items():
+                filename = os.path.join(directory, e.replace("/", "_"))
+                with open(filename, "w") as f:
+                    f.write(entry)
+                solver = isaacsim.robot_motion.motion_generation.LulaKinematicsSolver(
+                    urdf_path=filename,
+                )
+
             print(f"[motion.extension] [run_call] Kinematics xml: {xml}")
 
             print(f"[motion.extension] [run_call] Callback call")
