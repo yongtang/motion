@@ -308,10 +308,28 @@ async def run_call(session, call):
             print(f"[motion.extension] [run_call] Kinematics")
             xml = urdf("/storage/node/scene/scene.usd")
             for e, entry in xml.items():
-                filename = os.path.join(directory, e.replace("/", "_"))
+                filename = os.path.join(directory, e.replace("/", "_") + ".urdf")
                 with open(filename, "w") as f:
                     f.write(entry)
+                description = os.path.join(directory, e.replace("/", "_") + ".yaml")
+                with open(description, "w") as f:
+                    f.write(
+                        """
+robot_name: my_robot
+root_link: base_link
+end_effector: tool0
+joint_names:
+  - joint1
+  - joint2
+  - joint3
+  - joint4
+  - joint5
+  - joint6
+
+                            """
+                    )
                 solver = isaacsim.robot_motion.motion_generation.LulaKinematicsSolver(
+                    robot_description_path=description,
                     urdf_path=filename,
                 )
 
