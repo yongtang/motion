@@ -316,6 +316,8 @@ async def run_call(session, call):
                     f.write(
                         """
 robot_name: my_robot
+
+# List of actuated joints — the configuration space
 cspace:
   - joint1
   - joint2
@@ -324,6 +326,8 @@ cspace:
   - joint5
   - joint6
 
+# Default joint angles (radians), same order and length as cspace
+default_q: [0, 0, 0, 0, 0, 0]
                             """
                     )
                 solver = isaacsim.robot_motion.motion_generation.LulaKinematicsSolver(
