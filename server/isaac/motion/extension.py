@@ -3,10 +3,12 @@ import contextlib
 import functools
 import itertools
 import json
+import tempfile
 import traceback
 
 import isaacsim.core.experimental.prims
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
+import isaacsim.robot_motion
 import numpy
 import omni.ext
 import omni.kit
@@ -17,6 +19,7 @@ import pxr
 
 from .channel import Channel
 from .interface import Interface
+from .kinematics import urdf
 
 
 def f_data(
@@ -300,11 +303,16 @@ async def run_call(session, call):
         print(f"[motion.extension] [run_call] Writer/Annotator attach skipped")
 
     try:
-        print(f"[motion.extension] [run_call] Callback call")
-        await call(
-            articulation=articulation, joint=joint, link=link, annotator=annotator
-        )
-        print(f"[motion.extension] [run_call] Callback done")
+        with tempfile.TemporaryDirectory() as directory:
+            print(f"[motion.extension] [run_call] Kinematics")
+            xml = urdf("/storage/node/scene/scene.usd")
+            print(f"[motion.extension] [run_call] Kinematics xml: {xml}")
+
+            print(f"[motion.extension] [run_call] Callback call")
+            await call(
+                articulation=articulation, joint=joint, link=link, annotator=annotator
+            )
+            print(f"[motion.extension] [run_call] Callback done")
 
     except Exception as e:
         print(f"[motion.extension] [run_call] [Exception]: {e}")
