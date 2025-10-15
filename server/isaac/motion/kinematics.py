@@ -46,10 +46,12 @@ def f_origin(stage, articulation, joint):
 def f_limit(stage, articulation, joint):
     lower = joint.GetLowerLimitAttr().Get()
     upper = joint.GetUpperLimitAttr().Get()
-    effort = 100  # joint.GetLimitEffortAttr().Get()
+    velocity = 1.0
+    effort = 100
     limit = {
         "lower": lower,
         "upper": upper,
+        **({"velocity": velocity} if velocity is not None else {}),
         **({"effort": effort} if effort is not None else {}),
     }
     return limit
@@ -216,6 +218,8 @@ def f_urdf(articulation, link, joint):
             line.append(
                 f"    <limit lower=\"{e['limit']['lower']}\" upper=\"{e['limit']['upper']}\""
             )
+            if "velocity" in e["limit"]:
+                line.append(f" velocity=\"{e['limit']['velocity']}\"")
             if "effort" in e["limit"]:
                 line.append(f" effort=\"{e['limit']['effort']}\"")
             line.append(f"/>")
