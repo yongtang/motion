@@ -316,9 +316,7 @@ async def run_call(session, call):
                     f.write(
                         """
 robot_name: my_robot
-root_link: base_link
-end_effector: tool0
-joint_names:
+cspace:
   - joint1
   - joint2
   - joint3
