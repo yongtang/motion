@@ -286,17 +286,17 @@ async def f_step(session, control, effector, data, callback):
                 linear_scale = max_linear * (max_linear_turbo if turbo else 1.0)
                 angular_scale = max_angular
 
-                lin_x = lin_y = lin_z = ang_x = ang_y = ang_z = 0.0
+                linear_x = linear_y = linear_z = angular_x = angular_y = angular_z = 0.0
                 if deadman:
                     if rotation_hold:
-                        ang_x = a1 * angular_scale  # roll
-                        ang_y = a0 * angular_scale  # pitch
+                        angular_x = a1 * angular_scale  # roll
+                        angular_y = a0 * angular_scale  # pitch
                     else:
-                        lin_x = a1 * linear_scale
-                        ang_z = a0 * angular_scale
+                        linear_x = a1 * linear_scale
+                        angular_z = a0 * angular_scale
                 return {
-                    "linear": (lin_x, lin_y, lin_z),
-                    "angular": (ang_x, ang_y, ang_z),
+                    "linear": {"x": linear_x, "y": linear_y, "z": linear_z},
+                    "angular": {"x": angular_x, "y": angular_y, "z": angular_z},
                 }
 
             def integrate_pose(state, twist, dt: float):
@@ -312,15 +312,23 @@ async def f_step(session, control, effector, data, callback):
                 physically correct simulation, only for producing plausible numbers
                 while teleoperating demos or remote nodes.
                 """
-                lin_x, lin_y, lin_z = twist["linear"]
-                ang_x, ang_y, ang_z = twist["angular"]
+                linear_x, linear_y, linear_z = (
+                    twist["linear"]["x"],
+                    twist["linear"]["y"],
+                    twist["linear"]["z"],
+                )
+                angular_x, angular_y, angular_z = (
+                    twist["angular"]["x"],
+                    twist["angular"]["y"],
+                    twist["angular"]["z"],
+                )
 
-                state["translation_x"] += lin_x * dt
-                state["translation_y"] += lin_y * dt
-                state["translation_z"] += lin_z * dt
-                state["rotation_r"] += ang_x * dt
-                state["rotation_p"] += ang_y * dt
-                state["rotation_y"] += ang_z * dt
+                state["translation_x"] += linear_x * dt
+                state["translation_y"] += linear_y * dt
+                state["translation_z"] += linear_z * dt
+                state["rotation_r"] += angular_x * dt
+                state["rotation_p"] += angular_y * dt
+                state["rotation_y"] += angular_z * dt
 
                 # Wrap angles to [-pi, pi] to keep quaternions well-behaved.
                 for k in ("rotation_r", "rotation_p", "rotation_y"):

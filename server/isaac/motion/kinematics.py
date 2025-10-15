@@ -12,10 +12,12 @@ log = logging.getLogger(__name__)
 def f_target(stage, articulation, joint):
     parent = joint.GetBody0Rel().GetTargets()
     child = joint.GetBody1Rel().GetTargets()
-    assert len(parent) == 1 or len(parent) == 0, f"{joint} - {parent}"
+    assert len(parent) == 1 or (
+        len(parent) == 0 and str(articulation.GetPath()) == str(joint.GetPath())
+    ), f"{joint} - {parent}"
     parent = next(iter(parent)) if len(parent) == 1 else None
-    assert len(child) == 1 or len(child) == 0, f"{joint} - {child}"
-    child = next(iter(child)) if len(child) == 1 else None
+    assert len(child) == 1, f"{joint} - {child}"
+    child = next(iter(child))
     return parent, child
 
 
@@ -46,9 +48,13 @@ def f_origin(stage, articulation, joint):
 def f_limit(stage, articulation, joint):
     lower = joint.GetLowerLimitAttr().Get()
     upper = joint.GetUpperLimitAttr().Get()
+    velocity = 1.0
+    effort = 100
     limit = {
         "lower": lower,
         "upper": upper,
+        **({"velocity": velocity} if velocity is not None else {}),
+        **({"effort": effort} if effort is not None else {}),
     }
     return limit
 
@@ -142,6 +148,8 @@ def f_joint(stage, articulation, entry):
 
 
 def f_articulation(stage, articulation):
+    # Limit to valid parent and child - articulation included to prune link.
+    # Articulation not in final joint as it is not base link
     candidate = [
         e
         for e in stage.Traverse()
@@ -149,13 +157,15 @@ def f_articulation(stage, articulation):
             (
                 e.GetRelationship("physics:body0")
                 and e.GetRelationship("physics:body0").IsValid()
+                and len(pxr.UsdPhysics.Joint(e).GetBody0Rel().GetTargets()) > 0
             )
-            or (
+            and (
                 e.GetRelationship("physics:body1")
                 and e.GetRelationship("physics:body1").IsValid()
+                and len(pxr.UsdPhysics.Joint(e).GetBody1Rel().GetTargets()) > 0
             )
         )
-    ]
+    ] + [articulation]
 
     link, joint = set(), set()
     count_link, count_joint = len(link), len(joint)
@@ -183,9 +193,6 @@ def f_articulation(stage, articulation):
                 .GetTargets()
             }
 
-    if str(articulation.GetPath()) in [str(e.GetPath()) for e in candidate]:
-        joint |= {str(articulation.GetPath())}
-
     link = list(link)
 
     joint = list(f_joint(stage, articulation, e) for e in joint)
@@ -204,21 +211,40 @@ def f_urdf(articulation, link, joint):
         line.append(f'  <link name="{e}" />')
 
     for e in joint:
-
         line.append(f"  <joint name=\"{e['name']}\" type=\"{e['type']}\">")
         if "parent" in e:
             line.append(f"    <parent link=\"{e['parent']}\"/>")
         if "child" in e:
             line.append(f"    <child link=\"{e['child']}\"/>")
         if "limit" in e:
-            line.append(
-                f"    <limit lower=\"{e['limit']['lower']}\" upper=\"{e['limit']['upper']}\"/>"
-            )
+            item = ""
+            item += f"    <limit lower=\"{e['limit']['lower']}\" upper=\"{e['limit']['upper']}\""
+            if "velocity" in e["limit"]:
+                item += f" velocity=\"{e['limit']['velocity']}\""
+            if "effort" in e["limit"]:
+                item += f" effort=\"{e['limit']['effort']}\""
+            item += f"/>"
+            line.append(item)
         if "axis" in e:
             line.append(f"    <axis xyz=\"{e['axis']}\"/>")
         line.append(f"  </joint>")
 
     line.append(f"</robot>")
+
+    return "\n".join(line)
+
+
+def f_desc(articulation, link, joint):
+    line = []
+    line.append(f"robot_name: robot")
+    line.append(f"cspace:")
+
+    entries = list(e for e in joint if e["type"] != "fixed")
+    for e in entries:
+        line.append(f"  - {e['name']}")
+
+    entries = list("0" for e in entries)
+    line.append(f"default_q: [{', '.join(entries)}]")
 
     return "\n".join(line)
 
@@ -236,13 +262,18 @@ def urdf(file):
     log.info(f"[urdf] Articulation: {articulation}")
 
     log.info(f"[urdf] URDF:")
-    xml = {
-        e: f_urdf(e, entry["link"], entry["joint"]) for e, entry in articulation.items()
-    }
-    for e, entry in xml.items():
-        log.info(f"{e}:\n{entry}\n{'-'*20}")
 
-    return xml
+    data = {
+        e: {
+            "urdf": f_urdf(e, entry["link"], entry["joint"]),
+            "desc": f_desc(e, entry["link"], entry["joint"]),
+        }
+        for e, entry in articulation.items()
+    }
+    for e, entry in data.items():
+        log.info(f"{e}:\n{entry['urdf']}\n{entry['desc']}\n{'-'*20}")
+
+    return data
 
 
 def main():

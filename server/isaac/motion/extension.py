@@ -3,9 +3,8 @@ import contextlib
 import functools
 import itertools
 import json
-import tempfile
-import traceback
 
+import isaaclab.controllers
 import isaacsim.core.experimental.prims
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
 import isaacsim.robot_motion
@@ -16,14 +15,120 @@ import omni.replicator.core
 import omni.timeline
 import omni.usd
 import pxr
+import torch
 
 from .channel import Channel
 from .interface import Interface
-from .kinematics import urdf
+
+
+def f_step(articulation, controller, joint, link, step, effector):
+    step = json.loads(step.decode())
+    print(f"[motion.extension] [run_call] Step data={step}")
+
+    if step["twist"] is None:
+        assert False, f"{step}"
+    if effector is None:
+        assert len(step["twist"]) == 1
+        effector = next(iter(step["twist"].keys()))
+    assert effector == next(iter(step["twist"].keys())), f"{effector} vs. {step}"
+    print(f"[motion.extension] [run_call] Effector {effector}")
+
+    print(f"[motion.extension] [run_call] [run_tick] Step data extraction")
+    linear = step["twist"][effector]["linear"]
+    angular = step["twist"][effector]["angular"]
+    print(
+        f"[motion.extension] [run_call] [run_tick] Effector: {effector} linear={linear} angular={angular}"
+    )
+
+    jacobian = articulation.get_jacobian_matrices()
+    print(f"[motion.extension] [run_call] Jacobian: {jacobian.shape}")
+
+    index = next(
+        (
+            index
+            for index, entries in enumerate(articulation.link_paths)
+            if effector in entries
+        )
+    )
+    entry = articulation.link_paths[index].index(effector) - 1  # first is base_link
+    print(
+        f"[motion.extension] [run_call] Jacobian: index={index} entry={entry} effector={effector} link={articulation.link_paths}"
+    )
+    assert (
+        articulation.jacobian_matrix_shape[0] == len(articulation.link_paths[index]) - 1
+    ), f"{articulation.jacobian_matrix_shape} vs. {articulation.link_paths}({index})"
+    jacobian = torch.tensor(jacobian[index, entry, :, :], dtype=torch.float32)
+    print(f"[motion.extension] [run_call] Jacobian entry: {jacobian.shape}")
+
+    position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
+    position, quaternion = (
+        torch.tensor(
+            position[link.paths.index(effector) : link.paths.index(effector) + 1],
+            dtype=torch.float32,
+        ),
+        torch.tensor(
+            quaternion[link.paths.index(effector) : link.paths.index(effector) + 1],
+            dtype=torch.float32,
+        ),
+    )
+    print(
+        f"[motion.extension] [run_call] Jacobian position/quaternion: {position.shape}/{quaternion.shape}"
+    )
+
+    command = torch.tensor(
+        [
+            [
+                linear["x"],
+                linear["y"],
+                linear["z"],
+                angular["x"],
+                angular["y"],
+                angular["z"],
+            ]
+        ],
+        dtype=torch.float32,
+    )
+
+    print(f"[motion.extension] [run_call] Jacobian command: command={command.shape}")
+    controller.set_command(
+        command=command,
+        ee_pos=position,
+        ee_quat=quaternion,
+    )
+    print(f"[motion.extension] [run_call] Jacobian command: done")
+
+    positions = numpy.asarray(articulation.get_dof_positions())
+    joint_pos = torch.tensor(positions[index : index + 1], dtype=torch.float32)
+
+    print(
+        f"[motion.extension] [run_call] Jacobian compute: jacobian={jacobian.shape} joint_pos={joint_pos.shape}"
+    )
+    joint_pos = controller.compute(
+        ee_pos=position,
+        ee_quat=quaternion,
+        jacobian=jacobian,
+        joint_pos=joint_pos,
+    )
+    print(f"[motion.extension] [run_call] Jacobian compute: {joint_pos.shape}")
+
+    positions[index : index + 1] = numpy.asarray(joint_pos)
+    articulation.set_dof_position_targets(positions)
+    print(f"[motion.extension] [run_call] Articulations positions: {positions.shape}")
+
+    return step, effector
 
 
 def f_data(
-    e, session, interface, channel, articulation, joint, link, annotator, callback
+    e,
+    session,
+    interface,
+    channel,
+    articulation,
+    controller,
+    joint,
+    link,
+    annotator,
+    callback,
 ):
     print(f"[motion.extension] [run_call] Annotator callback")
     entries = {n: numpy.asarray(e.get_data()) for n, e in annotator.items()}
@@ -84,7 +189,7 @@ def f_data(
             ),
         )
     )
-    state = state if "*" in joint else {k: v for k, v in state.items() if k in joint}
+    state = {k: v for k, v in state.items() if k in joint}
     print(f"[motion.extension] [run_call] Articulation callback - state: {state}")
 
     print(f"[motion.extension] [run_call] Link callback")
@@ -124,11 +229,13 @@ def f_data(
 
 
 async def run_tick(
-    session, interface, channel, articulation, joint, link, annotator, loop
+    session, interface, channel, articulation, controller, joint, link, annotator, loop
 ):
     print(f"[motion.extension] [run_call] [run_tick] Timeline playing")
     omni.timeline.get_timeline_interface().play()
     print(f"[motion.extension] [run_call] [run_tick] Timeline in play")
+
+    effector = None
     while True:
         await omni.kit.app.get_app().next_update_async()
         data = f_data(
@@ -137,26 +244,37 @@ async def run_tick(
             interface=interface,
             channel=channel,
             articulation=articulation,
+            controller=controller,
             joint=joint,
             link=link,
             annotator=annotator,
             callback=None,
         )
+
         try:
             print(f"[motion.extension] [run_call] [run_tick] Data {data}")
             await channel.publish_data(session, data)
             print(f"[motion.extension] [run_call] [run_tick] Channel callback done")
             step = await interface.tick(data)
             print(f"[motion.extension] [run_call] [run_tick] Interface step {step}")
-            step = json.loads(step.decode())
-            print(f"[motion.extension] [run_call] [run_tick] Step data={step}")
+            step, effector = f_step(
+                articulation=articulation,
+                controller=controller,
+                joint=joint,
+                link=link,
+                step=step,
+                effector=effector,
+            )
+            print(
+                f"[motion.extension] [run_call] [run_tick] Step step={step} effector={effector}"
+            )
         except Exception as e:
-            print(f"[motion.extension] [run_call] [run_tick] Callback: {e}")
+            print(f"[motion.extension] [run_call] [run_tick] Exception: {e}")
         print(f"[motion.extension] [run_call] [run_tick] Data done")
 
 
 async def run_norm(
-    session, interface, channel, articulation, joint, link, annotator, loop
+    session, interface, channel, articulation, controller, joint, link, annotator, loop
 ):
     def callback(data):
         try:
@@ -180,6 +298,7 @@ async def run_norm(
                 interface=interface,
                 channel=channel,
                 articulation=articulation,
+                controller=controller,
                 joint=joint,
                 link=link,
                 annotator=annotator,
@@ -194,11 +313,20 @@ async def run_norm(
     while True:
         await omni.kit.app.get_app().next_update_async()
         step = await interface.recv()
-        print(f"[motion.extension] [run_call] [run_norm] Step {step}")
+        print(f"[motion.extension] [run_call] [run_norm] Interface step {step}")
         if step is None:
             continue
-        step = json.loads(step.decode())
-        print(f"[motion.extension] [run_call] [run_norm] Step data={step}")
+        step, effector = f_step(
+            articulation=articulation,
+            controller=controller,
+            joint=joint,
+            link=link,
+            step=step,
+            effector=effector,
+        )
+        print(
+            f"[motion.extension] [run_call] [run_norm] Step step={step} effector={effector}"
+        )
 
 
 async def run_call(session, call):
@@ -248,16 +376,37 @@ async def run_call(session, call):
     print(f"[motion.extension] [run_call] Articulation: {articulation}")
 
     articulation = isaacsim.core.experimental.prims.Articulation(articulation)
-    print(f"[motion.extension] [run_call] Articulation Joint: {articulation.dof_paths}")
+    print(f"[motion.extension] [run_call] Articulation: {articulation}")
 
+    controller = isaaclab.controllers.DifferentialIKController(
+        isaaclab.controllers.DifferentialIKControllerCfg(
+            command_type="pose",  # "position" | "pose"
+            use_relative_mode=True,  # True → 6-D delta commands
+            ik_method="pinv",  # "pinv" | "svd" | "trans" | "dls"
+            ik_params={"k_val": 1.0},  # or {"lambda_val": 0.05} for DLS, etc.
+        ),
+        num_envs=1,
+        device="cpu",
+    )
+    print(f"[motion.extension] [run_call] Articulation Controller: {controller}")
+
+    print(f"[motion.extension] [run_call] Articulation Joint: {articulation.dof_paths}")
+    joint = list(
+        e
+        for e in itertools.chain.from_iterable(articulation.dof_paths)
+        if ("*" in joint or e in joint)
+    )
+    print(f"[motion.extension] [run_call] Articulation Joint: {joint}")
+
+    print(f"[motion.extension] [run_call] Articulation Link: {articulation.link_paths}")
     link = isaacsim.core.experimental.prims.XformPrim(
-        paths=(
-            list(itertools.chain.from_iterable(articulation.link_paths))
-            if "*" in link
-            else link
+        paths=list(
+            e
+            for e in itertools.chain.from_iterable(articulation.link_paths)
+            if ("*" in link or e in link)
         )
     )
-    print(f"[motion.extension] [run_call] Link: {link.paths}")
+    print(f"[motion.extension] [run_call] Articulation Link: {link.paths}")
 
     camera = (
         {
@@ -303,20 +452,18 @@ async def run_call(session, call):
         print(f"[motion.extension] [run_call] Writer/Annotator attach skipped")
 
     try:
-        with tempfile.TemporaryDirectory() as directory:
-            print(f"[motion.extension] [run_call] Kinematics")
-            xml = urdf("/storage/node/scene/scene.usd")
-            print(f"[motion.extension] [run_call] Kinematics xml: {xml}")
-
-            print(f"[motion.extension] [run_call] Callback call")
-            await call(
-                articulation=articulation, joint=joint, link=link, annotator=annotator
-            )
-            print(f"[motion.extension] [run_call] Callback done")
+        print(f"[motion.extension] [run_call] Callback call")
+        await call(
+            articulation=articulation,
+            controller=controller,
+            joint=joint,
+            link=link,
+            annotator=annotator,
+        )
+        print(f"[motion.extension] [run_call] Callback done")
 
     except Exception as e:
         print(f"[motion.extension] [run_call] [Exception]: {e}")
-        traceback.print_exec()
     finally:
         if len(render):
             with contextlib.suppress(Exception):
@@ -371,7 +518,6 @@ async def run_node(session: str, tick: bool):
         )
     except Exception as e:
         print(f"[motion.extension] [run_node] [Exception]: {e}")
-        traceback.print_exec()
     finally:
         print(f"[motion.extension] [run_node] channel close")
         await channel.close()
