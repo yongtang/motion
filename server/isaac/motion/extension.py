@@ -125,7 +125,7 @@ def f_data(
 
 
 async def run_tick(
-    session, interface, channel, articulation, joint, link, annotator, loop
+    session, interface, channel, articulation, joint, link, annotator, solver, loop
 ):
     print(f"[motion.extension] [run_call] [run_tick] Timeline playing")
     omni.timeline.get_timeline_interface().play()
@@ -151,13 +151,15 @@ async def run_tick(
             print(f"[motion.extension] [run_call] [run_tick] Interface step {step}")
             step = json.loads(step.decode())
             print(f"[motion.extension] [run_call] [run_tick] Step data={step}")
+
+            # solver = ArticulationKinematicsSolver(articulation, solver, ee_frame="ee_frame")
         except Exception as e:
             print(f"[motion.extension] [run_call] [run_tick] Callback: {e}")
         print(f"[motion.extension] [run_call] [run_tick] Data done")
 
 
 async def run_norm(
-    session, interface, channel, articulation, joint, link, annotator, loop
+    session, interface, channel, articulation, joint, link, annotator, solver, loop
 ):
     def callback(data):
         try:
@@ -200,6 +202,8 @@ async def run_norm(
             continue
         step = json.loads(step.decode())
         print(f"[motion.extension] [run_call] [run_norm] Step data={step}")
+
+        # solver = ArticulationKinematicsSolver(articulation, solver, ee_frame="ee_frame")
 
 
 async def run_call(session, call):
@@ -323,7 +327,11 @@ async def run_call(session, call):
 
             print(f"[motion.extension] [run_call] Callback call")
             await call(
-                articulation=articulation, joint=joint, link=link, annotator=annotator
+                articulation=articulation,
+                joint=joint,
+                link=link,
+                annotator=annotator,
+                solver=solver,
             )
             print(f"[motion.extension] [run_call] Callback done")
 
