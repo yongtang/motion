@@ -239,10 +239,12 @@ def f_desc(articulation, link, joint):
     line.append(f"robot_name: robot")
     line.append(f"cspace:")
 
-    for e in filter(lambda e: e["type"] != "fixed", joint):
+    entries = list(e for e in joint if e["type"] != "fixed")
+    for e in entries:
         line.append(f"  - {e['name']}")
 
-    line.append(f"default_q: [{', '.join(['0' for i in range(len(joint))])}]")
+    entries = list("0" for e in entries)
+    line.append(f"default_q: [{', '.join(entries)}]")
 
     return "\n".join(line)
 
