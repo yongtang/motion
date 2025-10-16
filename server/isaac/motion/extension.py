@@ -306,36 +306,20 @@ async def run_call(session, call):
     try:
         with tempfile.TemporaryDirectory() as directory:
             print(f"[motion.extension] [run_call] Kinematics")
-            xml = urdf("/storage/node/scene/scene.usd")
-            for e, entry in xml.items():
+            kinematics = urdf("/storage/node/scene/scene.usd")
+            for e, entry in kinematics.items():
                 filename = os.path.join(directory, e.replace("/", "_") + ".urdf")
                 with open(filename, "w") as f:
-                    f.write(entry)
+                    f.write(entry["urdf"])
                 description = os.path.join(directory, e.replace("/", "_") + ".yaml")
                 with open(description, "w") as f:
-                    f.write(
-                        """
-robot_name: my_robot
-
-# List of actuated joints — the configuration space
-cspace:
-  - joint1
-  - joint2
-  - joint3
-  - joint4
-  - joint5
-  - joint6
-
-# Default joint angles (radians), same order and length as cspace
-default_q: [0, 0, 0, 0, 0, 0]
-                            """
-                    )
+                    f.write(entry["desc"])
                 solver = isaacsim.robot_motion.motion_generation.LulaKinematicsSolver(
                     robot_description_path=description,
                     urdf_path=filename,
                 )
 
-            print(f"[motion.extension] [run_call] Kinematics xml: {xml}")
+            print(f"[motion.extension] [run_call] Kinematics: {kinematics}")
 
             print(f"[motion.extension] [run_call] Callback call")
             await call(

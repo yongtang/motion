@@ -148,7 +148,8 @@ def f_joint(stage, articulation, entry):
 
 
 def f_articulation(stage, articulation):
-    # Limit to valid parent and child
+    # Limit to valid parent and child - articulation included to prune link.
+    # Articulation not in final joint as it is not base link
     candidate = [
         e
         for e in stage.Traverse()
@@ -192,9 +193,6 @@ def f_articulation(stage, articulation):
                 .GetTargets()
             }
 
-    #if str(articulation.GetPath()) in [str(e.GetPath()) for e in candidate]:
-    #    joint |= {str(articulation.GetPath())}
-
     link = list(link)
 
     joint = list(f_joint(stage, articulation, e) for e in joint)
@@ -213,7 +211,6 @@ def f_urdf(articulation, link, joint):
         line.append(f'  <link name="{e}" />')
 
     for e in joint:
-
         line.append(f"  <joint name=\"{e['name']}\" type=\"{e['type']}\">")
         if "parent" in e:
             line.append(f"    <parent link=\"{e['parent']}\"/>")
@@ -237,6 +234,19 @@ def f_urdf(articulation, link, joint):
     return "\n".join(line)
 
 
+def f_desc(articulation, link, joint):
+    line = []
+    line.append(f"robot_name: robot")
+    line.append(f"cspace:")
+
+    for e in joint:
+        line.append(f"  - {e['name']}")
+
+    line.append(f"default_q: [{', '.join(['0' for i in range(len(joint))])}]")
+
+    return "\n".join(line)
+
+
 def urdf(file):
     stage = pxr.Usd.Stage.Open(file)
     assert stage, f"Stage: {file}"
@@ -250,13 +260,18 @@ def urdf(file):
     log.info(f"[urdf] Articulation: {articulation}")
 
     log.info(f"[urdf] URDF:")
-    xml = {
-        e: f_urdf(e, entry["link"], entry["joint"]) for e, entry in articulation.items()
+
+    data = {
+        e: {
+            "urdf": f_urdf(e, entry["link"], entry["joint"]),
+            "desc": f_desc(e, entry["link"], entry["joint"]),
+        }
+        for e, entry in articulation.items()
     }
-    for e, entry in xml.items():
+    for e, entry in data.items():
         log.info(f"{e}:\n{entry}\n{'-'*20}")
 
-    return xml
+    return data
 
 
 def main():
