@@ -12,10 +12,12 @@ log = logging.getLogger(__name__)
 def f_target(stage, articulation, joint):
     parent = joint.GetBody0Rel().GetTargets()
     child = joint.GetBody1Rel().GetTargets()
-    assert len(parent) == 1 or len(parent) == 0, f"{joint} - {parent}"
+    assert len(parent) == 1 or (
+        len(parent) == 0 and str(articulation.GetPath()) == str(joint.GetPath())
+    ), f"{joint} - {parent}"
     parent = next(iter(parent)) if len(parent) == 1 else None
-    assert len(child) == 1 or len(child) == 0, f"{joint} - {child}"
-    child = next(iter(child)) if len(child) == 1 else None
+    assert len(child) == 1, f"{joint} - {child}"
+    child = next(iter(child))
     return parent, child
 
 
@@ -146,6 +148,7 @@ def f_joint(stage, articulation, entry):
 
 
 def f_articulation(stage, articulation):
+    # Limit to valid parent and child
     candidate = [
         e
         for e in stage.Traverse()
@@ -153,13 +156,15 @@ def f_articulation(stage, articulation):
             (
                 e.GetRelationship("physics:body0")
                 and e.GetRelationship("physics:body0").IsValid()
+                and len(pxr.UsdPhysics.Joint(e).GetBody0Rel().GetTargets()) > 0
             )
-            or (
+            and (
                 e.GetRelationship("physics:body1")
                 and e.GetRelationship("physics:body1").IsValid()
+                and len(pxr.UsdPhysics.Joint(e).GetBody1Rel().GetTargets()) > 0
             )
         )
-    ]
+    ] + [articulation]
 
     link, joint = set(), set()
     count_link, count_joint = len(link), len(joint)
