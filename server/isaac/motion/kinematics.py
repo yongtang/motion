@@ -192,8 +192,8 @@ def f_articulation(stage, articulation):
                 .GetTargets()
             }
 
-    if str(articulation.GetPath()) in [str(e.GetPath()) for e in candidate]:
-        joint |= {str(articulation.GetPath())}
+    #if str(articulation.GetPath()) in [str(e.GetPath()) for e in candidate]:
+    #    joint |= {str(articulation.GetPath())}
 
     link = list(link)
 
