@@ -217,14 +217,14 @@ def f_urdf(articulation, link, joint):
         if "child" in e:
             line.append(f"    <child link=\"{e['child']}\"/>")
         if "limit" in e:
-            line.append(
-                f"    <limit lower=\"{e['limit']['lower']}\" upper=\"{e['limit']['upper']}\""
-            )
+            item = ""
+            item += f"    <limit lower=\"{e['limit']['lower']}\" upper=\"{e['limit']['upper']}\""
             if "velocity" in e["limit"]:
-                line.append(f" velocity=\"{e['limit']['velocity']}\"")
+                item += f" velocity=\"{e['limit']['velocity']}\""
             if "effort" in e["limit"]:
-                line.append(f" effort=\"{e['limit']['effort']}\"")
-            line.append(f"/>")
+                item += f" effort=\"{e['limit']['effort']}\""
+            item += f"/>"
+            line.append(item)
         if "axis" in e:
             line.append(f"    <axis xyz=\"{e['axis']}\"/>")
         line.append(f"  </joint>")
@@ -271,7 +271,7 @@ def urdf(file):
         for e, entry in articulation.items()
     }
     for e, entry in data.items():
-        log.info(f"{e}:\n{entry}\n{'-'*20}")
+        log.info(f"{e}:\n{entry['urdf']}\n{entry['desc']}\n{'-'*20}")
 
     return data
 
