@@ -192,7 +192,13 @@ async def run_tick(
                 f"[motion.extension] [run_call] [run_tick] Effector: {effector} position={position} orientation={orientation}"
             )
 
-            action, ok = kinematics.compute_inverse_kinematics(position, orientation)
+            try:
+                action, ok = kinematics.compute_inverse_kinematics(
+                    position, orientation
+                )
+            except Exception as e:
+                print(f"[motion.extension] [run_call] [run_tick] Inverse: {e}")
+
             print(
                 f"[motion.extension] [run_call] [run_tick] Inverse: action={action} ok={ok}"
             )
