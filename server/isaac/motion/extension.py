@@ -160,7 +160,7 @@ async def run_tick(
             if effector is None:
                 effector = next(iter(step["pose"].keys()))
                 kinematics = isaacsim.robot_motion.motion_generation.ArticulationKinematicsSolver(
-                    articulation, solver, ArticulationKinematicsSolver=effector
+                    articulation, solver, end_effector_frame_name=effector
                 )
             assert effector == next(iter(step["pose"].keys())), f"{effector} vs. {step}"
 
