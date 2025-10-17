@@ -173,11 +173,14 @@ async def run_tick(
             print(f"[motion.extension] [run_call] [run_tick] Step data extraction 2")
             orientation = step["pose"][effector]["orientation"]
             print(f"[motion.extension] [run_call] [run_tick] Step data extraction 3")
-            position = list(position["x"], position["y"], position["z"])
+            position = [position["x"], position["y"], position["z"]]
             print(f"[motion.extension] [run_call] [run_tick] Step data extraction 4")
-            orientation = list(
-                orientation["x"], orientation["y"], orientation["z"], orientation["w"]
-            )
+            orientation = [
+                orientation["x"],
+                orientation["y"],
+                orientation["z"],
+                orientation["w"],
+            ]
             print(
                 f"[motion.extension] [run_call] [run_tick] Effector: {effector} position={position} orientation={orientation}"
             )
