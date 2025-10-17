@@ -158,12 +158,17 @@ async def run_tick(
                 assert False, f"{step}"
             assert len(step["pose"]) == 1
             if effector is None:
+                print(f"[motion.extension] [run_call] [run_tick] Kinematics initialize")
                 effector = next(iter(step["pose"].keys()))
                 kinematics = isaacsim.robot_motion.motion_generation.ArticulationKinematicsSolver(
                     articulation, solver, end_effector_frame_name=effector
                 )
+                print(
+                    f"[motion.extension] [run_call] [run_tick] Kinematics initialize: {kinematics}"
+                )
             assert effector == next(iter(step["pose"].keys())), f"{effector} vs. {step}"
 
+            print(f"[motion.extension] [run_call] [run_tick] Step data extraction")
             position = step["pose"][effector]["position"]
             orientation = step["pose"][effector]["orientation"]
             position = list(position["x"], position["y"], position["z"])
