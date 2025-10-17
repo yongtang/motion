@@ -198,7 +198,7 @@ async def run_tick(
             )
 
         except Exception as e:
-            print(f"[motion.extension] [run_call] [run_tick] Callback: {e}")
+            print(f"[motion.extension] [run_call] [run_tick] Exception: {e}")
         print(f"[motion.extension] [run_call] [run_tick] Data done")
 
 
