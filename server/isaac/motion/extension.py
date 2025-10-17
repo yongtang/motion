@@ -165,6 +165,7 @@ async def run_tick(
                 single = isaacsim.core.prims.SingleArticulation(
                     prim_path=next(iter(articulation.paths))
                 )
+                single.initialize()
 
                 assert len(step["pose"]) == 1
                 effector = next(iter(step["pose"].keys()))
