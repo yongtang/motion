@@ -130,6 +130,8 @@ async def run_tick(
     print(f"[motion.extension] [run_call] [run_tick] Timeline playing")
     omni.timeline.get_timeline_interface().play()
     print(f"[motion.extension] [run_call] [run_tick] Timeline in play")
+
+    effector = None
     while True:
         await omni.kit.app.get_app().next_update_async()
         data = f_data(
@@ -152,7 +154,30 @@ async def run_tick(
             step = json.loads(step.decode())
             print(f"[motion.extension] [run_call] [run_tick] Step data={step}")
 
-            # solver = ArticulationKinematicsSolver(articulation, solver, ee_frame="ee_frame")
+            if step["pose"] is None:
+                assert False, f"{step}"
+            assert len(step["pose"]) == 1
+            if effector is None:
+                effector = next(iter(step["pose"].keys()))
+                kinematics = ArticulationKinematicsSolver(
+                    articulation, solver, ee_frame="ee_frame"
+                )
+            assert effector == next(iter(step["pose"].keys())), f"{effector} vs. {step}"
+
+            position = step["pose"][effector]["position"]
+            orientation = step["pose"][effector]["orientation"]
+            position = list(position["x"], position["y"], position["z"])
+            orientation = list(
+                orientation["x"], orientation["y"], orientation["z"], orientation["w"]
+            )
+            print(
+                f"[motion.extension] [run_call] [run_tick] Effector: {effector} position={position} orientation={orientation}"
+            )
+
+            action, ok = kinematics.compute_inverse_kinematics(position, orientation)
+            print(
+                f"[motion.extension] [run_call] [run_tick] Inverse: action={action} ok={ok}"
+            )
         except Exception as e:
             print(f"[motion.extension] [run_call] [run_tick] Callback: {e}")
         print(f"[motion.extension] [run_call] [run_tick] Data done")
