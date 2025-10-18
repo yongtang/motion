@@ -189,7 +189,7 @@ services:
     build:
       context: ..
       dockerfile_inline: |
-        FROM nvcr.io/nvidia/isaac-sim:5.0.0
+        FROM nvcr.io/nvidia/isaac-lab:2.2.0
         RUN apt -y -qq update && \
             apt -y -qq install curl ffmpeg
         COPY LICENSE /app/LICENSE
@@ -203,7 +203,7 @@ services:
         WORKDIR /app
         RUN /isaac-sim/python.sh -m pip install -e . --no-deps && \
             /isaac-sim/python.sh -m pip install nats-py
-        RUN echo '#!/bin/bash \n\
+        RUN echo -e '#!/bin/bash \n\
         set -e -x \n\
         if [ -z "$${MOTION}" ]; then \n\
           echo "MOTION not set, sleeping" \n\
