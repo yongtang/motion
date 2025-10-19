@@ -225,7 +225,7 @@ services:
             apt -y -qq install \
             parallel \
             ros-jazzy-moveit \
-            ros-jazzy-moveit-resources-panda-description \
+            ros-jazzy-moveit-servo \
             ros-jazzy-moveit-resources-panda-moveit-config \
             ros-jazzy-ros2-control \
             ros-jazzy-ros2-controllers
@@ -254,7 +254,7 @@ services:
         source /opt/ros/jazzy/setup.bash \n\
         source /opt/ros/motion/install/setup.bash \n\
         source /opt/python/bin/activate \n\
-        parallel --halt now,done=1 --halt now,fail=1 -j 0 ::: "python3 -m ros.motion" "ros2 launch moveit_resources_panda_moveit_config demo.launch.py" "ros2 run topic_tools relay /joint_trajectory /panda_arm_controller/joint_trajectory"\n\
+        parallel --line-buffer --tag --halt now,done=1 --halt now,fail=1 -j 0 ::: "ros2 launch moveit_servo demo_ros_api.launch.py" "ros2 service call /servo_node/switch_command_type moveit_msgs/srv/ServoCommandType '\''{command_type: 1}'\''" "ros2 run topic_tools relay /joint_trajectory /panda_arm_controller/joint_trajectory" "ros2 run topic_tools relay /twist /servo_node/delta_twist_cmds" "python3 -m ros.motion" \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]

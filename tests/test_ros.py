@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import zipfile
 
@@ -7,10 +8,66 @@ import pytest
 import motion
 
 
+async def f_bounce_joint(session):
+    return
+
+
+async def f_remote_joint(session):
+    async with session.stream(start=1) as stream:
+        for i in range(150):
+            await stream.step(
+                {
+                    "joint": {
+                        "panda_finger_joint1": 0.1,
+                        "panda_finger_joint2": 0.1,
+                        "panda_joint1": 0.1,
+                        "panda_joint2": 0.1,
+                        "panda_joint3": 0.1,
+                        "panda_joint4": 0.1,
+                        "panda_joint5": 0.1,
+                        "panda_joint6": 0.1,
+                        "panda_joint7": 0.1,
+                    }
+                }
+            )
+            await asyncio.sleep(2)
+
+
+async def f_remote_twist(session):
+    async with session.stream(start=1) as stream:
+        for i in range(150):
+            await stream.step(
+                {
+                    "twist": {
+                        "panda_hand": {
+                            "linear": {
+                                "x": 0.1,
+                                "y": 0.1,
+                                "z": 0.1,
+                            },
+                            "angular": {
+                                "x": 0.1,
+                                "y": 0.1,
+                                "z": 0.1,
+                            },
+                        },
+                    }
+                }
+            )
+            await asyncio.sleep(2)
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model, call",
+    [
+        pytest.param("bounce", f_bounce_joint, id="bounce-joint"),
+        pytest.param("remote", f_remote_joint, id="remote-joint"),
+        pytest.param("remote", f_remote_twist, id="remote-twist"),
+    ],
+)
 @pytest.mark.parametrize("runner", ["ros"])
-@pytest.mark.parametrize("model", ["bounce"])
-async def test_ros(scope, docker_compose, runner, model, tmp_path):
+async def test_ros(scope, docker_compose, runner, model, call, tmp_path):
     async def f():
         proc = await asyncio.create_subprocess_exec(
             "docker",
@@ -22,7 +79,7 @@ async def test_ros(scope, docker_compose, runner, model, tmp_path):
             "topic",
             "echo",
             "--once",
-            "/joint_trajectory",
+            "/panda_arm_controller/joint_trajectory",
             "--full-length",
             "--timeout",
             "3",
@@ -53,17 +110,24 @@ async def test_ros(scope, docker_compose, runner, model, tmp_path):
 
         # drive lifecycle via the async API
         await session.play(device="cpu", model=model, tick=False)
+        task = asyncio.create_task(call(session))
+
         stdout = []
-        for i in range(120):  # retry up to 120 times
-            stdout.append(await f())
-            print("\n".join(stdout))
-            if "panda_finger_joint1" in "\n".join(stdout):
+        for i in range(150):  # retry up to 120 times
+            line = await f()
+            if line.strip():
+                stdout.append(line)
+                print(line)
+            if "panda_joint1" in line:
                 break
             await asyncio.sleep(2)
         else:
             assert (
                 False
-            ), "Did not see 'panda_finger_joint1' after {i} retries: {stdout}"
+            ), "Did not see 'panda_joint1' after {i} retries: {'\n'.join(stdout)}"
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
+            await task
         await session.wait("play", timeout=300.0)
 
         await session.stop()

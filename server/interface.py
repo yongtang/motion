@@ -128,7 +128,7 @@ class Interface:
             # best-effort non-blocking send; drop if would block
             try:
                 self._sock_.send(data, socket.MSG_DONTWAIT)
-            except (BlockingIOError, InterruptedError):
+            except (BlockingIOError, InterruptedError, TimeoutError):
                 log.info("[run_node] socket drop (busy)")
 
         def f_sync_recv():
