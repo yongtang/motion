@@ -210,240 +210,239 @@ async def f_step(session, control, effector, data, callback):
     joystick_index = 0
 
     # Resolve session by prefix and open the step/data stream
-    async with session:
-        async with session.stream(start=None) as stream:
+    async with session.stream(start=None) as stream:
 
-            # -------------------
-            # Math helpers (stateless)
-            # -------------------
-            def euler_to_quaternion_xyzw(roll: float, pitch: float, yaw: float):
-                """Convert Euler RPY (rad) to ROS2 quaternion (x, y, z, w)."""
-                cy, sy = math.cos(yaw * 0.5), math.sin(yaw * 0.5)
-                cp, sp = math.cos(pitch * 0.5), math.sin(pitch * 0.5)
-                cr, sr = math.cos(roll * 0.5), math.sin(roll * 0.5)
-                w = cr * cp * cy + sr * sp * sy
-                x = sr * cp * cy - cr * sp * sy
-                y = cr * sp * cy + sr * cp * sy
-                z = cr * cp * sy - sr * sp * cy
-                return {"x": x, "y": y, "z": z, "w": w}
+        # -------------------
+        # Math helpers (stateless)
+        # -------------------
+        def euler_to_quaternion_xyzw(roll: float, pitch: float, yaw: float):
+            """Convert Euler RPY (rad) to ROS2 quaternion (x, y, z, w)."""
+            cy, sy = math.cos(yaw * 0.5), math.sin(yaw * 0.5)
+            cp, sp = math.cos(pitch * 0.5), math.sin(pitch * 0.5)
+            cr, sr = math.cos(roll * 0.5), math.sin(roll * 0.5)
+            w = cr * cp * cy + sr * sp * sy
+            x = sr * cp * cy - cr * sp * sy
+            y = cr * sp * cy + sr * cp * sy
+            z = cr * cp * sy - sr * sp * cy
+            return {"x": x, "y": y, "z": z, "w": w}
 
-            def joystick_axis_safe(joystick, i: int) -> float:
-                """Return axis i if present; otherwise 0.0 (defensive)."""
-                return joystick.get_axis(i) if i < joystick.get_numaxes() else 0.0
+        def joystick_axis_safe(joystick, i: int) -> float:
+            """Return axis i if present; otherwise 0.0 (defensive)."""
+            return joystick.get_axis(i) if i < joystick.get_numaxes() else 0.0
 
-            def joystick_button(joystick, i: int) -> bool:
-                """Return True if button i is present and pressed."""
-                return (i < joystick.get_numbuttons()) and (joystick.get_button(i) == 1)
+        def joystick_button(joystick, i: int) -> bool:
+            """Return True if button i is present and pressed."""
+            return (i < joystick.get_numbuttons()) and (joystick.get_button(i) == 1)
 
-            def read_axes(joystick, deadzone: float):
-                """
-                Read first four axes: a0=LX, a1=LY, a2=RX, a3=RY.
-                We apply a simple deadzone clamp to avoid noise around 0.
-                """
-                pygame.event.pump()
+        def read_axes(joystick, deadzone: float):
+            """
+            Read first four axes: a0=LX, a1=LY, a2=RX, a3=RY.
+            We apply a simple deadzone clamp to avoid noise around 0.
+            """
+            pygame.event.pump()
 
-                def dz(v):  # inline small helper (no extra nesting)
-                    return v if abs(v) >= deadzone else 0.0
+            def dz(v):  # inline small helper (no extra nesting)
+                return v if abs(v) >= deadzone else 0.0
 
-                return (
-                    dz(joystick_axis_safe(joystick, 0)),
-                    dz(joystick_axis_safe(joystick, 1)),
-                    dz(joystick_axis_safe(joystick, 2)),
-                    dz(joystick_axis_safe(joystick, 3)),
-                )
+            return (
+                dz(joystick_axis_safe(joystick, 0)),
+                dz(joystick_axis_safe(joystick, 1)),
+                dz(joystick_axis_safe(joystick, 2)),
+                dz(joystick_axis_safe(joystick, 3)),
+            )
 
-            def compute_twist(
+        def compute_twist(
+            a0,
+            a1,
+            a2,
+            a3,
+            *,
+            deadman,
+            turbo,
+            rotation_hold,
+            max_linear,
+            max_linear_turbo,
+            max_angular,
+        ):
+            """
+            Compute geometry_msgs/Twist from joystick input.
+
+            Returns a dict shaped exactly like geometry_msgs/Twist:
+              {
+                "linear":  (x, y, z),  # m/s
+                "angular": (x, y, z),  # rad/s
+              }
+
+            Mapping matches teleop_twist_joy config:
+              - Normal:
+                  linear.x <- LY (a1) * max_linear[ * turbo]
+                  angular.z <- LX (a0) * max_angular
+              - Rotation hold:
+                  angular.x <- LY (a1) * max_angular   (roll)
+                  angular.y <- LX (a0) * max_angular   (pitch)
+                  (Suppress linear.{x,y,z} and angular.z)
+            """
+            linear_scale = max_linear * (max_linear_turbo if turbo else 1.0)
+            angular_scale = max_angular
+
+            linear_x = linear_y = linear_z = angular_x = angular_y = angular_z = 0.0
+            if deadman:
+                if rotation_hold:
+                    angular_x = a1 * angular_scale  # roll
+                    angular_y = a0 * angular_scale  # pitch
+                else:
+                    linear_x = a1 * linear_scale
+                    angular_z = a0 * angular_scale
+            return {
+                "linear": {"x": linear_x, "y": linear_y, "z": linear_z},
+                "angular": {"x": angular_x, "y": angular_y, "z": angular_z},
+            }
+
+        def integrate_pose(state, twist, dt: float):
+            """
+            Integrate a synthetic pose from Twist (ROS2-style).
+
+            This tool keeps a minimal "state" dict using *explicit* names:
+
+                translation_x, translation_y, translation_z  (meters)
+                rotation_r, rotation_p, rotation_y           (radians; roll/pitch/yaw)
+
+            The integrator is trivially simple (Euler); it is *not* intended for
+            physically correct simulation, only for producing plausible numbers
+            while teleoperating demos or remote nodes.
+            """
+            linear_x, linear_y, linear_z = (
+                twist["linear"]["x"],
+                twist["linear"]["y"],
+                twist["linear"]["z"],
+            )
+            angular_x, angular_y, angular_z = (
+                twist["angular"]["x"],
+                twist["angular"]["y"],
+                twist["angular"]["z"],
+            )
+
+            state["translation_x"] += linear_x * dt
+            state["translation_y"] += linear_y * dt
+            state["translation_z"] += linear_z * dt
+            state["rotation_r"] += angular_x * dt
+            state["rotation_p"] += angular_y * dt
+            state["rotation_y"] += angular_z * dt
+
+            # Wrap angles to [-pi, pi] to keep quaternions well-behaved.
+            for k in ("rotation_r", "rotation_p", "rotation_y"):
+                v = state[k]
+                state[k] = (v + math.pi) % (2 * math.pi) - math.pi
+
+        def pose_from_state(state):
+            """
+            Return ROS2-style Pose dict using the internal state:
+
+              position = (translation_x, translation_y, translation_z)
+              orientation = quaternion(rotation_r, rotation_p, rotation_y)  # xyzw
+            """
+            position = {
+                "x": state["translation_x"],
+                "y": state["translation_y"],
+                "z": state["translation_z"],
+            }
+            orientation = euler_to_quaternion_xyzw(
+                state["rotation_r"], state["rotation_p"], state["rotation_y"]
+            )
+            return {"position": position, "orientation": orientation}
+
+        # ------------------------------------------------------------------
+        # Initialize pygame + joystick (let ImportError/RuntimeError surface)
+        # ------------------------------------------------------------------
+        pygame.init()
+        pygame.joystick.init()
+        if pygame.joystick.get_count() == 0:
+            pygame.quit()
+            assert (
+                False
+            ), "No joystick found (xbox control requires a connected controller)"
+
+        joystick = pygame.joystick.Joystick(joystick_index)
+        joystick.init()
+        log.info(
+            f"Joystick initialized: {joystick.get_name()} "
+            f"axes={joystick.get_numaxes()} buttons={joystick.get_numbuttons()}"
+        )
+
+        # Control parameters (align with teleop_twist_joy expectations)
+        max_linear = 0.7
+        max_linear_turbo = 1.5
+        max_angular = 0.4
+        deadzone = 0.08
+
+        # Button mapping (typical Xbox via SDL2/Pygame)
+        enable_button = 2  # X (deadman)
+        turbo_button = 5  # RB
+        rotation_button = 9  # Left stick click (momentary rotation mode)
+        exit_button = 1  # B
+
+        # Minimal state for pose integration + timing (explicit names)
+        state = dict(
+            translation_x=0.0,
+            translation_y=0.0,
+            translation_z=0.0,
+            rotation_r=0.0,
+            rotation_p=0.0,
+            rotation_y=0.0,
+            last=time.time(),
+        )
+
+        period = 1.0 / rate_hz
+
+        log.info(
+            "Running (async): "
+            "hold ENABLE (X), hold ROTATION (LS click) for roll/pitch, "
+            "TURBO (RB) scales linear.x, EXIT (B) quits."
+        )
+
+        while True:
+            await callback(period)
+            now = time.time()
+            dt = max(0.001, min(now - state["last"], 0.5))
+            state["last"] = now
+
+            a0, a1, a2, a3 = read_axes(joystick, deadzone)
+            deadman = joystick_button(joystick, enable_button)
+            turbo = joystick_button(joystick, turbo_button)
+            rotation_hold = joystick_button(joystick, rotation_button)
+
+            twist = compute_twist(
                 a0,
                 a1,
                 a2,
                 a3,
-                *,
-                deadman,
-                turbo,
-                rotation_hold,
-                max_linear,
-                max_linear_turbo,
-                max_angular,
-            ):
-                """
-                Compute geometry_msgs/Twist from joystick input.
-
-                Returns a dict shaped exactly like geometry_msgs/Twist:
-                  {
-                    "linear":  (x, y, z),  # m/s
-                    "angular": (x, y, z),  # rad/s
-                  }
-
-                Mapping matches teleop_twist_joy config:
-                  - Normal:
-                      linear.x <- LY (a1) * max_linear[ * turbo]
-                      angular.z <- LX (a0) * max_angular
-                  - Rotation hold:
-                      angular.x <- LY (a1) * max_angular   (roll)
-                      angular.y <- LX (a0) * max_angular   (pitch)
-                      (Suppress linear.{x,y,z} and angular.z)
-                """
-                linear_scale = max_linear * (max_linear_turbo if turbo else 1.0)
-                angular_scale = max_angular
-
-                linear_x = linear_y = linear_z = angular_x = angular_y = angular_z = 0.0
-                if deadman:
-                    if rotation_hold:
-                        angular_x = a1 * angular_scale  # roll
-                        angular_y = a0 * angular_scale  # pitch
-                    else:
-                        linear_x = a1 * linear_scale
-                        angular_z = a0 * angular_scale
-                return {
-                    "linear": {"x": linear_x, "y": linear_y, "z": linear_z},
-                    "angular": {"x": angular_x, "y": angular_y, "z": angular_z},
-                }
-
-            def integrate_pose(state, twist, dt: float):
-                """
-                Integrate a synthetic pose from Twist (ROS2-style).
-
-                This tool keeps a minimal "state" dict using *explicit* names:
-
-                    translation_x, translation_y, translation_z  (meters)
-                    rotation_r, rotation_p, rotation_y           (radians; roll/pitch/yaw)
-
-                The integrator is trivially simple (Euler); it is *not* intended for
-                physically correct simulation, only for producing plausible numbers
-                while teleoperating demos or remote nodes.
-                """
-                linear_x, linear_y, linear_z = (
-                    twist["linear"]["x"],
-                    twist["linear"]["y"],
-                    twist["linear"]["z"],
-                )
-                angular_x, angular_y, angular_z = (
-                    twist["angular"]["x"],
-                    twist["angular"]["y"],
-                    twist["angular"]["z"],
-                )
-
-                state["translation_x"] += linear_x * dt
-                state["translation_y"] += linear_y * dt
-                state["translation_z"] += linear_z * dt
-                state["rotation_r"] += angular_x * dt
-                state["rotation_p"] += angular_y * dt
-                state["rotation_y"] += angular_z * dt
-
-                # Wrap angles to [-pi, pi] to keep quaternions well-behaved.
-                for k in ("rotation_r", "rotation_p", "rotation_y"):
-                    v = state[k]
-                    state[k] = (v + math.pi) % (2 * math.pi) - math.pi
-
-            def pose_from_state(state):
-                """
-                Return ROS2-style Pose dict using the internal state:
-
-                  position = (translation_x, translation_y, translation_z)
-                  orientation = quaternion(rotation_r, rotation_p, rotation_y)  # xyzw
-                """
-                position = {
-                    "x": state["translation_x"],
-                    "y": state["translation_y"],
-                    "z": state["translation_z"],
-                }
-                orientation = euler_to_quaternion_xyzw(
-                    state["rotation_r"], state["rotation_p"], state["rotation_y"]
-                )
-                return {"position": position, "orientation": orientation}
-
-            # ------------------------------------------------------------------
-            # Initialize pygame + joystick (let ImportError/RuntimeError surface)
-            # ------------------------------------------------------------------
-            pygame.init()
-            pygame.joystick.init()
-            if pygame.joystick.get_count() == 0:
-                pygame.quit()
-                assert (
-                    False
-                ), "No joystick found (xbox control requires a connected controller)"
-
-            joystick = pygame.joystick.Joystick(joystick_index)
-            joystick.init()
-            log.info(
-                f"Joystick initialized: {joystick.get_name()} "
-                f"axes={joystick.get_numaxes()} buttons={joystick.get_numbuttons()}"
+                deadman=deadman,
+                turbo=turbo,
+                rotation_hold=rotation_hold,
+                max_linear=max_linear,
+                max_linear_turbo=max_linear_turbo,
+                max_angular=max_angular,
             )
+            integrate_pose(state, twist, dt)
+            pose = pose_from_state(state)
 
-            # Control parameters (align with teleop_twist_joy expectations)
-            max_linear = 0.7
-            max_linear_turbo = 1.5
-            max_angular = 0.4
-            deadzone = 0.08
+            # Send one step message over the session stream
+            if data == "pose":
+                step = {"pose": {effector: pose}}
+            elif data == "twist":
+                step = {"twist": {effector: twist}}
+            else:
+                assert False, f"unsupported data type {data}"
 
-            # Button mapping (typical Xbox via SDL2/Pygame)
-            enable_button = 2  # X (deadman)
-            turbo_button = 5  # RB
-            rotation_button = 9  # Left stick click (momentary rotation mode)
-            exit_button = 1  # B
+            await stream.step(step)
 
-            # Minimal state for pose integration + timing (explicit names)
-            state = dict(
-                translation_x=0.0,
-                translation_y=0.0,
-                translation_z=0.0,
-                rotation_r=0.0,
-                rotation_p=0.0,
-                rotation_y=0.0,
-                last=time.time(),
-            )
+            if joystick_button(joystick, exit_button):
+                log.info("Exit button pressed. Quitting...")
+                break
 
-            period = 1.0 / rate_hz
-
-            log.info(
-                "Running (async): "
-                "hold ENABLE (X), hold ROTATION (LS click) for roll/pitch, "
-                "TURBO (RB) scales linear.x, EXIT (B) quits."
-            )
-
-            while True:
-                await callback(period)
-                now = time.time()
-                dt = max(0.001, min(now - state["last"], 0.5))
-                state["last"] = now
-
-                a0, a1, a2, a3 = read_axes(joystick, deadzone)
-                deadman = joystick_button(joystick, enable_button)
-                turbo = joystick_button(joystick, turbo_button)
-                rotation_hold = joystick_button(joystick, rotation_button)
-
-                twist = compute_twist(
-                    a0,
-                    a1,
-                    a2,
-                    a3,
-                    deadman=deadman,
-                    turbo=turbo,
-                    rotation_hold=rotation_hold,
-                    max_linear=max_linear,
-                    max_linear_turbo=max_linear_turbo,
-                    max_angular=max_angular,
-                )
-                integrate_pose(state, twist, dt)
-                pose = pose_from_state(state)
-
-                # Send one step message over the session stream
-                if data == "pose":
-                    step = {"pose": {effector: pose}}
-                elif data == "twist":
-                    step = {"twist": {effector: twist}}
-                else:
-                    assert False, f"unsupported data type {data}"
-
-                await stream.step(step)
-
-                if joystick_button(joystick, exit_button):
-                    log.info("Exit button pressed. Quitting...")
-                    break
-
-            # Clean up only after normal exit
-            joystick.quit()
-            pygame.quit()
+        # Clean up only after normal exit
+        joystick.quit()
+        pygame.quit()
 
 
 async def f_proc(*argv: str) -> tuple[str, str]:
@@ -952,15 +951,18 @@ def session_step(
 ):
     client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])
     session = f_prefix(client.session.search(session), session, kind="session")
-    asyncio.run(
-        f_step(
-            session=session,
-            control=control,
-            effector=effector,
-            data=data,
-            callback=asyncio.sleep,
-        )
-    )
+
+    async def f():
+        async with session:
+            await f_step(
+                session=session,
+                control=control,
+                effector=effector,
+                data=data,
+                callback=asyncio.sleep,
+            )
+
+    asyncio.run(f())
     f_print(session, output=context.obj["output"])
 
 
