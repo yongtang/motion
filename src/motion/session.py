@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import datetime
 import enum
+import itertools
 import json
 import random
 import typing
@@ -73,12 +74,6 @@ class CameraSpec(pydantic.BaseModel):
     height: pydantic.PositiveInt
 
 
-class Vector3Spec(pydantic.BaseModel):
-    x: float
-    y: float
-    z: float
-
-
 class PointSpec(pydantic.BaseModel):
     x: float
     y: float
@@ -97,22 +92,24 @@ class PoseSpec(pydantic.BaseModel):
     orientation: QuaternionSpec
 
 
-class TwistSpec(pydantic.BaseModel):
-    linear: Vector3Spec
-    angular: Vector3Spec
-
-
 class SessionStepSpec(pydantic.BaseModel):
-    pose: dict[str, PoseSpec] | None = None
-    twist: dict[str, TwistSpec] | None = None
+    game: dict[str, list[tuple[str, int]]] | None = None
     joint: dict[str, float] | None = None
 
     def __init__(self, **data):
         super().__init__(**data)
-        if sum(v is not None for v in (self.pose, self.twist, self.joint)) != 1:
+        if sum(v is not None for v in (self.game, self.joint)) != 1:
             raise ValueError(
-                f"Must define exactly one from pose={self.pose}, twist={self.twist}, joint={self.joint}"
+                f"Must define exactly one from game={self.game} joint={self.joint}"
             )
+        if self.game is not None:
+            for name, value in itertools.chain.from_iterable(self.game.values()):
+                if name.startswith("AXIS_"):
+                    assert -32768 <= value <= 32767, f"{name} must be int16: {value}"
+                elif name.startswith("BUTTON_"):
+                    assert value in (0, 1), f"{name} must be 0|1: {value}"
+                else:
+                    assert False, f"{name}: {value}"
 
 
 class SessionSpec(pydantic.BaseModel):

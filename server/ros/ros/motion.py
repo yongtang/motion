@@ -6,9 +6,9 @@ import rclpy
 from builtin_interfaces.msg import Duration
 from geometry_msgs.msg import TwistStamped
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from .channel import Channel
 from .interface import Interface

@@ -33,37 +33,12 @@ async def f_remote_joint(session):
             await asyncio.sleep(2)
 
 
-async def f_remote_twist(session):
-    async with session.stream(start=1) as stream:
-        for i in range(150):
-            await stream.step(
-                {
-                    "twist": {
-                        "panda_hand": {
-                            "linear": {
-                                "x": 0.1,
-                                "y": 0.1,
-                                "z": 0.1,
-                            },
-                            "angular": {
-                                "x": 0.1,
-                                "y": 0.1,
-                                "z": 0.1,
-                            },
-                        },
-                    }
-                }
-            )
-            await asyncio.sleep(2)
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "model, call",
     [
         pytest.param("bounce", f_bounce_joint, id="bounce-joint"),
         pytest.param("remote", f_remote_joint, id="remote-joint"),
-        pytest.param("remote", f_remote_twist, id="remote-twist"),
     ],
 )
 @pytest.mark.parametrize("runner", ["ros"])

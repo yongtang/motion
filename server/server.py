@@ -79,7 +79,9 @@ async def scene_create(
     storage_kv_set("scene", f"{scene.uuid}.zip", file.file)
     log.info(f"[Scene {scene.uuid}] Stored archive {file.filename}")
 
-    storage_kv_set("scene", f"{scene.uuid}.json", scene.json().encode())
+    storage_kv_set(
+        "scene", f"{scene.uuid}.json", scene.json(exclude_none=True).encode()
+    )
     log.info(f"[Scene {scene.uuid}] Stored metadata")
 
     return scene
@@ -212,7 +214,9 @@ async def session_create(
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Scene {session.scene} not found")
 
-    storage_kv_set("session", f"{session.uuid}.json", session.json().encode())
+    storage_kv_set(
+        "session", f"{session.uuid}.json", session.json(exclude_none=True).encode()
+    )
 
     log.info(
         f"[Session {session.uuid}] Created ("
@@ -250,7 +254,7 @@ async def session_archive(session: pydantic.UUID4):
     def stream():
         with tempfile.TemporaryFile() as f:
             with zipfile.ZipFile(f, "w", compression=zipfile.ZIP_DEFLATED) as z:
-                z.writestr("session.json", session.json())
+                z.writestr("session.json", session.json(exclude_none=True))
                 try:
                     with z.open("data.json", "w") as g:
                         for chunk in storage_kv_get("data", f"{session.uuid}.json"):
@@ -463,7 +467,7 @@ async def session_play(
     log.debug(f"[Session {session.uuid}] Allocation order: {entries}")
 
     chosen = None
-    data = spec.json().encode()
+    data = spec.json(exclude_none=True).encode()
 
     for node in entries:
         if storage_kv_acquire("node", f"node/{node}.json", data, ttl=ttl):
@@ -566,7 +570,9 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
                     await ws.close(code=1007, reason="invalid step payload")
                     return
                 # publish normalized JSON (guaranteed schema)
-                await app.state.channel.publish_step(str(session), step.json().encode())
+                await app.state.channel.publish_step(
+                    str(session), step.json(exclude_none=True).encode()
+                )
         except WebSocketDisconnect:
             log.info(f"[Session {session}] WS stream recv disconnected")
             raise

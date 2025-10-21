@@ -72,7 +72,7 @@ async def node_play(meta):
         b"".join(storage_kv_get("session", f"{session}.json"))
     )
     with open("/storage/node/session.json", "w") as f:
-        f.write(session.json())
+        f.write(session.json(exclude_none=True))
     log.info(f"[node_play] session storage: {session}")
 
     scene = str(session.scene)
@@ -83,7 +83,7 @@ async def node_play(meta):
         b"".join(storage_kv_get("scene", f"{scene}.json"))
     )
     with open("/storage/node/scene.json", "w") as f:
-        f.write(scene.json())
+        f.write(scene.json(exclude_none=True))
     log.info(f"[node_play] scene storage: {scene}")
     assert scene.runner == runner
 
