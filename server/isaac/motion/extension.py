@@ -23,7 +23,7 @@ from .channel import Channel
 from .interface import Interface
 
 
-def f_step(articulation, controller, joint, link, step):
+def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
     step = json.loads(step.decode())
     print(f"[motion.extension] [run_call] Step data={step}")
 
@@ -32,6 +32,9 @@ def f_step(articulation, controller, joint, link, step):
     assert len(step["game"]) == 1
     effector, entries = next(iter(step["game"].items()))
     print(f"[motion.extension] [run_call] Step: effector={effector} entries={entries}")
+
+    for name, entry in entries:
+        print(f"[motion.extension] [run_call] Step: {name}={entry}")
 
     # XXXXXXXXXX
     print(f"[motion.extension] [run_call] [run_tick] Step data extraction")
@@ -230,7 +233,18 @@ def f_data(
 
 
 async def run_tick(
-    session, interface, channel, articulation, controller, joint, link, annotator, loop
+    session,
+    interface,
+    channel,
+    articulation,
+    controller,
+    provider,
+    gamepad,
+    se3,
+    joint,
+    link,
+    annotator,
+    loop,
 ):
     print(f"[motion.extension] [run_call] [run_tick] Timeline playing")
     omni.timeline.get_timeline_interface().play()
@@ -260,6 +274,9 @@ async def run_tick(
             f_step(
                 articulation=articulation,
                 controller=controller,
+                provider=provider,
+                gamepad=gamepad,
+                se3=se3,
                 joint=joint,
                 link=link,
                 step=step,
@@ -271,7 +288,18 @@ async def run_tick(
 
 
 async def run_norm(
-    session, interface, channel, articulation, controller, joint, link, annotator, loop
+    session,
+    interface,
+    channel,
+    articulation,
+    controller,
+    provider,
+    gamepad,
+    se3,
+    joint,
+    link,
+    annotator,
+    loop,
 ):
     def callback(data):
         try:
@@ -316,6 +344,9 @@ async def run_norm(
         f_step(
             articulation=articulation,
             controller=controller,
+            provider=provider,
+            gamepad=gamepad,
+            se3=se3,
             joint=joint,
             link=link,
             step=step,
@@ -458,6 +489,9 @@ async def run_call(session, call):
         await call(
             articulation=articulation,
             controller=controller,
+            provider=provider,
+            gamepad=gamepad,
+            se3=se3,
             joint=joint,
             link=link,
             annotator=annotator,
