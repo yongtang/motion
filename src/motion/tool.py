@@ -118,6 +118,7 @@ async def f_step(session, control, effector, callback):
         "BUTTON_RIGHTSTICK",
         "BUTTON_START",
         "BUTTON_BACK",
+        "BUTTON_GUIDE",
         "BUTTON_DPAD_UP",
         "BUTTON_DPAD_DOWN",
         "BUTTON_DPAD_LEFT",

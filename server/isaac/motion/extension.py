@@ -39,6 +39,7 @@ def f_game(name, entry):
         "BUTTON_DPAD_DOWN": carb.input.GamepadInput.DPAD_DOWN,
         "BUTTON_DPAD_LEFT": carb.input.GamepadInput.DPAD_LEFT,
         "BUTTON_DPAD_RIGHT": carb.input.GamepadInput.DPAD_RIGHT,
+        # "BUTTON_GUIDE": None,
     }
 
     e_trigger = {
