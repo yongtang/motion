@@ -4,7 +4,9 @@ import functools
 import itertools
 import json
 
+import carb
 import isaaclab.controllers
+import isaaclab.devices
 import isaacsim.core.experimental.prims
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
 import isaacsim.robot_motion
@@ -21,18 +23,17 @@ from .channel import Channel
 from .interface import Interface
 
 
-def f_step(articulation, controller, joint, link, step, effector):
+def f_step(articulation, controller, joint, link, step):
     step = json.loads(step.decode())
     print(f"[motion.extension] [run_call] Step data={step}")
 
-    if step["twist"] is None:
+    if step["game"] is None:
         assert False, f"{step}"
-    if effector is None:
-        assert len(step["twist"]) == 1
-        effector = next(iter(step["twist"].keys()))
-    assert effector == next(iter(step["twist"].keys())), f"{effector} vs. {step}"
-    print(f"[motion.extension] [run_call] Effector {effector}")
+    assert len(step["game"]) == 1
+    effector, entries = next(iter(step["game"].items()))
+    print(f"[motion.extension] [run_call] Step: effector={effector} entries={entries}")
 
+    # XXXXXXXXXX
     print(f"[motion.extension] [run_call] [run_tick] Step data extraction")
     linear = step["twist"][effector]["linear"]
     angular = step["twist"][effector]["angular"]
@@ -235,7 +236,6 @@ async def run_tick(
     omni.timeline.get_timeline_interface().play()
     print(f"[motion.extension] [run_call] [run_tick] Timeline in play")
 
-    effector = None
     while True:
         await omni.kit.app.get_app().next_update_async()
         data = f_data(
@@ -257,17 +257,14 @@ async def run_tick(
             print(f"[motion.extension] [run_call] [run_tick] Channel callback done")
             step = await interface.tick(data)
             print(f"[motion.extension] [run_call] [run_tick] Interface step {step}")
-            step, effector = f_step(
+            f_step(
                 articulation=articulation,
                 controller=controller,
                 joint=joint,
                 link=link,
                 step=step,
-                effector=effector,
             )
-            print(
-                f"[motion.extension] [run_call] [run_tick] Step step={step} effector={effector}"
-            )
+            print(f"[motion.extension] [run_call] [run_tick] Step step={step}")
         except Exception as e:
             print(f"[motion.extension] [run_call] [run_tick] Exception: {e}")
         print(f"[motion.extension] [run_call] [run_tick] Data done")
@@ -316,17 +313,14 @@ async def run_norm(
         print(f"[motion.extension] [run_call] [run_norm] Interface step {step}")
         if step is None:
             continue
-        step, effector = f_step(
+        f_step(
             articulation=articulation,
             controller=controller,
             joint=joint,
             link=link,
             step=step,
-            effector=effector,
         )
-        print(
-            f"[motion.extension] [run_call] [run_norm] Step step={step} effector={effector}"
-        )
+        print(f"[motion.extension] [run_call] [run_norm] Step step={step}")
 
 
 async def run_call(session, call):
@@ -367,6 +361,14 @@ async def run_call(session, call):
     assert stage
 
     print(f"[motion.extension] [run_call] Stage loaded")
+
+    provider = carb.input.acquire_input_provider()
+    gamepad = provider.create_gamepad("VirtualPad", "virt-0")  # name, id
+    provider.set_gamepad_connected(gamepad, True)
+
+    print(f"[motion.extension] [run_call] Gamepad: {gamepad}")
+    se3 = isaaclab.devices.gamepad.Se3Gamepad(isaaclab.devices.gamepad.Se3GamepadCfg())
+    print(f"[motion.extension] [run_call] Gamepad SE3: {se3}")
 
     articulation = [
         str(e.GetPath())
