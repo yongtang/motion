@@ -4,7 +4,9 @@ import functools
 import itertools
 import json
 
+import carb
 import isaaclab.controllers
+import isaaclab.devices
 import isaacsim.core.experimental.prims
 import isaacsim.replicator.agent.core.data_generation.writers.rtsp  # pylint: disable=W0611
 import isaacsim.robot_motion
@@ -21,24 +23,83 @@ from .channel import Channel
 from .interface import Interface
 
 
-def f_step(articulation, controller, joint, link, step, effector):
+def f_game(name, entry):
+    e_button = {
+        "BUTTON_A": carb.input.GamepadInput.A,
+        "BUTTON_B": carb.input.GamepadInput.B,
+        "BUTTON_X": carb.input.GamepadInput.X,
+        "BUTTON_Y": carb.input.GamepadInput.Y,
+        "BUTTON_LEFTSHOULDER": carb.input.GamepadInput.LEFT_SHOULDER,
+        "BUTTON_RIGHTSHOULDER": carb.input.GamepadInput.RIGHT_SHOULDER,
+        "BUTTON_LEFTSTICK": carb.input.GamepadInput.LEFT_STICK,
+        "BUTTON_RIGHTSTICK": carb.input.GamepadInput.RIGHT_STICK,
+        "BUTTON_START": carb.input.GamepadInput.MENU1,
+        "BUTTON_BACK": carb.input.GamepadInput.MENU2,
+        "BUTTON_DPAD_UP": carb.input.GamepadInput.DPAD_UP,
+        "BUTTON_DPAD_DOWN": carb.input.GamepadInput.DPAD_DOWN,
+        "BUTTON_DPAD_LEFT": carb.input.GamepadInput.DPAD_LEFT,
+        "BUTTON_DPAD_RIGHT": carb.input.GamepadInput.DPAD_RIGHT,
+        # "BUTTON_GUIDE": None,
+    }
+
+    e_trigger = {
+        "AXIS_TRIGGERLEFT": carb.input.GamepadInput.LEFT_TRIGGER,
+        "AXIS_TRIGGERRIGHT": carb.input.GamepadInput.RIGHT_TRIGGER,
+    }
+    e_axis = {
+        "AXIS_LEFTX": (
+            carb.input.GamepadInput.LEFT_STICK_LEFT,
+            carb.input.GamepadInput.LEFT_STICK_RIGHT,
+        ),
+        "AXIS_LEFTY": (
+            carb.input.GamepadInput.LEFT_STICK_DOWN,
+            carb.input.GamepadInput.LEFT_STICK_UP,
+        ),
+        "AXIS_RIGHTX": (
+            carb.input.GamepadInput.RIGHT_STICK_LEFT,
+            carb.input.GamepadInput.RIGHT_STICK_RIGHT,
+        ),
+        "AXIS_RIGHTY": (
+            carb.input.GamepadInput.RIGHT_STICK_DOWN,
+            carb.input.GamepadInput.RIGHT_STICK_UP,
+        ),
+    }
+
+    if name.startswith("AXIS_"):
+        assert -32768 <= entry <= 32767, f"{name} {entry}"
+        if name.startswith("AXIS_TRIGGER"):
+            return e_trigger[name], (
+                (float(entry) / 32767.0) if entry >= 0 else (float(entry) / 32768.0)
+            )
+        else:
+            return e_axis[name][1 if (entry >= 0) else 0], (
+                (float(entry) / 32767.0) if entry >= 0 else (-float(entry) / 32768.0)
+            )
+    elif name.startswith("BUTTON_"):
+        assert entry in (0, 1), f"{name} {entry}"
+        return e_button[name], (1.0 if entry else 0.0)
+
+    assert False, f"{name} {entry}"
+
+
+def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
     step = json.loads(step.decode())
     print(f"[motion.extension] [run_call] Step data={step}")
 
-    if step["twist"] is None:
+    if step["game"] is None:
         assert False, f"{step}"
-    if effector is None:
-        assert len(step["twist"]) == 1
-        effector = next(iter(step["twist"].keys()))
-    assert effector == next(iter(step["twist"].keys())), f"{effector} vs. {step}"
-    print(f"[motion.extension] [run_call] Effector {effector}")
+    assert len(step["game"]) == 1
+    effector, entries = next(iter(step["game"].items()))
+    print(f"[motion.extension] [run_call] Step: effector={effector} entries={entries}")
 
-    print(f"[motion.extension] [run_call] [run_tick] Step data extraction")
-    linear = step["twist"][effector]["linear"]
-    angular = step["twist"][effector]["angular"]
-    print(
-        f"[motion.extension] [run_call] [run_tick] Effector: {effector} linear={linear} angular={angular}"
-    )
+    for name, entry in entries:
+        print(f"[motion.extension] [run_call] Step: {name}={entry}")
+        provider.buffer_gamepad_event(gamepad, *f_game(name, entry))
+    provider.update_gamepad(gamepad)
+
+    advance = se3.advance()
+    command, gripper = advance[:6].unsqueeze(0), advance[6]
+    print(f"[motion.extension] [run_call] Command: {command}, {gripper}")
 
     jacobian = articulation.get_jacobian_matrices()
     print(f"[motion.extension] [run_call] Jacobian: {jacobian.shape}")
@@ -75,21 +136,6 @@ def f_step(articulation, controller, joint, link, step, effector):
         f"[motion.extension] [run_call] Jacobian position/quaternion: {position.shape}/{quaternion.shape}"
     )
 
-    command = torch.tensor(
-        [
-            [
-                linear["x"],
-                linear["y"],
-                linear["z"],
-                angular["x"],
-                angular["y"],
-                angular["z"],
-            ]
-        ],
-        dtype=torch.float32,
-    )
-
-    print(f"[motion.extension] [run_call] Jacobian command: command={command.shape}")
     controller.set_command(
         command=command,
         ee_pos=position,
@@ -229,13 +275,23 @@ def f_data(
 
 
 async def run_tick(
-    session, interface, channel, articulation, controller, joint, link, annotator, loop
+    session,
+    interface,
+    channel,
+    articulation,
+    controller,
+    provider,
+    gamepad,
+    se3,
+    joint,
+    link,
+    annotator,
+    loop,
 ):
     print(f"[motion.extension] [run_call] [run_tick] Timeline playing")
     omni.timeline.get_timeline_interface().play()
     print(f"[motion.extension] [run_call] [run_tick] Timeline in play")
 
-    effector = None
     while True:
         await omni.kit.app.get_app().next_update_async()
         data = f_data(
@@ -257,24 +313,35 @@ async def run_tick(
             print(f"[motion.extension] [run_call] [run_tick] Channel callback done")
             step = await interface.tick(data)
             print(f"[motion.extension] [run_call] [run_tick] Interface step {step}")
-            step, effector = f_step(
+            f_step(
                 articulation=articulation,
                 controller=controller,
+                provider=provider,
+                gamepad=gamepad,
+                se3=se3,
                 joint=joint,
                 link=link,
                 step=step,
-                effector=effector,
             )
-            print(
-                f"[motion.extension] [run_call] [run_tick] Step step={step} effector={effector}"
-            )
+            print(f"[motion.extension] [run_call] [run_tick] Step step={step}")
         except Exception as e:
             print(f"[motion.extension] [run_call] [run_tick] Exception: {e}")
         print(f"[motion.extension] [run_call] [run_tick] Data done")
 
 
 async def run_norm(
-    session, interface, channel, articulation, controller, joint, link, annotator, loop
+    session,
+    interface,
+    channel,
+    articulation,
+    controller,
+    provider,
+    gamepad,
+    se3,
+    joint,
+    link,
+    annotator,
+    loop,
 ):
     def callback(data):
         try:
@@ -316,17 +383,17 @@ async def run_norm(
         print(f"[motion.extension] [run_call] [run_norm] Interface step {step}")
         if step is None:
             continue
-        step, effector = f_step(
+        f_step(
             articulation=articulation,
             controller=controller,
+            provider=provider,
+            gamepad=gamepad,
+            se3=se3,
             joint=joint,
             link=link,
             step=step,
-            effector=effector,
         )
-        print(
-            f"[motion.extension] [run_call] [run_norm] Step step={step} effector={effector}"
-        )
+        print(f"[motion.extension] [run_call] [run_norm] Step step={step}")
 
 
 async def run_call(session, call):
@@ -367,6 +434,14 @@ async def run_call(session, call):
     assert stage
 
     print(f"[motion.extension] [run_call] Stage loaded")
+
+    provider = carb.input.acquire_input_provider()
+    gamepad = provider.create_gamepad("VirtualPad", "virt-0")  # name, id
+    provider.set_gamepad_connected(gamepad, True)
+
+    print(f"[motion.extension] [run_call] Gamepad: {gamepad}")
+    se3 = isaaclab.devices.gamepad.Se3Gamepad(isaaclab.devices.gamepad.Se3GamepadCfg())
+    print(f"[motion.extension] [run_call] Gamepad SE3: {se3}")
 
     articulation = [
         str(e.GetPath())
@@ -456,6 +531,9 @@ async def run_call(session, call):
         await call(
             articulation=articulation,
             controller=controller,
+            provider=provider,
+            gamepad=gamepad,
+            se3=se3,
             joint=joint,
             link=link,
             annotator=annotator,

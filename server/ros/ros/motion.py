@@ -4,11 +4,10 @@ import threading
 
 import rclpy
 from builtin_interfaces.msg import Duration
-from geometry_msgs.msg import TwistStamped
 from rclpy.node import Node
-from sensor_msgs.msg import JointState
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import JointState, Joy
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from .channel import Channel
 from .interface import Interface
@@ -33,7 +32,7 @@ class Motion(Node):
         self.subscription = self.create_subscription(
             JointState, "joint_states", self.listener_callback, 10
         )
-        self.twist = self.create_publisher(TwistStamped, "twist", 10)
+        self.game = self.create_publisher(Joy, "joy", 10)
         self.joint = self.create_publisher(JointTrajectory, "joint_trajectory", qos)
         self.timer = self.create_timer(0.5, self.timer_callback)
 
@@ -45,23 +44,77 @@ class Motion(Node):
         data = data.decode()
         data = json.loads(data)
 
-        if data.get("twist"):
-            assert len(data["twist"]) == 1, f"{data}"
-            key, value = next(iter(data["twist"].items()))
-            assert key == "panda_hand", f"{data}"
-            msg = TwistStamped()
+        if "game" in data:
+            assert len(data["game"]) == 1, f"{data}"
+            frame, entries = next(iter(data["game"].items()))
+
+            e_button = {
+                "BUTTON_A": 0,
+                "BUTTON_B": 1,
+                "BUTTON_X": 2,
+                "BUTTON_Y": 3,
+                "BUTTON_LEFTSHOULDER": 4,
+                "BUTTON_RIGHTSHOULDER": 5,
+                "BUTTON_BACK": 6,
+                "BUTTON_START": 7,
+                "BUTTON_GUIDE": 8,
+                "BUTTON_LEFTSTICK": 9,
+                "BUTTON_RIGHTSTICK": 10,
+            }
+
+            e_axis = {
+                "AXIS_LEFTX": 0,
+                "AXIS_LEFTY": 1,
+                "AXIS_TRIGGERLEFT": 2,
+                "AXIS_RIGHTX": 3,
+                "AXIS_RIGHTY": 4,
+                "AXIS_TRIGGERRIGHT": 5,
+            }
+            e_pad = {
+                "BUTTON_DPAD_UP": carb.input.GamepadInput.DPAD_UP,
+                "BUTTON_DPAD_DOWN": carb.input.GamepadInput.DPAD_DOWN,
+                "BUTTON_DPAD_LEFT": carb.input.GamepadInput.DPAD_LEFT,
+                "BUTTON_DPAD_RIGHT": carb.input.GamepadInput.DPAD_RIGHT,
+            }
+
+            msg = Joy()
             msg.header.stamp = self.get_clock().now().to_msg()
-            msg.header.frame_id = "panda_hand"
-            msg.twist.linear.x = value["linear"]["x"]
-            msg.twist.linear.y = value["linear"]["y"]
-            msg.twist.linear.z = value["linear"]["z"]
-            msg.twist.angular.x = value["angular"]["x"]
-            msg.twist.angular.y = value["angular"]["y"]
-            msg.twist.angular.z = value["angular"]["z"]
+            msg.header.frame_id = frame
+
+            dpad = {
+                "BUTTON_DPAD_LEFT": 0,
+                "BUTTON_DPAD_RIGHT": 0,
+                "BUTTON_DPAD_UP": 0,
+                "BUTTON_DPAD_DOWN": 0,
+            }
+            for name, entry in entries:
+                if name.startswith("BUTTON_DPAD_"):
+                    dpad[name] = entry
+                else:
+                    if name.startswith("BUTTON_"):
+                        msg.buttons[e_button[name]] = entry
+                    elif name.startswith("AXIS_"):
+                        msg.axes[e_axis[name]] = (
+                            (float(entry) / 32767.0)
+                            if entry >= 0
+                            else (float(entry) / 32768.0)
+                        )
+                    else:
+                        assert False, f"{name}, {entry}"
+            if dpad["BUTTON_DPAD_LEFT"] != dpad["BUTTON_DPAD_RIGHT"]:
+                msg.axes[6] = (
+                    -1.0
+                    if (dpad["BUTTON_DPAD_LEFT"] > dpad["BUTTON_DPAD_RIGHT"])
+                    else 1.0
+                )
+            if dpad["BUTTON_DPAD_UP"] != dpad["BUTTON_DPAD_DOWN"]:
+                msg.axes[7] = (
+                    -1.0 if (dpad["BUTTON_DPAD_UP"] > dpad["BUTTON_DPAD_DOWN"]) else 1.0
+                )
 
             self.get_logger().info(f'Publishing: "{msg}"')
-            self.twist.publish(msg)
-        elif data.get("joint"):
+            self.game.publish(msg)
+        elif "joint" in data:
             keys, values = zip(*data["joint"].items())
             point = JointTrajectoryPoint()
             point.time_from_start = Duration(sec=0)
