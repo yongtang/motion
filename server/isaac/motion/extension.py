@@ -23,6 +23,64 @@ from .channel import Channel
 from .interface import Interface
 
 
+def f_game(name, entry):
+    e_button = {
+        "BUTTON_A": carb.input.GamepadInput.A,
+        "BUTTON_B": carb.input.GamepadInput.B,
+        "BUTTON_X": carb.input.GamepadInput.X,
+        "BUTTON_Y": carb.input.GamepadInput.Y,
+        "BUTTON_LEFTSHOULDER": carb.input.GamepadInput.LEFT_SHOULDER,
+        "BUTTON_RIGHTSHOULDER": carb.input.GamepadInput.RIGHT_SHOULDER,
+        "BUTTON_LEFTSTICK": carb.input.GamepadInput.LEFT_STICK,
+        "BUTTON_RIGHTSTICK": carb.input.GamepadInput.RIGHT_STICK,
+        "BUTTON_START": carb.input.GamepadInput.MENU1,
+        "BUTTON_BACK": carb.input.GamepadInput.MENU2,
+        "BUTTON_DPAD_UP": carb.input.GamepadInput.DPAD_UP,
+        "BUTTON_DPAD_DOWN": carb.input.GamepadInput.DPAD_DOWN,
+        "BUTTON_DPAD_LEFT": carb.input.GamepadInput.DPAD_LEFT,
+        "BUTTON_DPAD_RIGHT": carb.input.GamepadInput.DPAD_RIGHT,
+    }
+
+    e_trigger = {
+        "AXIS_TRIGGERLEFT": carb.input.GamepadInput.LEFT_TRIGGER,
+        "AXIS_TRIGGERRIGHT": carb.input.GamepadInput.RIGHT_TRIGGER,
+    }
+    e_axis = {
+        "AXIS_LEFTX": (
+            carb.input.GamepadInput.LEFT_STICK_LEFT,
+            carb.input.GamepadInput.LEFT_STICK_RIGHT,
+        ),
+        "AXIS_LEFTY": (
+            carb.input.GamepadInput.LEFT_STICK_DOWN,
+            carb.input.GamepadInput.LEFT_STICK_UP,
+        ),
+        "AXIS_RIGHTX": (
+            carb.input.GamepadInput.RIGHT_STICK_LEFT,
+            carb.input.GamepadInput.RIGHT_STICK_RIGHT,
+        ),
+        "AXIS_RIGHTY": (
+            carb.input.GamepadInput.RIGHT_STICK_DOWN,
+            carb.input.GamepadInput.RIGHT_STICK_UP,
+        ),
+    }
+
+    if name.startswith("AXIS_"):
+        assert -32768 <= entry <= 32767, f"{name} {entry}"
+        if name.startswith("AXIS_TRIGGER"):
+            return e_trigger[name], (
+                (float(entry) / 32767.0) if entry >= 0 else (float(entry) / 32768.0)
+            )
+        else:
+            return e_axis[name][1 if (entry >= 0) else 0], (
+                (float(entry) / 32767.0) if entry >= 0 else (-float(entry) / 32768.0)
+            )
+    elif name.startswith("BUTTON_"):
+        assert entry in (0, 1), f"{name} {entry}"
+        return e_button[name], (1.0 if entry else 0.0)
+
+    assert False, f"{name} {entry}"
+
+
 def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
     step = json.loads(step.decode())
     print(f"[motion.extension] [run_call] Step data={step}")
@@ -35,14 +93,11 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
 
     for name, entry in entries:
         print(f"[motion.extension] [run_call] Step: {name}={entry}")
+        provider.buffer_gamepad_event(gamepad, *f_game(name, entry))
+    provider.update_gamepad(gamepad)
 
-    # XXXXXXXXXX
-    print(f"[motion.extension] [run_call] [run_tick] Step data extraction")
-    linear = step["twist"][effector]["linear"]
-    angular = step["twist"][effector]["angular"]
-    print(
-        f"[motion.extension] [run_call] [run_tick] Effector: {effector} linear={linear} angular={angular}"
-    )
+    command = se3.advance()
+    print(f"[motion.extension] [run_call] Command: {command}")
 
     jacobian = articulation.get_jacobian_matrices()
     print(f"[motion.extension] [run_call] Jacobian: {jacobian.shape}")
@@ -79,21 +134,6 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
         f"[motion.extension] [run_call] Jacobian position/quaternion: {position.shape}/{quaternion.shape}"
     )
 
-    command = torch.tensor(
-        [
-            [
-                linear["x"],
-                linear["y"],
-                linear["z"],
-                angular["x"],
-                angular["y"],
-                angular["z"],
-            ]
-        ],
-        dtype=torch.float32,
-    )
-
-    print(f"[motion.extension] [run_call] Jacobian command: command={command.shape}")
     controller.set_command(
         command=command,
         ee_pos=position,
