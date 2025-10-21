@@ -1045,9 +1045,9 @@ def quick_callback(
 
             mapping = asyncio.run(f_compose())
             matches = [p for p, ip in mapping.items() if ip == host]
-            assert matches, f"no compose project found for host {host}"
-            assert len(matches) == 1, f"ambiguous host {host}, matches: {matches}"
-            context.obj["base"] = next(iter(matches))
+            if matches:
+                assert len(matches) == 1, f"ambiguous host {host}, matches: {matches}"
+                context.obj["base"] = next(iter(matches))
 
     # Parse cameras into {name: {"width": int, "height": int}}
     def f(entry):
