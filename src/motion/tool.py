@@ -141,8 +141,7 @@ async def f_step(session, control, effector, gripper, callback):
         event = sdl2.SDL_Event()
         async with session.stream(start=None) as stream:
             while True:
-                # await callback(period)
-                await asyncio.sleep(0)
+                await callback(period)
 
                 entries = []
                 while not entries:
