@@ -440,7 +440,13 @@ async def run_call(session, call):
     provider.set_gamepad_connected(gamepad, True)
 
     print(f"[motion.extension] [run_call] Gamepad: {gamepad}")
-    se3 = isaaclab.devices.gamepad.Se3Gamepad(isaaclab.devices.gamepad.Se3GamepadCfg())
+    se3 = isaaclab.devices.gamepad.Se3Gamepad(
+        isaaclab.devices.gamepad.Se3GamepadCfg(
+            dead_zone=0.05,
+            pos_sensitivity=0.2,
+            rot_sensitivity=0.4,
+        )
+    )
     print(f"[motion.extension] [run_call] Gamepad SE3: {se3}")
 
     articulation = [
