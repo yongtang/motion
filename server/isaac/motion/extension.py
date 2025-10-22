@@ -97,8 +97,9 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
         provider.buffer_gamepad_event(gamepad, *f_game(name, entry))
     provider.update_gamepad(gamepad)
 
-    command = se3.advance()
-    print(f"[motion.extension] [run_call] Command: {command}")
+    advance = se3.advance()
+    command, gripper = advance[:6].unsqueeze(0), advance[6]
+    print(f"[motion.extension] [run_call] Command: {command}, {gripper}")
 
     jacobian = articulation.get_jacobian_matrices()
     print(f"[motion.extension] [run_call] Jacobian: {jacobian.shape}")
