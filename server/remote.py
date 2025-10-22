@@ -46,7 +46,15 @@ async def main():
                 await asyncio.sleep(1)
 
                 # model: remote from step
-                step = json.loads(await q.get())
+                # Wait for at least one message
+                step = await q.get()
+                # Flush the queue to keep latest
+                try:
+                    while True:
+                        step = q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                step = json.loads(step)
                 log.info(f"[main] model data={data} step={step}")
 
                 context.step(step)
