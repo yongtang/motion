@@ -95,6 +95,7 @@ class PoseSpec(pydantic.BaseModel):
 class SessionStepSpec(pydantic.BaseModel):
     game: dict[str, list[tuple[str, int]]] | None = None
     joint: dict[str, float] | None = None
+    metadata: str | None = None
 
     def __init__(self, **data):
         super().__init__(**data)

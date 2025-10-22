@@ -91,7 +91,7 @@ def f_prefix(items, q: str, *, kind: str):
     return next(iter(matches))
 
 
-async def f_step(session, control, effector, callback):
+async def f_step(session, control, effector, gripper, callback):
     assert control == "xbox", f"unsupported control {control}; only 'xbox' is supported"
 
     import sdl2
@@ -171,6 +171,10 @@ async def f_step(session, control, effector, callback):
                             log.info(f"Event: {event.type} skip")
                     await asyncio.sleep(0)
                 step = {"game": {effector: entries}}
+                if gripper:
+                    step["metadata"] = json.dumps(
+                        {"gripper": list(gripper)}, sort_keys=True
+                    )
                 await stream.step(step)
                 log.info(f"Step: {step}")
 
@@ -355,6 +359,7 @@ async def f_quick(
     tick,
     control,
     effector,
+    gripper,
     archive,
 ):
     """
@@ -401,6 +406,7 @@ async def f_quick(
                             session=session,
                             control=control,
                             effector=effector,
+                            gripper=gripper,
                             callback=f_data,
                         )
 
@@ -419,6 +425,7 @@ async def f_quick(
                                 session=session,
                                 control=control,
                                 effector=effector,
+                                gripper=gripper,
                                 callback=asyncio.sleep,
                             ),
                         )
@@ -688,6 +695,7 @@ def session_step(
                 session=session,
                 control=control,
                 effector=effector,
+                gripper=gripper,
                 callback=asyncio.sleep,
             )
 
@@ -743,6 +751,9 @@ def quick_callback(
     tick: typing.Optional[bool] = typer.Option(None, "--tick/--no-tick"),
     control: str = typer.Option("xbox", "--control"),
     effector: str = typer.Option(..., "--effector", help="Link name of end effector"),
+    gripper: typing.Optional[typing.List[str]] = typer.Option(
+        None, "--gripper", help="Repeatable: --gripper left --gripper right"
+    ),
     archive: typing.Optional[str] = typer.Option(
         None, "--archive", help="Directory to store archives"
     ),
@@ -807,6 +818,7 @@ def quick_callback(
             tick=tick,
             control=control,
             effector=effector,
+            gripper=gripper,
             archive=archive,
         )
     )
