@@ -155,11 +155,38 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
         jacobian=jacobian,
         joint_pos=joint_pos,
     )
-    print(f"[motion.extension] [run_call] Jacobian compute: {joint_pos.shape}")
+    print(f"[motion.extension] [run_call] Jacobian compute: {joint_pos}")
 
     positions[index : index + 1] = numpy.asarray(joint_pos)
+
+    if "metadata" in step:
+        metadata = step["metadata"]
+        print(f"[motion.extension] [run_call] Metadata: {metadata}")
+        metadata = json.loads(metadata)
+        print(f"[motion.extension] [run_call] Metadata: {metadata}")
+        if metadata.get("gripper"):
+            print(f"[motion.extension] [run_call] DOF: {articulation.dof_paths[index]}")
+            lower, upper = articulation.get_dof_limits()
+            lower, upper = numpy.asarray(lower), numpy.asarray(upper)
+            print(f"[motion.extension] [run_call] DOF limit: {lower} {upper}")
+
+            print(f"[motion.extension] [run_call] Gripper: {metadata['gripper']}")
+            for i in [
+                articulation.dof_paths[index].index(e) for e in metadata["gripper"]
+            ]:
+                limit_l, limit_u = lower[index][i], upper[index][i]
+                print(
+                    f"[motion.extension] [run_call] Gripper(Limit[{i}]): {gripper} ({limit_l} {limit_u})"
+                )
+                positions[index][i] = limit_l + (limit_u - limit_l) * (
+                    (gripper + 1.0) / 2
+                )
+                print(
+                    f"[motion.extension] [run_call] Gripper Position[{i}]: {positions[index][i]}"
+                )
+
     articulation.set_dof_position_targets(positions)
-    print(f"[motion.extension] [run_call] Articulations positions: {positions.shape}")
+    print(f"[motion.extension] [run_call] Articulations positions: {positions}")
 
     return step, effector
 
