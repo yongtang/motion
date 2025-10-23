@@ -135,7 +135,7 @@ async def f_step(session, control, effector, gripper, callback):
     try:
         joystick = sdl2.SDL_GameControllerGetJoystick(game_controller)
         log.info(
-            f"GameController: {sdl2.SDL_GameControllerName(game_controller).decode()} Joystick={sdl2.SDL_JoystickGetGUID(joystick)}"
+            f"GameController: {sdl2.SDL_GameControllerName(game_controller)} Joystick={sdl2.SDL_JoystickGetGUID(joystick)}"
         )
 
         event = sdl2.SDL_Event()
