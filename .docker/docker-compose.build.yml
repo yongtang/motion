@@ -22,7 +22,7 @@ services:
       context: ..
       dockerfile_inline: |
         FROM nats:alpine
-        CMD ["-a", "127.0.0.1", "-m", "8222", "-js", "-sd", "/storage/nats"]
+        CMD ["-a", "127.0.0.1", "-m", "8222", "-js", "-sd", "/storage/nats", "-V"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=30s CMD ["wget", "-qO", "/dev/null", "http://127.0.0.1:8222/healthz"]
   rtsp:
     image: motion/motion-rtsp

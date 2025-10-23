@@ -3,6 +3,7 @@ import contextlib
 import functools
 import itertools
 import json
+import time
 
 import carb
 import isaaclab.controllers
@@ -21,6 +22,21 @@ import torch
 
 from .channel import Channel
 from .interface import Interface
+
+
+class throttle:
+    def __init__(self, rate):
+        self.rate = rate
+        self.last = 0.0
+
+    def __call__(self, fn):
+        def wrapped(*args, **kwargs):
+            now = time.perf_counter()
+            if now - self.last >= self.rate:
+                self.last = now
+                return fn(*args, **kwargs)
+
+        return wrapped
 
 
 def f_game(name, entry):
@@ -370,6 +386,7 @@ async def run_norm(
     annotator,
     loop,
 ):
+    @throttle(0.2)
     def callback(data):
         try:
             print(f"[motion.extension] [run_call] [run_norm] Data {data}")
