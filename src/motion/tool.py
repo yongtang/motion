@@ -149,6 +149,7 @@ async def f_step(session, control, effector, gripper, callback):
                     while (
                         time.perf_counter() - counter
                     ) < period and sdl2.SDL_PollEvent(event):
+                        log.info(f"Event: {event.type} received")
                         if event.type == sdl2.SDL_CONTROLLERAXISMOTION:
                             entries.append(
                                 (f_axis.get(event.caxis.axis), event.caxis.value)
@@ -400,6 +401,7 @@ async def f_quick(
                                     msg = await stream.data()
                                     log.info(f"Data: {msg}")
                                     return
+                                await asyncio.sleep(0)
 
                         await f_step(
                             session=session,
@@ -417,6 +419,7 @@ async def f_quick(
                                 with contextlib.suppress(asyncio.TimeoutError):
                                     msg = await stream.data()
                                     log.info(f"Data: {msg}")
+                                await asyncio.sleep(0)
 
                         await asyncio.gather(
                             f_data(),
