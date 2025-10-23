@@ -126,7 +126,7 @@ async def f_step(session, control, effector, gripper, callback):
     ]
     f_button = {getattr(sdl2, f"SDL_CONTROLLER_{e}"): e for e in e_button}
 
-    period = 1.0  # 1 Hz
+    period = 0.1  # 10 Hz
     joystick_index = 0
 
     sdl2.SDL_Init(sdl2.SDL_INIT_GAMECONTROLLER | sdl2.SDL_INIT_EVENTS)
