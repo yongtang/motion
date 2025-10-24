@@ -575,7 +575,10 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
                 )
         except WebSocketDisconnect:
             log.info(f"[Session {session}] WS stream recv disconnected")
-            raise
+            return
+        except asyncio.CancelledError:
+            log.info(f"[Session {session}] WS stream recv cancelled")
+            return
         except Exception as e:
             log.error(f"[Session {session}] WS stream recv error: {e}", exc_info=True)
             raise
@@ -588,7 +591,10 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
                 await ws.send_text(msg.data.decode())
         except WebSocketDisconnect:
             log.info(f"[Session {session}] WS stream send disconnected")
-            raise
+            return
+        except asyncio.CancelledError:
+            log.info(f"[Session {session}] WS stream send cancelled")
+            return
         except Exception as e:
             log.error(f"[Session {session}] WS stream send error: {e}", exc_info=True)
             raise
