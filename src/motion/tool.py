@@ -141,8 +141,7 @@ async def f_step(session, control, effector, gripper, callback):
         event = sdl2.SDL_Event()
         async with session.stream(start=None) as stream:
             while True:
-                if callback:
-                    await callback(period)
+                await callback(period)
                 while True:
                     if sdl2.SDL_PollEvent(event):
                         if event.type not in (
@@ -154,7 +153,8 @@ async def f_step(session, control, effector, gripper, callback):
                         else:
                             break
 
-                    await asyncio.sleep(0)
+                    await asyncio.sleep(period)
+
                 log.info(f"Event: {event.type} received")
                 if event.type == sdl2.SDL_CONTROLLERAXISMOTION:
                     entry = (f_axis.get(event.caxis.axis), event.caxis.value)
@@ -178,7 +178,6 @@ async def f_step(session, control, effector, gripper, callback):
                     )
                 await stream.step(step)
                 log.info(f"Step: {step}")
-                await asyncio.sleep(0)
 
     finally:
         sdl2.SDL_GameControllerClose(game_controller)
@@ -430,7 +429,7 @@ async def f_quick(
                                 control=control,
                                 effector=effector,
                                 gripper=gripper,
-                                callback=None,
+                                callback=asyncio.sleep,
                             ),
                         )
 
@@ -700,7 +699,7 @@ def session_step(
                 control=control,
                 effector=effector,
                 gripper=gripper,
-                callback=None,
+                callback=asyncio.sleep,
             )
 
     asyncio.run(f())
