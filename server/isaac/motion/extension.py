@@ -39,7 +39,7 @@ class throttle:
         return wrapped
 
 
-def f_game(name, entry):
+def f_gamepad(name, entry):
     e_button = {
         "BUTTON_A": carb.input.GamepadInput.A,
         "BUTTON_B": carb.input.GamepadInput.B,
@@ -102,15 +102,15 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
     step = json.loads(step.decode())
     print(f"[motion.extension] [run_call] Step data={step}")
 
-    if step["game"] is None:
+    if step["gamepad"] is None:
         assert False, f"{step}"
-    assert len(step["game"]) == 1
-    effector, entries = next(iter(step["game"].items()))
+    assert len(step["gamepad"]) == 1
+    effector, entries = next(iter(step["gamepad"].items()))
     print(f"[motion.extension] [run_call] Step: effector={effector} entries={entries}")
 
     for name, entry in entries:
         print(f"[motion.extension] [run_call] Step: {name}={entry}")
-        provider.buffer_gamepad_event(gamepad, *f_game(name, entry))
+        provider.buffer_gamepad_event(gamepad, *f_gamepad(name, entry))
     provider.update_gamepad(gamepad)
 
     advance = se3.advance()

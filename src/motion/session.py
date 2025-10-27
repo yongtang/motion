@@ -93,24 +93,42 @@ class PoseSpec(pydantic.BaseModel):
 
 
 class SessionStepSpec(pydantic.BaseModel):
-    game: dict[str, list[tuple[str, int]]] | None = None
     joint: dict[str, float] | None = None
+    gamepad: dict[str, list[tuple[str, int]]] | None = None
+    keyboard: dict[str, list[str]] | None = None
     metadata: str | None = None
 
     def __init__(self, **data):
         super().__init__(**data)
-        if sum(v is not None for v in (self.game, self.joint)) != 1:
+        if sum(v is not None for v in (self.joint, self.gamepad, self.keyboard)) != 1:
             raise ValueError(
-                f"Must define exactly one from game={self.game} joint={self.joint}"
+                f"Must define exactly one from joint={self.joint} gamepad={self.gamepad} keyboard={self.keyboard}"
             )
-        if self.game is not None:
-            for name, value in itertools.chain.from_iterable(self.game.values()):
+        if self.gamepad is not None:
+            for name, value in itertools.chain.from_iterable(self.gamepad.values()):
                 if name.startswith("AXIS_"):
                     assert -32768 <= value <= 32767, f"{name} must be int16: {value}"
                 elif name.startswith("BUTTON_"):
                     assert value in (0, 1), f"{name} must be 0|1: {value}"
                 else:
                     assert False, f"{name}: {value}"
+        if self.keyboard is not None:
+            for entry in itertools.chain.from_iterable(self.keyboard.values()):
+                assert entry in (
+                    "K",
+                    "W",
+                    "S",
+                    "A",
+                    "D",
+                    "Q",
+                    "E",
+                    "Z",
+                    "X",
+                    "T",
+                    "G",
+                    "C",
+                    "V",
+                ), f"{entry}"
 
 
 class SessionSpec(pydantic.BaseModel):

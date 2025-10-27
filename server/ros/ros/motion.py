@@ -32,8 +32,8 @@ class Motion(Node):
         self.subscription = self.create_subscription(
             JointState, "joint_states", self.listener_callback, 10
         )
-        self.game = self.create_publisher(Joy, "joy", 10)
         self.joint = self.create_publisher(JointTrajectory, "joint_trajectory", qos)
+        self.gamepad = self.create_publisher(Joy, "joy", 10)
         self.timer = self.create_timer(0.5, self.timer_callback)
 
     def timer_callback(self):
@@ -44,9 +44,9 @@ class Motion(Node):
         data = data.decode()
         data = json.loads(data)
 
-        if "game" in data:
-            assert len(data["game"]) == 1, f"{data}"
-            frame, entries = next(iter(data["game"].items()))
+        if "gamepad" in data:
+            assert len(data["gamepad"]) == 1, f"{data}"
+            frame, entries = next(iter(data["gamepad"].items()))
 
             e_button = {
                 "BUTTON_A": 0,
@@ -113,7 +113,7 @@ class Motion(Node):
                 )
 
             self.get_logger().info(f'Publishing: "{msg}"')
-            self.game.publish(msg)
+            self.gamepad.publish(msg)
         elif "joint" in data:
             keys, values = zip(*data["joint"].items())
             point = JointTrajectoryPoint()

@@ -171,7 +171,7 @@ async def f_step(session, control, effector, gripper, callback):
                     )
                 else:
                     assert False, f"{event}"
-                step = {"game": {effector: [entry]}}
+                step = {"gamepad": {effector: [entry]}}
                 if gripper:
                     step["metadata"] = json.dumps(
                         {"gripper": list(gripper)}, sort_keys=True
