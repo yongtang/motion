@@ -91,9 +91,7 @@ def f_prefix(items, q: str, *, kind: str):
     return next(iter(matches))
 
 
-async def f_step(session, control, effector, gripper, callback):
-    assert control == "xbox", f"unsupported control {control}; only 'xbox' is supported"
-
+async def f_xbox(data_callback, step_callback):
     import sdl2
     import sdl2.ext
 
@@ -139,49 +137,66 @@ async def f_step(session, control, effector, gripper, callback):
         )
 
         event = sdl2.SDL_Event()
-        async with session.stream(start=None) as stream:
+        while True:
+            await data_callback(period)
             while True:
-                await callback(period)
-                while True:
-                    if sdl2.SDL_PollEvent(event):
-                        if event.type not in (
-                            sdl2.SDL_CONTROLLERAXISMOTION,
-                            sdl2.SDL_CONTROLLERBUTTONDOWN,
-                            sdl2.SDL_CONTROLLERBUTTONUP,
-                        ):
-                            log.info(f"Event: {event.type} skip")
-                        else:
-                            break
+                if sdl2.SDL_PollEvent(event):
+                    if event.type not in (
+                        sdl2.SDL_CONTROLLERAXISMOTION,
+                        sdl2.SDL_CONTROLLERBUTTONDOWN,
+                        sdl2.SDL_CONTROLLERBUTTONUP,
+                    ):
+                        log.info(f"Event: {event.type} skip")
+                    else:
+                        break
 
-                    await asyncio.sleep(period)
+                await asyncio.sleep(period)
 
-                log.info(f"Event: {event.type} received")
-                if event.type == sdl2.SDL_CONTROLLERAXISMOTION:
-                    entry = (f_axis.get(event.caxis.axis), event.caxis.value)
-                elif event.type in (
-                    sdl2.SDL_CONTROLLERBUTTONDOWN,
-                    sdl2.SDL_CONTROLLERBUTTONUP,
-                ):
-                    entry = (
-                        f_button.get(event.cbutton.button),
-                        (
-                            sdl2.SDL_CONTROLLERBUTTONDOWN,
-                            sdl2.SDL_CONTROLLERBUTTONUP,
-                        ).index(event.type),
-                    )
-                else:
-                    assert False, f"{event}"
-                step = {"gamepad": {effector: [entry]}}
-                if gripper:
-                    step["metadata"] = json.dumps(
-                        {"gripper": list(gripper)}, sort_keys=True
-                    )
-                await stream.step(step)
-                log.info(f"Step: {step}")
+            log.info(f"Event: {event.type} received")
+            if event.type == sdl2.SDL_CONTROLLERAXISMOTION:
+                entry = (f_axis.get(event.caxis.axis), event.caxis.value)
+            elif event.type in (
+                sdl2.SDL_CONTROLLERBUTTONDOWN,
+                sdl2.SDL_CONTROLLERBUTTONUP,
+            ):
+                entry = (
+                    f_button.get(event.cbutton.button),
+                    (
+                        sdl2.SDL_CONTROLLERBUTTONDOWN,
+                        sdl2.SDL_CONTROLLERBUTTONUP,
+                    ).index(event.type),
+                )
+            else:
+                assert False, f"{event}"
+            await step_callback([entry])
 
     finally:
         sdl2.SDL_GameControllerClose(game_controller)
         sdl2.SDL_Quit()
+
+
+async def f_step(session, control, effector, gripper, data_callback):
+    async with session.stream(start=None) as stream:
+
+        async def step_callback(entries):
+            step = {"gamepad": {effector: entries}}
+            if gripper:
+                step["metadata"] = json.dumps(
+                    {"gripper": list(gripper)}, sort_keys=True
+                )
+
+            await stream.step(step)
+            log.info(f"Step: {step}")
+
+        if control == "xbox":
+            await f_xbox(
+                data_callback=data_callback,
+                step_callback=step_callback,
+            )
+        elif control == "keyboard":
+            assert False
+        else:
+            assert False, f"{control}"
 
 
 async def f_proc(*argv: str) -> tuple[str, str]:
@@ -409,7 +424,7 @@ async def f_quick(
                             control=control,
                             effector=effector,
                             gripper=gripper,
-                            callback=f_data,
+                            data_callback=f_data,
                         )
 
                     else:
@@ -429,7 +444,7 @@ async def f_quick(
                                 control=control,
                                 effector=effector,
                                 gripper=gripper,
-                                callback=asyncio.sleep,
+                                data_callback=asyncio.sleep,
                             ),
                         )
 
@@ -699,7 +714,7 @@ def session_step(
                 control=control,
                 effector=effector,
                 gripper=gripper,
-                callback=asyncio.sleep,
+                data_callback=asyncio.sleep,
             )
 
     asyncio.run(f())
