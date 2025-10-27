@@ -92,8 +92,68 @@ def f_prefix(items, q: str, *, kind: str):
 
 
 async def f_xbox(data_callback, step_callback):
-    import sdl2
-    import sdl2.ext
+
+    period = 0.1  # 10 Hz
+    joystick_index = 0
+
+    e_axis = {
+        0: "AXIS_LEFTX",
+        1: "AXIS_LEFTY",
+        2: "AXIS_RIGHTX",
+        3: "AXIS_RIGHTY",
+        4: "AXIS_TRIGGERLEFT",
+        5: "AXIS_TRIGGERRIGHT",
+    }
+    e_button = {
+        0: "BUTTON_A",
+        1: "BUTTON_B",
+        2: "BUTTON_X",
+        3: "BUTTON_Y",
+        4: "BUTTON_LEFTSHOULDER",
+        5: "BUTTON_RIGHTSHOULDER",
+        6: "BUTTON_BACK",
+        7: "BUTTON_START",
+        8: "BUTTON_GUIDE",
+        9: "BUTTON_LEFTSTICK",
+        10: "BUTTON_RIGHTSTICK",
+    }
+    import pygame
+
+    pygame.init()
+    pygame.joystick.init()
+
+    joystick = pygame.joystick.Joystick(joystick_index)
+    joystick.init()
+
+    await data_callback(period)
+    while not any(
+        e.type == pygame.QUIT for e in pygame.event.get()
+    ):  # pygame.event.pump() implicitly called with get()
+        entries = []
+        for i in range(joystick.get_numaxes()):
+            axis = joystick.get_axis(i)
+            log.info(f"Pygame: axes[{i}]: {axis}")
+            entries.append((e_axis[i], max(-32767, min(32768, int(axis * 32768)))))
+
+        for i in range(joystick.get_numbuttons()):
+            button = joystick.get_button(i)
+            log.info(f"Pygame: button[{i}]: {button}")
+            entries.append((e_button[i], button))
+
+        for i in range(joystick.get_numhats()):
+            assert i == 0
+            hx, hy = joystick.get_hat(i)
+            log.info(f"Pygame: hat[{i}]: {hx}, {hy}")
+            entries.append(("BUTTON_DPAD_UP", int(hy == 1)))
+            entries.append(("BUTTON_DPAD_DOWN", int(hy == -11)))
+            entries.append(("BUTTON_DPAD_LEFT", int(hx == -1)))
+            entries.append(("BUTTON_DPAD_RIGHT", int(hx == 1)))
+
+        await step_callback(entries)
+
+        await data_callback(period)
+
+    return
 
     e_axis = [
         "AXIS_LEFTX",

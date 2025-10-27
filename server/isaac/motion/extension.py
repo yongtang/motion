@@ -110,6 +110,8 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
 
     for name, entry in entries:
         print(f"[motion.extension] [run_call] Step: {name}={entry}")
+        if name == "BUTTON_GUIDE":
+            continue
         provider.buffer_gamepad_event(gamepad, *f_gamepad(name, entry))
     provider.update_gamepad(gamepad)
 
