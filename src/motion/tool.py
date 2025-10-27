@@ -175,6 +175,53 @@ async def f_xbox(data_callback, step_callback):
         sdl2.SDL_Quit()
 
 
+async def f_keyboard(data_callback, step_callback):
+    import keyboard
+
+    e_key = (
+        "K",
+        "W",
+        "S",
+        "A",
+        "D",
+        "Q",
+        "E",
+        "Z",
+        "X",
+        "T",
+        "G",
+        "C",
+        "V",
+    )
+
+    period = 0.1  # 10 Hz
+
+    state = {"run": True}
+
+    def f_hook(e):
+        state["key"] = e.name.upper()
+
+    def f_stop():
+        state["run"] = False
+
+    keyboard.hook(f_hook)
+    keyboard.add_hotkey("esc", f_stop)
+
+    while state["run"]:
+        await data_callback(period)
+        while True:
+            entry, state["key"] = state["key"], None
+            if entry not in e_key:
+                log.info(f"Event: {entry} skip")
+            else:
+                break
+
+            await asyncio.sleep(period)
+
+        log.info(f"Event: {entry} received")
+        await step_callback([entry])
+
+
 async def f_step(session, control, effector, gripper, data_callback):
     async with session.stream(start=None) as stream:
 
@@ -194,7 +241,10 @@ async def f_step(session, control, effector, gripper, data_callback):
                 step_callback=step_callback,
             )
         elif control == "keyboard":
-            assert False
+            await f_keyboard(
+                data_callback=data_callback,
+                step_callback=step_callback,
+            )
         else:
             assert False, f"{control}"
 
