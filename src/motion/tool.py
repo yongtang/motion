@@ -122,117 +122,79 @@ async def f_xbox(data_callback, step_callback):
     pygame.init()
     pygame.joystick.init()
 
+    saved = {}
+
     joystick = pygame.joystick.Joystick(joystick_index)
     joystick.init()
+
+    def f_xbox_call():
+
+        threshold = 0.01
+
+        query = {
+            "axis": [joystick.get_axis(i) for i in range(joystick.get_numaxes())],
+            "button": [
+                joystick.get_button(i) for i in range(joystick.get_numbuttons())
+            ],
+            "hat": [joystick.get_hat(i) for i in range(joystick.get_numhats())],
+        }
+
+        l_saved, l_query = (
+            len(saved.get("axis", [])),
+            len(query.get("axis", [])),
+        )
+        for i in range(max(l_saved, l_query)):
+            if (i < min(l_saved, l_query)) and (
+                abs(saved["axis"][i], query["axis"][i]) < threshold
+            ):
+                continue
+            axis = query["axis"][i]
+            log.info(f"Pygame: axes[{i}]: {axis}")
+            entries.append((e_axis[i], max(-32767, min(32768, int(axis * 32768)))))
+
+        l_saved, l_query = (
+            len(saved.get("button", [])),
+            len(query.get("button", [])),
+        )
+        for i in range(max(l_saved, l_query)):
+            if (i < min(l_saved, l_query)) and (
+                saved["button"][i] == query["button"][i]
+            ):
+                continue
+            button = query["button"][i]
+            log.info(f"Pygame: button[{i}]: {button}")
+            entries.append((e_button[i], button))
+
+        l_saved, l_query = (
+            len(saved.get("hat", [])),
+            len(query.get("hat", [])),
+        )
+        for i in range(max(l_saved, l_query)):
+            if (i < min(l_saved, l_query)) and (saved["hat"][i] == query["hat"][i]):
+                continue
+            assert i == 0
+            hx, hy = query["hat"][i]
+            log.info(f"Pygame: hat[{i}]: {hx}, {hy}")
+            entries.append(("BUTTON_DPAD_UP", int(hy == 1)))
+            entries.append(("BUTTON_DPAD_DOWN", int(hy == -1)))
+            entries.append(("BUTTON_DPAD_LEFT", int(hx == -1)))
+            entries.append(("BUTTON_DPAD_RIGHT", int(hx == 1)))
+
+        saved["axis"], saved["button"], saved["hat"] = (
+            query["axis"],
+            query["button"],
+            query["hat"],
+        )
 
     await data_callback(period)
     while not any(
         e.type == pygame.QUIT for e in pygame.event.get()
     ):  # pygame.event.pump() implicitly called with get()
-        entries = []
-        for i in range(joystick.get_numaxes()):
-            axis = joystick.get_axis(i)
-            log.info(f"Pygame: axes[{i}]: {axis}")
-            entries.append((e_axis[i], max(-32767, min(32768, int(axis * 32768)))))
-
-        for i in range(joystick.get_numbuttons()):
-            button = joystick.get_button(i)
-            log.info(f"Pygame: button[{i}]: {button}")
-            entries.append((e_button[i], button))
-
-        for i in range(joystick.get_numhats()):
-            assert i == 0
-            hx, hy = joystick.get_hat(i)
-            log.info(f"Pygame: hat[{i}]: {hx}, {hy}")
-            entries.append(("BUTTON_DPAD_UP", int(hy == 1)))
-            entries.append(("BUTTON_DPAD_DOWN", int(hy == -11)))
-            entries.append(("BUTTON_DPAD_LEFT", int(hx == -1)))
-            entries.append(("BUTTON_DPAD_RIGHT", int(hx == 1)))
-
-        await step_callback(entries)
+        await step_callback(f_xbox_call())
 
         await data_callback(period)
 
     return
-
-    e_axis = [
-        "AXIS_LEFTX",
-        "AXIS_LEFTY",
-        "AXIS_RIGHTX",
-        "AXIS_RIGHTY",
-        "AXIS_TRIGGERLEFT",
-        "AXIS_TRIGGERRIGHT",
-    ]
-    f_axis = {getattr(sdl2, f"SDL_CONTROLLER_{e}"): e for e in e_axis}
-
-    e_button = [
-        "BUTTON_A",
-        "BUTTON_B",
-        "BUTTON_X",
-        "BUTTON_Y",
-        "BUTTON_LEFTSHOULDER",
-        "BUTTON_RIGHTSHOULDER",
-        "BUTTON_LEFTSTICK",
-        "BUTTON_RIGHTSTICK",
-        "BUTTON_START",
-        "BUTTON_BACK",
-        "BUTTON_GUIDE",
-        "BUTTON_DPAD_UP",
-        "BUTTON_DPAD_DOWN",
-        "BUTTON_DPAD_LEFT",
-        "BUTTON_DPAD_RIGHT",
-    ]
-    f_button = {getattr(sdl2, f"SDL_CONTROLLER_{e}"): e for e in e_button}
-
-    period = 0.1  # 10 Hz
-    joystick_index = 0
-
-    sdl2.SDL_Init(sdl2.SDL_INIT_GAMECONTROLLER | sdl2.SDL_INIT_EVENTS)
-
-    game_controller = sdl2.SDL_GameControllerOpen(joystick_index)
-    try:
-        joystick = sdl2.SDL_GameControllerGetJoystick(game_controller)
-        log.info(
-            f"GameController: {sdl2.SDL_GameControllerName(game_controller)} Joystick={sdl2.SDL_JoystickGetGUID(joystick)}"
-        )
-
-        event = sdl2.SDL_Event()
-        while True:
-            await data_callback(period)
-            while True:
-                if sdl2.SDL_PollEvent(event):
-                    if event.type not in (
-                        sdl2.SDL_CONTROLLERAXISMOTION,
-                        sdl2.SDL_CONTROLLERBUTTONDOWN,
-                        sdl2.SDL_CONTROLLERBUTTONUP,
-                    ):
-                        log.info(f"Event: {event.type} skip")
-                    else:
-                        break
-
-                await asyncio.sleep(period)
-
-            log.info(f"Event: {event.type} received")
-            if event.type == sdl2.SDL_CONTROLLERAXISMOTION:
-                entry = (f_axis.get(event.caxis.axis), event.caxis.value)
-            elif event.type in (
-                sdl2.SDL_CONTROLLERBUTTONDOWN,
-                sdl2.SDL_CONTROLLERBUTTONUP,
-            ):
-                entry = (
-                    f_button.get(event.cbutton.button),
-                    (
-                        sdl2.SDL_CONTROLLERBUTTONDOWN,
-                        sdl2.SDL_CONTROLLERBUTTONUP,
-                    ).index(event.type),
-                )
-            else:
-                assert False, f"{event}"
-            await step_callback([entry])
-
-    finally:
-        sdl2.SDL_GameControllerClose(game_controller)
-        sdl2.SDL_Quit()
 
 
 async def f_keyboard(data_callback, step_callback):

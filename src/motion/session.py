@@ -95,7 +95,7 @@ class PoseSpec(pydantic.BaseModel):
 class SessionStepSpec(pydantic.BaseModel):
     joint: dict[str, float] | None = None
     gamepad: dict[str, list[tuple[str, int]]] | None = None
-    keyboard: dict[str, list[str]] | None = None
+    keyboard: dict[str, list[tuple[str, int]]] | None = None
     metadata: str | None = None
 
     def __init__(self, **data):
@@ -113,8 +113,8 @@ class SessionStepSpec(pydantic.BaseModel):
                 else:
                     assert False, f"{name}: {value}"
         if self.keyboard is not None:
-            for entry in itertools.chain.from_iterable(self.keyboard.values()):
-                assert entry in (
+            for name, value in itertools.chain.from_iterable(self.keyboard.values()):
+                assert name in (
                     "K",
                     "W",
                     "S",
@@ -128,7 +128,7 @@ class SessionStepSpec(pydantic.BaseModel):
                     "G",
                     "C",
                     "V",
-                ), f"{entry}"
+                ) and value in (0, 1), f"{name}: {value}"
 
 
 class SessionSpec(pydantic.BaseModel):
