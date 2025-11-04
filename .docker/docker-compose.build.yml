@@ -14,7 +14,7 @@ services:
         WORKDIR /app
         RUN pip install -e . && \
             pip install -r server/requirements.txt
-        CMD ["/bin/bash", "-lc", "uvicorn server.server:app --host 0.0.0.0 --port 8080 --ws websockets --ws-ping-interval 15 --ws-ping-timeout 15 --ws-max-queue 1024 --ws-max-size 16777216 --timeout-keep-alive 75"]
+        CMD ["/bin/bash", "-lc", "uvicorn server.server:app --host 0.0.0.0 --port 8080 --ws websockets --ws-ping-interval 15 --ws-ping-timeout 0 --ws-max-queue 1024 --ws-max-size 16777216"]
         HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=120s CMD ["curl","-fsS","http://127.0.0.1:8080/health"]
   nats:
     image: motion/motion-nats
