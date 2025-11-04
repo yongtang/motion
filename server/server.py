@@ -534,7 +534,6 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
         await ws.close(code=1008)
         return
 
-    # Optional backlog offset (?start=n)
     start_q = ws.query_params.get("start")
     match start_q:
         case None:
@@ -555,72 +554,58 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
     await ws.accept()
     log.info(f"[Session {session}] WS stream connected (start={start})")
 
-    # server -> client: data
-    sub = await app.state.channel.subscribe_data(str(session), start=start)
-
-    async def recv_loop():
-        # client -> server: step
+    async def f_send():
+        sub = None
         try:
-            while True:
-                data = await ws.receive_text()
-                # validate
-                try:
-                    step = motion.session.SessionStepSpec.parse_obj(json.loads(data))
-                except Exception as e:
-                    log.warning(f"[Session {session}] Invalid step: {e}")
-                    await ws.close(code=1007, reason="invalid step payload")
-                    return
-                # publish normalized JSON (guaranteed schema)
-                await app.state.channel.publish_step(
-                    str(session), step.json(exclude_none=True).encode()
-                )
-        except WebSocketDisconnect:
-            log.info(f"[Session {session}] WS stream recv disconnected")
-            return
-        except asyncio.CancelledError:
-            log.info(f"[Session {session}] WS stream recv cancelled")
-            return
-        except Exception as e:
-            log.error(f"[Session {session}] WS stream recv error: {e}", exc_info=True)
-            raise
-
-    async def send_loop():
-        # server -> client: data
-        try:
+            # Do the (potentially slow) subscribe here so recv in main can start immediately
+            sub = await app.state.channel.subscribe_data(str(session), start=start)
             while True:
                 try:
-                    msg = await sub.next_msg()
+                    msg = await sub.next_msg()  # JetStream may raise TimeoutError
                 except nats.errors.TimeoutError:
                     continue
                 await ws.send_text(msg.data.decode())
-        except WebSocketDisconnect:
-            log.info(f"[Session {session}] WS stream send disconnected")
-            return
+        except WebSocketDisconnect as e:
+            log.info(f"[Session {session}] WS stream send disconnected (code={e.code})")
         except asyncio.CancelledError:
             log.info(f"[Session {session}] WS stream send cancelled")
-            return
         except Exception as e:
             log.error(f"[Session {session}] WS stream send error: {e}", exc_info=True)
             raise
+        finally:
+            with contextlib.suppress(Exception):
+                if sub is not None:
+                    await sub.unsubscribe()
 
-    recv_task = asyncio.create_task(recv_loop(), name=f"ws-recv-{session}")
-    send_task = asyncio.create_task(send_loop(), name=f"ws-send-{session}")
+    send_task = asyncio.create_task(f_send(), name=f"ws-send-{session}")
 
     try:
-        done, pending = await asyncio.wait(
-            {recv_task, send_task}, return_when=asyncio.FIRST_EXCEPTION
-        )
-        # cancel the other direction if one side ends/errors
-        for e in pending:
-            e.cancel()
-            with contextlib.suppress(Exception):
-                await e
-        # surface any exception from the completed task
-        for e in done:
-            _ = e.result()
+        while True:
+            data = await ws.receive_text()  # drain ASAP; don't block this path
+            try:
+                step = motion.session.SessionStepSpec.parse_obj(json.loads(data))
+            except Exception as e:
+                log.warning(f"[Session {session}] Invalid step: {e}")
+                await ws.close(code=1007, reason="invalid step payload")
+                break
+
+            # If this can be slow under load, consider a queue+worker; otherwise publish directly
+            await app.state.channel.publish_step(
+                str(session), step.json(exclude_none=True).encode()
+            )
+
+    except WebSocketDisconnect as e:
+        log.info(f"[Session {session}] WS stream recv disconnected (code={e.code})")
+    except asyncio.CancelledError:
+        log.info(f"[Session {session}] WS stream recv cancelled")
+    except Exception as e:
+        log.error(f"[Session {session}] WS stream recv error: {e}", exc_info=True)
+        raise
     finally:
+        # stop background sender and close socket
+        send_task.cancel()
         with contextlib.suppress(Exception):
-            await sub.unsubscribe()
+            await send_task
         with contextlib.suppress(Exception):
             await ws.close()
         log.info(f"[Session {session}] WS stream closed (start={start})")
