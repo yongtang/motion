@@ -150,8 +150,6 @@ async def f_xbox(data_callback, step_callback):
                     else:
                         break
 
-                await asyncio.sleep(period)
-
             log.info(f"Event: {event.type} received")
             if event.type == sdl2.SDL_CONTROLLERAXISMOTION:
                 entry = (f_axis.get(event.caxis.axis), event.caxis.value)

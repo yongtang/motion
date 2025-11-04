@@ -9,6 +9,7 @@ import tempfile
 import uuid
 import zipfile
 
+import nats
 import pydantic
 from fastapi import (
     FastAPI,
@@ -368,14 +369,14 @@ async def session_status(
     # 3) play: subscribe to motion.data.{session} (LAST) and try to get one message
     subscribe = await app.state.channel.subscribe_data(str(session), start=-1)
     try:
-        await asyncio.wait_for(subscribe.next_msg(), timeout=0.05)
+        await subscribe.next_msg(timeout=0.05)
         log.info(f"[Session {session}] Status derived: play (data messages exist)")
         return motion.session.SessionStatus(
             uuid=session,
             state=motion.session.SessionStatusSpec.play,
             update=datetime.datetime.now(datetime.timezone.utc),
         )
-    except asyncio.TimeoutError:
+    except nats.errors.TimeoutError:
         # no message available means pending
         pass
     finally:
@@ -587,7 +588,10 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
         # server -> client: data
         try:
             while True:
-                msg = await sub.next_msg()
+                try:
+                    msg = await sub.next_msg()
+                except nats.errors.TimeoutError:
+                    continue
                 await ws.send_text(msg.data.decode())
         except WebSocketDisconnect:
             log.info(f"[Session {session}] WS stream send disconnected")
