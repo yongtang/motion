@@ -175,7 +175,10 @@ class SessionStream:
             url,
             open_timeout=self._timeout_,
             close_timeout=self._timeout_,
-            ping_interval=None,
+            ping_interval=20.0,
+            ping_timeout=20.0,
+            max_queue=1024,
+            max_size=None,
         )
         return self
 
