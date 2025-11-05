@@ -278,6 +278,20 @@ async def session_archive(session: pydantic.UUID4):
 
 @app.delete("/session/{session:uuid}", response_model=motion.session.SessionBase)
 async def session_delete(session: pydantic.UUID4) -> motion.session.SessionBase:
+    # 0) Try to stop first (best-effort, idempotent)
+    try:
+        await session_stop(session)
+    except HTTPException as e:
+        # If the stop says "not found", we may still have metadata to delete below.
+        if e.status_code != 404:
+            log.warning(f"[Session {session}] Stop before delete failed: {e.detail}")
+    except Exception as e:
+        log.error(
+            f"[Session {session}] Unexpected error stopping before delete: {e}",
+            exc_info=True,
+        )
+
+    # 1) Re-read the session metadata to confirm existence and return value
     session = motion.session.SessionBase.parse_raw(
         b"".join(storage_kv_get("session", f"{session}.json"))
     )
@@ -286,9 +300,6 @@ async def session_delete(session: pydantic.UUID4) -> motion.session.SessionBase:
     log.info(f"[Session {session.uuid}] Metadata deleted")
 
     return session
-
-
-from fastapi import HTTPException, Query
 
 
 @app.get("/session", response_model=list[motion.session.SessionBase])
