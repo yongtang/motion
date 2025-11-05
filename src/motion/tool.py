@@ -478,17 +478,21 @@ async def f_quick(
     try:
         # 1) scene create
         scene = client.scene.create(file=file, runner=runner)
+        log.info(f"Quick: scene {scene}")
 
         # 2) session create (keep context while we operate)
         async with client.session.create(
             scene, joint=joint, camera=camera, link=link
         ) as session:
+            log.info(f"Quick: session {session}")
             try:
                 # 3) play
                 await session.play(device=device, model=model, tick=tick)
+                log.info(f"Quick: session {session} play")
 
                 # 4) drive (xbox loop)
                 async with session.stream(start=1) as stream:
+                    log.info(f"Quick: stream {stream}")
                     if tick:
 
                         async def f_data(period):
@@ -531,15 +535,18 @@ async def f_quick(
 
                 # 5) stop
                 await session.stop()
+                log.info(f"Quick: session {session} stop")
 
                 # 6) archive
                 client.archive(session=session, file=archive)
 
             finally:
                 with contextlib.suppress(Exception):
+                    log.info(f"Quick: session {session} delete")
                     client.session.delete(session)
 
         with contextlib.suppress(Exception):
+            log.info(f"Quick: scene {scene} delete")
             client.scene.delete(scene)
 
     finally:
