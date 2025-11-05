@@ -174,7 +174,35 @@ async def f_xbox(data_callback, step_callback):
 
 
 async def f_keyboard(data_callback, step_callback):
-    import keyboard
+    import select
+    import sys
+    import termios
+    import time
+    import tty
+
+    # Map escape sequences for arrow keys
+    e_arrow = {
+        b"\x1b[A": "UP",
+        b"\x1b[B": "DOWN",
+        b"\x1b[C": "RIGHT",
+        b"\x1b[D": "LEFT",
+    }
+
+    def kbhit(timeout=0.1):
+        """Return True if a key is available within timeout seconds."""
+        return select.select([sys.stdin], [], [], timeout)[0]
+
+    def read_key():
+        """Read a single keypress (handles arrow keys)."""
+        ch1 = sys.stdin.buffer.read(1)
+        if ch1 == b"\x1b":  # escape sequence
+            if kbhit(0.0001):
+                ch2 = sys.stdin.buffer.read(1)
+                if ch2 == b"[" and kbhit(0.0001):
+                    ch3 = sys.stdin.buffer.read(1)
+                    seq = ch1 + ch2 + ch3
+                    return e_arrow.get(seq, None)
+        return ch1.decode(errors="ignore")
 
     e_key = (
         "K",
@@ -182,7 +210,7 @@ async def f_keyboard(data_callback, step_callback):
         "S",
         "A",
         "D",
-        "Q",
+        # "Q", used for quit
         "E",
         "Z",
         "X",
@@ -192,39 +220,44 @@ async def f_keyboard(data_callback, step_callback):
         "V",
     )
 
-    period = 0.1  # 10 Hz
+    period = 0.2  # 5 Hz
 
-    state = {"run": True}
+    try:
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        tty.setcbreak(fd)  # put terminal into raw mode
 
-    def f_hook(e):
-        state["key"] = e.name.upper()
+        state = {"run": True}
 
-    def f_stop():
-        state["run"] = False
+        while state["run"]:
+            # await data_callback(period)
+            while True:
+                entries = []
+                if kbhit(0.05):
+                    key = read_key()
+                    key = key.upper()
+                    log.info(f"Keyboard: key={key}")
+                    if key == "q" or key == "Q":
+                        log.info(f"Keyboard: quit")
+                        break
+                    if key in e_key:
+                        log.info(f"Keyboard: entry")
+                        entries.append(key)
 
-    keyboard.hook(f_hook)
-    keyboard.add_hotkey("esc", f_stop)
+                if len(entries) > 0:
+                    log.info(f"Keyboard: xmit")
+                    await step_callback(entries=entries)
 
-    while state["run"]:
-        await data_callback(period)
-        while True:
-            entry, state["key"] = state["key"], None
-            if entry not in e_key:
-                log.info(f"Event: {entry} skip")
-            else:
-                break
-
-            await asyncio.sleep(period)
-
-        log.info(f"Event: {entry} received")
-        await step_callback([entry])
+                await asyncio.sleep(period)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
 async def f_step(session, control, effector, gripper, data_callback):
     async with session.stream(start=None) as stream:
 
         async def step_callback(entries):
-            step = {"gamepad": {effector: entries}}
+            step = {"keyboard": {effector: entries}}
             if gripper:
                 step["metadata"] = json.dumps(
                     {"gripper": list(gripper)}, sort_keys=True
