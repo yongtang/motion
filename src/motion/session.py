@@ -175,7 +175,7 @@ class SessionStream:
             url,
             open_timeout=self._timeout_,
             close_timeout=self._timeout_,
-            ping_interval=20.0,
+            ping_interval=10.0,
             ping_timeout=None,
         )
         return self
@@ -202,7 +202,8 @@ class SessionStream:
             url,
             open_timeout=self._timeout_,
             close_timeout=self._timeout_,
-            ping_interval=None,
+            ping_interval=10.0,
+            ping_timeout=None,
         )
 
     async def step(self, payload: dict, *, timeout: float | None = None) -> None:
