@@ -160,8 +160,8 @@ async def f_xbox(data_callback, step_callback):
                 entry = (
                     f_button.get(event.cbutton.button),
                     (
-                        sdl2.SDL_CONTROLLERBUTTONDOWN,
                         sdl2.SDL_CONTROLLERBUTTONUP,
+                        sdl2.SDL_CONTROLLERBUTTONDOWN,
                     ).index(event.type),
                 )
             else:
