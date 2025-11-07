@@ -256,8 +256,17 @@ async def f_keyboard(data_callback, step_callback):
 async def f_step(session, control, effector, gripper, data_callback):
     async with session.stream(start=None) as stream:
 
+        if control == "xbox":
+            f_call = f_xbox
+            e_spec = "gamepad"
+        elif control == "keyboard":
+            f_call = f_keyboard
+            e_spec = "keyboard"
+        else:
+            assert False, f"{control}"
+
         async def step_callback(entries):
-            step = {"keyboard": {effector: entries}}
+            step = {e_spec: {effector: entries}}
             if gripper:
                 step["metadata"] = json.dumps(
                     {"gripper": list(gripper)}, sort_keys=True
@@ -266,18 +275,10 @@ async def f_step(session, control, effector, gripper, data_callback):
             await stream.step(step)
             log.info(f"Step: {step}")
 
-        if control == "xbox":
-            await f_xbox(
-                data_callback=data_callback,
-                step_callback=step_callback,
-            )
-        elif control == "keyboard":
-            await f_keyboard(
-                data_callback=data_callback,
-                step_callback=step_callback,
-            )
-        else:
-            assert False, f"{control}"
+        await f_call(
+            data_callback=data_callback,
+            step_callback=step_callback,
+        )
 
 
 async def f_proc(*argv: str) -> tuple[str, str]:
