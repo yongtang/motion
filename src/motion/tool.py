@@ -149,6 +149,7 @@ async def f_xbox(data_callback, step_callback):
                         log.info(f"Event: {event.type} skip")
                     else:
                         break
+                await asyncio.sleep(0.0)
 
             log.info(f"Event: {event.type} received")
             if event.type == sdl2.SDL_CONTROLLERAXISMOTION:
@@ -230,7 +231,7 @@ async def f_keyboard(data_callback, step_callback):
         state = {"run": True}
 
         while state["run"]:
-            # await data_callback(period)
+            await data_callback(period)
             while True:
                 entries = []
                 if kbhit(0.05):
@@ -248,7 +249,7 @@ async def f_keyboard(data_callback, step_callback):
                     log.info(f"Keyboard: xmit")
                     await step_callback(entries=entries)
 
-                await asyncio.sleep(period)
+                await asyncio.sleep(0.0)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
