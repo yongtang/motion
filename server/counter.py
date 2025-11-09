@@ -22,9 +22,9 @@ async def run_tick(session: str, interface: Interface, channel: Channel):
         log.info(f"[run_tick] channel send ({data})")
         await channel.publish_data(session, data)
 
-        log.info(f"[run_tick] send: {data}")
+        log.info(f"[run_tick] send={data}")
         step = await interface.tick(data)
-        log.info(f"[run_tick] recv: {step}")
+        log.info(f"[run_tick] recv={step}")
 
         await asyncio.sleep(1)
 
@@ -40,7 +40,7 @@ async def run_norm(session: str, interface: Interface, channel: Channel):
     async def g():
         while True:
             step = await interface.recv()
-            log.info(f"[run_norm] recv: {step}")
+            log.info(f"[run_norm] recv={step}")
 
     task = asyncio.create_task(g())
     try:
@@ -51,7 +51,7 @@ async def run_norm(session: str, interface: Interface, channel: Channel):
             log.info(f"[run_norm] channel send ({data})")
             await channel.publish_data(session, data)
 
-            log.info(f"[run_norm] send: {data}")
+            log.info(f"[run_norm] send={data}")
             await interface.send(data)
 
             await asyncio.sleep(1)
