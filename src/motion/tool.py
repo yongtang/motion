@@ -274,7 +274,7 @@ async def f_step(session, control, effector, gripper, data_callback):
                 )
 
             await stream.step(step)
-            log.info(f"Step: {step}")
+            log.info(f"Step={step}")
 
         await f_call(
             data_callback=data_callback,
@@ -502,7 +502,7 @@ async def f_quick(
                                 log.info(f"Data: wait {i}")
                                 with contextlib.suppress(asyncio.TimeoutError):
                                     msg = await stream.data()
-                                    log.info(f"Data: {msg}")
+                                    log.info(f"Data={msg}")
                                     return
                                 await asyncio.sleep(0)
 
@@ -521,7 +521,7 @@ async def f_quick(
                                 log.info(f"Data: wait {i}")
                                 with contextlib.suppress(asyncio.TimeoutError):
                                     msg = await stream.data()
-                                    log.info(f"Data: {msg}")
+                                    log.info(f"Data={msg}")
                                 await asyncio.sleep(0)
 
                         await asyncio.gather(
