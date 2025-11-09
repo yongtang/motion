@@ -501,10 +501,10 @@ async def f_quick(
                             for i in itertools.count():
                                 log.info(f"Data: wait {i}")
                                 with contextlib.suppress(asyncio.TimeoutError):
-                                    msg = await stream.data()
+                                    msg = await stream.data(timeout=0)
                                     log.info(f"Data={msg}")
                                     return
-                                await asyncio.sleep(0)
+                                await asyncio.sleep(1.0)
 
                         await f_step(
                             session=session,
@@ -520,9 +520,9 @@ async def f_quick(
                             for i in itertools.count():
                                 log.info(f"Data: wait {i}")
                                 with contextlib.suppress(asyncio.TimeoutError):
-                                    msg = await stream.data()
+                                    msg = await stream.data(timeout=0)
                                     log.info(f"Data={msg}")
-                                await asyncio.sleep(0)
+                                await asyncio.sleep(1.0)
 
                         await asyncio.gather(
                             f_data(),

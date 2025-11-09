@@ -215,9 +215,9 @@ class SessionStream:
         if self._socket_ is None:
             await self._reconnect_()
 
-        to = self._timeout_ if timeout is None else float(timeout)
+        timeout = self._timeout_ if timeout is None else float(timeout)
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + to
+        deadline = None if timeout is None else loop.time() + timeout
 
         payload = (
             SessionStepSpec.parse_obj(payload)
@@ -227,41 +227,38 @@ class SessionStream:
         msg = payload.json()
 
         while True:
-            remaining = deadline - loop.time()
-            if remaining <= 0:
-                raise asyncio.TimeoutError()
-
             try:
-                # keep the single await short to allow retries
-                await asyncio.wait_for(
-                    self._socket_.send(msg),
-                    timeout=min(1.5, remaining),
-                )
+                await self._socket_.send(msg)
                 return None  # success
-
             except (
                 websockets.exceptions.ConnectionClosedError,
                 websockets.exceptions.ConnectionClosedOK,
             ):
-                # reconnect and retry until deadline
                 await self._reconnect_()
-                continue
+
+            # check timeout at the end so timeout==0 still allows one immediate try
+            if deadline is not None and loop.time() >= deadline:
+                raise asyncio.TimeoutError()
 
     async def data(self, *, timeout: float | None = None):
         """Receive one message; JSON-decode if possible."""
-        to = self._timeout_ if timeout is None else float(timeout)
+        timeout = self._timeout_ if timeout is None else float(timeout)
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + to
+        deadline = None if timeout is None else loop.time() + timeout
 
         while True:
-            remaining = deadline - loop.time()
-            if remaining <= 0:
-                raise asyncio.TimeoutError()
-
             try:
-                msg = await asyncio.wait_for(
-                    self._socket_.recv(), timeout=min(1.5, remaining)
-                )
+                if timeout is None or timeout == 0:
+                    # one normal recv() attempt; timeout=None => infinite wait
+                    msg = await self._socket_.recv()
+                else:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        raise asyncio.TimeoutError()
+                    msg = await asyncio.wait_for(
+                        self._socket_.recv(), timeout=remaining
+                    )
+
                 if isinstance(msg, (bytes, bytearray)):
                     try:
                         return json.loads(msg)
@@ -277,7 +274,10 @@ class SessionStream:
                 websockets.exceptions.ConnectionClosedOK,
             ):
                 await self._reconnect_()
-                continue
+
+            # timeout check at end so timeout==0 still allows one immediate try
+            if deadline is not None and loop.time() >= deadline:
+                raise asyncio.TimeoutError()
 
 
 @motionclass
