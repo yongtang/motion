@@ -124,7 +124,7 @@ async def f_xbox(data_callback, step_callback):
     ]
     f_button = {getattr(sdl2, f"SDL_CONTROLLER_{e}"): e for e in e_button}
 
-    period = 0.1  # 10 Hz
+    period = 0  # as fast as possible
     joystick_index = 0
 
     sdl2.SDL_Init(sdl2.SDL_INIT_GAMECONTROLLER | sdl2.SDL_INIT_EVENTS)
@@ -221,7 +221,7 @@ async def f_keyboard(data_callback, step_callback):
         "V",
     )
 
-    period = 0.2  # 5 Hz
+    period = 0  # as fast as possible
 
     try:
         fd = sys.stdin.fileno()
@@ -244,12 +244,11 @@ async def f_keyboard(data_callback, step_callback):
                     if key in e_key:
                         log.info(f"Keyboard: entry")
                         entries.append(key)
-
                 if len(entries) > 0:
                     log.info(f"Keyboard: xmit")
-                    await step_callback(entries=entries)
-
+                    break
                 await asyncio.sleep(0.0)
+            await step_callback(entries=entries)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
