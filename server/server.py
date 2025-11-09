@@ -576,6 +576,7 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
                 except nats.errors.TimeoutError:
                     continue
                 await ws.send_text(msg.data.decode())
+                log.info(f"[Session {session}] send={msg}")
         except WebSocketDisconnect as e:
             log.info(f"[Session {session}] WS stream send disconnected (code={e.code})")
         except asyncio.CancelledError:
@@ -593,6 +594,7 @@ async def session_stream(ws: WebSocket, session: pydantic.UUID4):
     try:
         while True:
             data = await ws.receive_text()  # drain ASAP; don't block this path
+            log.info(f"[Session {session}] recv={data}")
             try:
                 step = motion.session.SessionStepSpec.parse_obj(json.loads(data))
             except Exception as e:
