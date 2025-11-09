@@ -124,11 +124,7 @@ class Channel:
         assert self.nc is not None, "Channel not started"
         subject = f"motion.step.{session}"
         log.info(f"[Channel.publish_step] Publish (core) {subject}: {payload[:80]!r}")
-        await self.nc.publish(
-            subject,
-            payload,
-            headers={"Nats-Rollup": "sub"},
-        )
+        await self.nc.publish(subject, payload)
 
     async def subscribe_step(self, session: str, callback):
         log.info(f"[Channel.subscribe_step] session={session}")
