@@ -210,7 +210,7 @@ services:
           sleep infinity \n\
           exit 0 \n\
         fi \n\
-        /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers \n\
+        /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers --/log/outputStream=stdout --/log/outputStreamLevel=info --/log/fileEnabled=false \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]

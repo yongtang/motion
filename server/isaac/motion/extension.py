@@ -100,16 +100,18 @@ def f_gamepad(name, entry):
 
 def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
     step = json.loads(step.decode())
-    print(f"[motion.extension] [run_call] Step data={step}")
+    carb.log_info(f"[motion.extension] [run_call] Step data={step}")
 
     if step["gamepad"] is None:
         assert False, f"{step}"
     assert len(step["gamepad"]) == 1
     effector, entries = next(iter(step["gamepad"].items()))
-    print(f"[motion.extension] [run_call] Step: effector={effector} entries={entries}")
+    carb.log_info(
+        f"[motion.extension] [run_call] Step: effector={effector} entries={entries}"
+    )
 
     for name, entry in entries:
-        print(f"[motion.extension] [run_call] Step: {name}={entry}")
+        carb.log_info(f"[motion.extension] [run_call] Step: {name}={entry}")
         if name == "BUTTON_GUIDE":
             continue
         provider.buffer_gamepad_event(gamepad, *f_gamepad(name, entry))
@@ -117,10 +119,10 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
 
     advance = se3.advance()
     command, gripper = advance[:6].unsqueeze(0), advance[6]
-    print(f"[motion.extension] [run_call] Command: {command}, {gripper}")
+    carb.log_info(f"[motion.extension] [run_call] Command: {command}, {gripper}")
 
     jacobian = articulation.get_jacobian_matrices()
-    print(f"[motion.extension] [run_call] Jacobian: {jacobian.shape}")
+    carb.log_info(f"[motion.extension] [run_call] Jacobian: {jacobian.shape}")
 
     index = next(
         (
@@ -130,14 +132,14 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
         )
     )
     entry = articulation.link_paths[index].index(effector) - 1  # first is base_link
-    print(
+    carb.log_info(
         f"[motion.extension] [run_call] Jacobian: index={index} entry={entry} effector={effector} link={articulation.link_paths}"
     )
     assert (
         articulation.jacobian_matrix_shape[0] == len(articulation.link_paths[index]) - 1
     ), f"{articulation.jacobian_matrix_shape} vs. {articulation.link_paths}({index})"
     jacobian = torch.tensor(jacobian[index, entry, :, :], dtype=torch.float32)
-    print(f"[motion.extension] [run_call] Jacobian entry: {jacobian.shape}")
+    carb.log_info(f"[motion.extension] [run_call] Jacobian entry: {jacobian.shape}")
 
     position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
     position, quaternion = (
@@ -150,7 +152,7 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
             dtype=torch.float32,
         ),
     )
-    print(
+    carb.log_info(
         f"[motion.extension] [run_call] Jacobian position/quaternion: {position.shape}/{quaternion.shape}"
     )
 
@@ -159,12 +161,12 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
         ee_pos=position,
         ee_quat=quaternion,
     )
-    print(f"[motion.extension] [run_call] Jacobian command: done")
+    carb.log_info(f"[motion.extension] [run_call] Jacobian command: done")
 
     positions = numpy.asarray(articulation.get_dof_positions())
     joint_pos = torch.tensor(positions[index : index + 1], dtype=torch.float32)
 
-    print(
+    carb.log_info(
         f"[motion.extension] [run_call] Jacobian compute: jacobian={jacobian.shape} joint_pos={joint_pos.shape}"
     )
     joint_pos = controller.compute(
@@ -173,38 +175,42 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
         jacobian=jacobian,
         joint_pos=joint_pos,
     )
-    print(f"[motion.extension] [run_call] Jacobian compute: {joint_pos}")
+    carb.log_info(f"[motion.extension] [run_call] Jacobian compute: {joint_pos}")
 
     positions[index : index + 1] = numpy.asarray(joint_pos)
 
     if "metadata" in step:
         metadata = step["metadata"]
-        print(f"[motion.extension] [run_call] Metadata: {metadata}")
+        carb.log_info(f"[motion.extension] [run_call] Metadata: {metadata}")
         metadata = json.loads(metadata)
-        print(f"[motion.extension] [run_call] Metadata: {metadata}")
+        carb.log_info(f"[motion.extension] [run_call] Metadata: {metadata}")
         if metadata.get("gripper"):
-            print(f"[motion.extension] [run_call] DOF: {articulation.dof_paths[index]}")
+            carb.log_info(
+                f"[motion.extension] [run_call] DOF: {articulation.dof_paths[index]}"
+            )
             lower, upper = articulation.get_dof_limits()
             lower, upper = numpy.asarray(lower), numpy.asarray(upper)
-            print(f"[motion.extension] [run_call] DOF limit: {lower} {upper}")
+            carb.log_info(f"[motion.extension] [run_call] DOF limit: {lower} {upper}")
 
-            print(f"[motion.extension] [run_call] Gripper: {metadata['gripper']}")
+            carb.log_info(
+                f"[motion.extension] [run_call] Gripper: {metadata['gripper']}"
+            )
             for i in [
                 articulation.dof_paths[index].index(e) for e in metadata["gripper"]
             ]:
                 limit_l, limit_u = lower[index][i], upper[index][i]
-                print(
+                carb.log_info(
                     f"[motion.extension] [run_call] Gripper(Limit[{i}]): {gripper} ({limit_l} {limit_u})"
                 )
                 positions[index][i] = limit_l + (limit_u - limit_l) * (
                     (gripper + 1.0) / 2
                 )
-                print(
+                carb.log_info(
                     f"[motion.extension] [run_call] Gripper Position[{i}]: {positions[index][i]}"
                 )
 
     articulation.set_dof_position_targets(positions)
-    print(f"[motion.extension] [run_call] Articulations positions: {positions}")
+    carb.log_info(f"[motion.extension] [run_call] Articulations positions: {positions}")
 
     return step, effector
 
@@ -221,7 +227,7 @@ def f_data(
     annotator,
     callback,
 ):
-    print(f"[motion.extension] [run_call] Annotator callback")
+    carb.log_info(f"[motion.extension] [run_call] Annotator callback")
     entries = {n: numpy.asarray(e.get_data()) for n, e in annotator.items()}
     # Expect numpy.uint8 or numpy.float64
     assert all(e.dtype in (numpy.uint8, numpy.float64) for e in entries.values()), {
@@ -267,9 +273,11 @@ def f_data(
         }
         for n, e in entries.items()
     }
-    print(f"[motion.extension] [run_call] Annotator callback - camera: {entries}")
+    carb.log_info(
+        f"[motion.extension] [run_call] Annotator callback - camera: {entries}"
+    )
 
-    print(f"[motion.extension] [run_call] Articulation callback")
+    carb.log_info(f"[motion.extension] [run_call] Articulation callback")
     state = dict(
         zip(
             list(itertools.chain.from_iterable(articulation.dof_paths)),
@@ -281,9 +289,11 @@ def f_data(
         )
     )
     state = {k: v for k, v in state.items() if k in joint}
-    print(f"[motion.extension] [run_call] Articulation callback - state: {state}")
+    carb.log_info(
+        f"[motion.extension] [run_call] Articulation callback - state: {state}"
+    )
 
-    print(f"[motion.extension] [run_call] Link callback")
+    carb.log_info(f"[motion.extension] [run_call] Link callback")
     position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
     position, quaternion = (
         numpy.asarray(position),
@@ -305,7 +315,7 @@ def f_data(
         }
         for e, p, q in zip(link.paths, position, quaternion)
     }
-    print(f"[motion.extension] [run_call] Link callback - pose: {pose}")
+    carb.log_info(f"[motion.extension] [run_call] Link callback - pose: {pose}")
     data = json.dumps(
         {
             "joint": state,
@@ -314,7 +324,7 @@ def f_data(
         },
         sort_keys=True,
     ).encode()
-    print(f"[motion.extension] [run_call] Callback: {data}")
+    carb.log_info(f"[motion.extension] [run_call] Callback: {data}")
 
     return callback(data) if callback is not None else data
 
@@ -333,9 +343,9 @@ async def run_tick(
     annotator,
     loop,
 ):
-    print(f"[motion.extension] [run_call] [run_tick] Timeline playing")
+    carb.log_info(f"[motion.extension] [run_call] [run_tick] Timeline playing")
     omni.timeline.get_timeline_interface().play()
-    print(f"[motion.extension] [run_call] [run_tick] Timeline in play")
+    carb.log_info(f"[motion.extension] [run_call] [run_tick] Timeline in play")
 
     while True:
         await omni.kit.app.get_app().next_update_async()
@@ -353,11 +363,15 @@ async def run_tick(
         )
 
         try:
-            print(f"[motion.extension] [run_call] [run_tick] Data {data}")
+            carb.log_info(f"[motion.extension] [run_call] [run_tick] Data {data}")
             await channel.publish_data(session, data)
-            print(f"[motion.extension] [run_call] [run_tick] Channel callback done")
+            carb.log_info(
+                f"[motion.extension] [run_call] [run_tick] Channel callback done"
+            )
             step = await interface.tick(data)
-            print(f"[motion.extension] [run_call] [run_tick] Interface step {step}")
+            carb.log_info(
+                f"[motion.extension] [run_call] [run_tick] Interface step {step}"
+            )
             f_step(
                 articulation=articulation,
                 controller=controller,
@@ -368,10 +382,10 @@ async def run_tick(
                 link=link,
                 step=step,
             )
-            print(f"[motion.extension] [run_call] [run_tick] Step step={step}")
+            carb.log_info(f"[motion.extension] [run_call] [run_tick] Step step={step}")
         except Exception as e:
-            print(f"[motion.extension] [run_call] [run_tick] Exception: {e}")
-        print(f"[motion.extension] [run_call] [run_tick] Data done")
+            carb.log_info(f"[motion.extension] [run_call] [run_tick] Exception: {e}")
+        carb.log_info(f"[motion.extension] [run_call] [run_tick] Data done")
 
 
 async def run_norm(
@@ -391,16 +405,20 @@ async def run_norm(
     @throttle(0.2)
     def callback(data):
         try:
-            print(f"[motion.extension] [run_call] [run_norm] Data {data}")
+            carb.log_info(f"[motion.extension] [run_call] [run_norm] Data {data}")
             asyncio.run_coroutine_threadsafe(channel.publish_data(session, data), loop)
-            print(f"[motion.extension] [run_call] [run_norm] Channel callback done")
+            carb.log_info(
+                f"[motion.extension] [run_call] [run_norm] Channel callback done"
+            )
             asyncio.run_coroutine_threadsafe(interface.send(data), loop)
-            print(f"[motion.extension] [run_call] [run_norm] Interface callback done")
+            carb.log_info(
+                f"[motion.extension] [run_call] [run_norm] Interface callback done"
+            )
         except Exception as e:
-            print(f"[motion.extension] [run_call] [run_norm] Callback: {e}")
+            carb.log_info(f"[motion.extension] [run_call] [run_norm] Callback: {e}")
             raise
 
-    print(f"[motion.extension] [run_call] [run_norm] subscription")
+    carb.log_info(f"[motion.extension] [run_call] [run_norm] subscription")
     subscription = (
         omni.kit.app.get_app()
         .get_update_event_stream()
@@ -419,14 +437,14 @@ async def run_norm(
             )
         )
     )
-    print(f"[motion.extension] [run_call] [run_norm] Timeline playing")
+    carb.log_info(f"[motion.extension] [run_call] [run_norm] Timeline playing")
     omni.timeline.get_timeline_interface().play()
-    print(f"[motion.extension] [run_call] [run_norm] Timeline in play")
+    carb.log_info(f"[motion.extension] [run_call] [run_norm] Timeline in play")
 
     while True:
         await omni.kit.app.get_app().next_update_async()
         step = await interface.recv()
-        print(f"[motion.extension] [run_call] [run_norm] Interface step {step}")
+        carb.log_info(f"[motion.extension] [run_call] [run_norm] Interface step {step}")
         if step is None:
             continue
         f_step(
@@ -439,53 +457,53 @@ async def run_norm(
             link=link,
             step=step,
         )
-        print(f"[motion.extension] [run_call] [run_norm] Step step={step}")
+        carb.log_info(f"[motion.extension] [run_call] [run_norm] Step step={step}")
 
 
 async def run_call(session, call):
-    print(f"[motion.extension] [run_call] Loaded session {session}")
+    carb.log_info(f"[motion.extension] [run_call] Loaded session {session}")
 
     with open("/storage/node/session.json", "r") as f:
         metadata = json.loads(f.read())
-    print(f"[motion.extension] [run_call] Loaded metadata {metadata}")
+    carb.log_info(f"[motion.extension] [run_call] Loaded metadata {metadata}")
 
     camera = metadata["camera"]
-    print(f"[motion.extension] [run_call] Loaded camera {camera}")
+    carb.log_info(f"[motion.extension] [run_call] Loaded camera {camera}")
 
     joint = metadata["joint"]
-    print(f"[motion.extension] [run_call] Loaded joint {joint}")
+    carb.log_info(f"[motion.extension] [run_call] Loaded joint {joint}")
 
     link = metadata["link"]
-    print(f"[motion.extension] [run_call] Loaded link {link}")
+    carb.log_info(f"[motion.extension] [run_call] Loaded link {link}")
 
     ctx = omni.usd.get_context()
     if ctx.get_stage():
-        print("[motion.extension] [run_call] Closing existing stage...")
+        carb.log_info("[motion.extension] [run_call] Closing existing stage...")
         await ctx.close_stage_async()
-        print("[motion.extension] [run_call] Existing stage closed")
+        carb.log_info("[motion.extension] [run_call] Existing stage closed")
         await omni.kit.app.get_app().next_update_async()
 
-    print("[motion.extension] [run_call] Opening stage...")
+    carb.log_info("[motion.extension] [run_call] Opening stage...")
     await ctx.open_stage_async(
         "file:///storage/node/scene/scene.usd",
         load_set=omni.usd.UsdContextInitialLoadSet.LOAD_ALL,
     )
 
-    print("[motion.extension] [run_call] Waiting stage...")
+    carb.log_info("[motion.extension] [run_call] Waiting stage...")
     stage = ctx.get_stage()
     while stage is None:
-        print("[motion.extension] [run_call] Waiting loading...")
+        carb.log_info("[motion.extension] [run_call] Waiting loading...")
         await omni.kit.app.get_app().next_update_async()
         stage = ctx.get_stage()
     assert stage
 
-    print(f"[motion.extension] [run_call] Stage loaded")
+    carb.log_info(f"[motion.extension] [run_call] Stage loaded")
 
     provider = carb.input.acquire_input_provider()
     gamepad = provider.create_gamepad("VirtualPad", "virt-0")  # name, id
     provider.set_gamepad_connected(gamepad, True)
 
-    print(f"[motion.extension] [run_call] Gamepad: {gamepad}")
+    carb.log_info(f"[motion.extension] [run_call] Gamepad: {gamepad}")
     se3 = isaaclab.devices.gamepad.Se3Gamepad(
         isaaclab.devices.gamepad.Se3GamepadCfg(
             dead_zone=0.05,
@@ -493,17 +511,17 @@ async def run_call(session, call):
             rot_sensitivity=0.4,
         )
     )
-    print(f"[motion.extension] [run_call] Gamepad SE3: {se3}")
+    carb.log_info(f"[motion.extension] [run_call] Gamepad SE3: {se3}")
 
     articulation = [
         str(e.GetPath())
         for e in stage.Traverse()
         if e.HasAPI(pxr.UsdPhysics.ArticulationRootAPI)
     ]
-    print(f"[motion.extension] [run_call] Articulation: {articulation}")
+    carb.log_info(f"[motion.extension] [run_call] Articulation: {articulation}")
 
     articulation = isaacsim.core.experimental.prims.Articulation(articulation)
-    print(f"[motion.extension] [run_call] Articulation: {articulation}")
+    carb.log_info(f"[motion.extension] [run_call] Articulation: {articulation}")
 
     controller = isaaclab.controllers.DifferentialIKController(
         isaaclab.controllers.DifferentialIKControllerCfg(
@@ -515,17 +533,23 @@ async def run_call(session, call):
         num_envs=1,
         device="cpu",
     )
-    print(f"[motion.extension] [run_call] Articulation Controller: {controller}")
+    carb.log_info(
+        f"[motion.extension] [run_call] Articulation Controller: {controller}"
+    )
 
-    print(f"[motion.extension] [run_call] Articulation Joint: {articulation.dof_paths}")
+    carb.log_info(
+        f"[motion.extension] [run_call] Articulation Joint: {articulation.dof_paths}"
+    )
     joint = list(
         e
         for e in itertools.chain.from_iterable(articulation.dof_paths)
         if ("*" in joint or e in joint)
     )
-    print(f"[motion.extension] [run_call] Articulation Joint: {joint}")
+    carb.log_info(f"[motion.extension] [run_call] Articulation Joint: {joint}")
 
-    print(f"[motion.extension] [run_call] Articulation Link: {articulation.link_paths}")
+    carb.log_info(
+        f"[motion.extension] [run_call] Articulation Link: {articulation.link_paths}"
+    )
     link = isaacsim.core.experimental.prims.XformPrim(
         paths=list(
             e
@@ -533,7 +557,7 @@ async def run_call(session, call):
             if ("*" in link or e in link)
         )
     )
-    print(f"[motion.extension] [run_call] Articulation Link: {link.paths}")
+    carb.log_info(f"[motion.extension] [run_call] Articulation Link: {link.paths}")
 
     camera = (
         {
@@ -544,42 +568,42 @@ async def run_call(session, call):
         if "*" in camera
         else camera
     )
-    print(f"[motion.extension] [run_call] Camera: {camera}")
+    carb.log_info(f"[motion.extension] [run_call] Camera: {camera}")
 
     with open("/run/motion/camera.json", "w") as f:
         f.write(json.dumps(camera))
-    print(f"[motion.extension] [run_call] Camera: /run/motion/camera.json")
+    carb.log_info(f"[motion.extension] [run_call] Camera: /run/motion/camera.json")
 
     render = {
         e: omni.replicator.core.create.render_product(e, (v["width"], v["height"]))
         for e, v in camera.items()
     }
-    print(f"[motion.extension] [run_call] Render: {render}")
+    carb.log_info(f"[motion.extension] [run_call] Render: {render}")
 
     writer = omni.replicator.core.WriterRegistry.get("RTSPWriter")
     writer.initialize(
         rtsp_stream_url="rtsp://127.0.0.1:8554/RTSPWriter",
         rtsp_rgb=True,
     )
-    print(f"[motion.extension] [run_call] Writer: {writer}")
+    carb.log_info(f"[motion.extension] [run_call] Writer: {writer}")
 
     annotator = {
         e: omni.replicator.core.AnnotatorRegistry.get_annotator("rgb")
         for e, v in camera.items()
     }
-    print(f"[motion.extension] [run_call] Annotator: {annotator}")
+    carb.log_info(f"[motion.extension] [run_call] Annotator: {annotator}")
 
     if len(render):
         writer.attach(list(render.values()))
-        print(f"[motion.extension] [run_call] Writer attached")
+        carb.log_info(f"[motion.extension] [run_call] Writer attached")
         for k, v in render.items():
             annotator[k].attach(v)
-        print(f"[motion.extension] [run_call] Annotator attached")
+        carb.log_info(f"[motion.extension] [run_call] Annotator attached")
     else:
-        print(f"[motion.extension] [run_call] Writer/Annotator attach skipped")
+        carb.log_info(f"[motion.extension] [run_call] Writer/Annotator attach skipped")
 
     try:
-        print(f"[motion.extension] [run_call] Callback call")
+        carb.log_info(f"[motion.extension] [run_call] Callback call")
         await call(
             articulation=articulation,
             controller=controller,
@@ -590,25 +614,27 @@ async def run_call(session, call):
             link=link,
             annotator=annotator,
         )
-        print(f"[motion.extension] [run_call] Callback done")
+        carb.log_info(f"[motion.extension] [run_call] Callback done")
 
     except Exception as e:
-        print(f"[motion.extension] [run_call] [Exception]: {e}")
+        carb.log_info(f"[motion.extension] [run_call] [Exception]: {e}")
     finally:
         if len(render):
             with contextlib.suppress(Exception):
                 for k, v in render.items():
                     annotator[k].detach(v)
-            print(f"[motion.extension] [run_call] Camera annotator detached")
+            carb.log_info(f"[motion.extension] [run_call] Camera annotator detached")
             with contextlib.suppress(Exception):
                 writer.detach(list(camera.values()))
-            print(f"[motion.extension] [run_call] Camera detached")
+            carb.log_info(f"[motion.extension] [run_call] Camera detached")
         else:
-            print(f"[motion.extension] [run_call] Writer/Annotator detach skipped")
+            carb.log_info(
+                f"[motion.extension] [run_call] Writer/Annotator detach skipped"
+            )
 
 
 async def run_node(session: str, tick: bool):
-    print(f"[motion.extension] [run_node] session={session} tick={tick}")
+    carb.log_info(f"[motion.extension] [run_node] session={session} tick={tick}")
 
     # ZMQ DEALER (encapsulated by Interface)
     interface = Interface(tick=tick, sync=False)
@@ -616,12 +642,12 @@ async def run_node(session: str, tick: bool):
     # Channel
     channel = Channel()
     await channel.start()
-    print(f"[motion.extension] [run_node] channel start")
+    carb.log_info(f"[motion.extension] [run_node] channel start")
 
     # Wait for ROUTER to be ready (server has __PING__/__PONG__ built-in)
     # Send mode exactly once; runner requires it before first real payload
     await interface.ready(timeout=2.0, max=300)
-    print(f"[motion.extension] [run_node] ready")
+    carb.log_info(f"[motion.extension] [run_node] ready")
 
     loop = asyncio.get_running_loop()
 
@@ -647,18 +673,18 @@ async def run_node(session: str, tick: bool):
             ),
         )
     except Exception as e:
-        print(f"[motion.extension] [run_node] [Exception]: {e}")
+        carb.log_info(f"[motion.extension] [run_node] [Exception]: {e}")
     finally:
-        print(f"[motion.extension] [run_node] channel close")
+        carb.log_info(f"[motion.extension] [run_node] channel close")
         await channel.close()
-        print(f"[motion.extension] [run_node] close")
+        carb.log_info(f"[motion.extension] [run_node] close")
         await interface.close()
 
 
 async def main():
     with open("/storage/node/node.json", "r") as f:
         meta = json.loads(f.read())
-    print(f"[motion.extension] [main] meta={meta}")
+    carb.log_info(f"[motion.extension] [main] meta={meta}")
 
     session, tick = meta["session"], meta["tick"]
     await run_node(session, tick)
@@ -670,11 +696,11 @@ class MotionExtension(omni.ext.IExt):
         super().__init__()
 
     def on_startup(self, ext_id):
-        print(f"[motion.extension] Startup [{ext_id}]")
+        carb.log_info(f"[motion.extension] Startup [{ext_id}]")
 
         self.task = asyncio.create_task(main())
 
     def on_shutdown(self):
-        print("[motion.extension] Shutdown")
+        carb.log_info("[motion.extension] Shutdown")
         if self.task and not self.task.done():
             self.task.cancel()
