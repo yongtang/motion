@@ -98,7 +98,7 @@ def f_gamepad(name, entry):
     assert False, f"{name} {entry}"
 
 
-def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
+def f_step(device, articulation, controller, provider, gamepad, se3, joint, link, step):
     step = json.loads(step.decode())
     carb.log_info(f"[motion.extension] [run_call] Step data={step}")
 
@@ -138,7 +138,9 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
     assert (
         articulation.jacobian_matrix_shape[0] == len(articulation.link_paths[index]) - 1
     ), f"{articulation.jacobian_matrix_shape} vs. {articulation.link_paths}({index})"
-    jacobian = torch.tensor(jacobian[index, entry, :, :], dtype=torch.float32)
+    jacobian = torch.tensor(
+        jacobian[index, entry, :, :], dtype=torch.float32, device=device
+    )
     carb.log_info(f"[motion.extension] [run_call] Jacobian entry: {jacobian.shape}")
 
     position, quaternion = link.get_world_poses()  # quaternion: w, x, y, z
@@ -146,10 +148,12 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
         torch.tensor(
             position[link.paths.index(effector) : link.paths.index(effector) + 1],
             dtype=torch.float32,
+            device=device,
         ),
         torch.tensor(
             quaternion[link.paths.index(effector) : link.paths.index(effector) + 1],
             dtype=torch.float32,
+            device=device,
         ),
     )
     carb.log_info(
@@ -163,8 +167,10 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
     )
     carb.log_info(f"[motion.extension] [run_call] Jacobian command: done")
 
-    positions = numpy.asarray(articulation.get_dof_positions())
-    joint_pos = torch.tensor(positions[index : index + 1], dtype=torch.float32)
+    positions = torch.tensor(articulation.get_dof_positions(), device=device)
+    joint_pos = torch.tensor(
+        positions[index : index + 1], dtype=torch.float32, device=device
+    )
 
     carb.log_info(
         f"[motion.extension] [run_call] Jacobian compute: jacobian={jacobian.shape} joint_pos={joint_pos.shape}"
@@ -177,7 +183,7 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
     )
     carb.log_info(f"[motion.extension] [run_call] Jacobian compute: {joint_pos}")
 
-    positions[index : index + 1] = numpy.asarray(joint_pos)
+    positions[index : index + 1] = joint_pos
 
     if "metadata" in step:
         metadata = step["metadata"]
@@ -209,7 +215,7 @@ def f_step(articulation, controller, provider, gamepad, se3, joint, link, step):
                     f"[motion.extension] [run_call] Gripper Position[{i}]: {positions[index][i]}"
                 )
 
-    articulation.set_dof_position_targets(positions)
+    articulation.set_dof_position_targets(positions.cpu().numpy())
     carb.log_info(f"[motion.extension] [run_call] Articulations positions: {positions}")
 
     return step, effector
@@ -333,6 +339,7 @@ async def run_tick(
     session,
     interface,
     channel,
+    device,
     articulation,
     controller,
     provider,
@@ -373,6 +380,7 @@ async def run_tick(
                 f"[motion.extension] [run_call] [run_tick] Interface step {step}"
             )
             f_step(
+                device=device,
                 articulation=articulation,
                 controller=controller,
                 provider=provider,
@@ -392,6 +400,7 @@ async def run_norm(
     session,
     interface,
     channel,
+    device,
     articulation,
     controller,
     provider,
@@ -448,6 +457,7 @@ async def run_norm(
         if step is None:
             continue
         f_step(
+            device=device,
             articulation=articulation,
             controller=controller,
             provider=provider,
@@ -523,6 +533,7 @@ async def run_call(session, call):
     articulation = isaacsim.core.experimental.prims.Articulation(articulation)
     carb.log_info(f"[motion.extension] [run_call] Articulation: {articulation}")
 
+    device = "cuda"
     controller = isaaclab.controllers.DifferentialIKController(
         isaaclab.controllers.DifferentialIKControllerCfg(
             command_type="pose",  # "position" | "pose"
@@ -531,7 +542,7 @@ async def run_call(session, call):
             ik_params={"k_val": 1.0},  # or {"lambda_val": 0.05} for DLS, etc.
         ),
         num_envs=1,
-        device="cpu",
+        device=device,
     )
     carb.log_info(
         f"[motion.extension] [run_call] Articulation Controller: {controller}"
@@ -605,6 +616,7 @@ async def run_call(session, call):
     try:
         carb.log_info(f"[motion.extension] [run_call] Callback call")
         await call(
+            device=device,
             articulation=articulation,
             controller=controller,
             provider=provider,
