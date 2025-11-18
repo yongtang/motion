@@ -14,7 +14,6 @@ import yaml
 
 import motion
 
-from .channel import Channel
 from .node import run_http
 from .storage import storage_kv_get, storage_kv_set
 
@@ -180,32 +179,6 @@ async def node_stop(meta):
     proc = await f_proc(f_node(), "[node_stop]")
 
     await proc.wait()
-
-    with tempfile.NamedTemporaryFile(prefix=f"{session}-", suffix=".json") as f:
-        log.info(f"[node_stop] temp file={f.name}")
-
-        channel = Channel(servers="nats://127.0.0.1:4222")
-        await channel.start()
-        log.info(f"[node_stop] channel start")
-
-        sub = await channel.subscribe_data(session, start=1)
-        log.info(f"[node_stop] session={session} subscribe")
-
-        try:
-            while True:
-                msg = await sub.next_msg(timeout=30.0)
-                f.write(msg.data + b"\n")
-        except asyncio.TimeoutError:
-            pass
-        finally:
-            await sub.unsubscribe()
-            log.info(f"[node_stop] session={session} unsubscribe")
-            await channel.close()
-            log.info(f"[node_stop] channel close")
-
-        f.seek(0)
-        storage_kv_set("data", f"{session}.json", f.read())
-        log.info(f"[node_stop] uploaded s3://data/{session}.json")
 
     shutil.rmtree("/storage/node", ignore_errors=True)
     log.info(f"[node_stop] session={session} done")
