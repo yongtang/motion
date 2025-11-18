@@ -2,6 +2,7 @@ import collections
 import contextlib
 import logging
 import time
+import typing
 
 import boto3
 import botocore
@@ -45,7 +46,7 @@ def storage_kv_head(bucket: str, key: str) -> dict | None:
                 raise
 
 
-def storage_kv_set(bucket: str, key: str, data: bytes) -> str | None:
+def storage_kv_set(bucket: str, key: str, data: bytes | typing.IO[bytes]) -> str | None:
     try:
         storage.create_bucket(Bucket=bucket)
         log.info(f"[KV {bucket}] Created bucket")

@@ -519,19 +519,66 @@ async def session_stop(session: pydantic.UUID4) -> motion.session.SessionBase:
         log.warning(f"[Session {session}] Stop requested for nonexistent session")
         raise HTTPException(status_code=404, detail=f"Session {session} not found")
 
-    # 2) read assignment and release lease (idempotent)
+    # 2) release lease first (idempotent)
     try:
         chosen = json.loads(
             b"".join(storage_kv_get("node", f"work/{session.uuid}.json"))
         )["node"]
         log.info(f"[Session {session.uuid}] Releasing lease (node={chosen})")
+
         storage_kv_release("node", f"node/{chosen}.json")
+
         with contextlib.suppress(Exception):
             storage_kv_del("node", f"work/{session.uuid}.json")
+
         log.info(f"[Session {session.uuid}] Lease released and assignment cleared")
     except FileNotFoundError:
         log.info(f"[Session {session.uuid}] No assignment to release (maybe expired)")
 
+    # 3) drain NATS data into S3 (best-effort, does not affect return)
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f"{session.uuid}-", suffix=".json"
+        ) as f:
+            log.info(
+                f"[Session {session.uuid}] Begin drain of data stream to temp file={f.name}"
+            )
+
+            # Subscribe from the first message in the stream
+            sub = await app.state.channel.subscribe_data(str(session.uuid), start=1)
+            log.info(
+                f"[Session {session.uuid}] Subscribed to NATS data stream (start=1)"
+            )
+
+            try:
+                while True:
+                    try:
+                        # wait for next message, idle timeout 30s = end of stream
+                        msg = await sub.next_msg(timeout=30.0)
+                    except nats.errors.TimeoutError:
+                        log.info(
+                            f"[Session {session.uuid}] No messages for 30s — assuming end of stream"
+                        )
+                        break
+
+                    f.write(msg.data + b"\n")
+            finally:
+                with contextlib.suppress(Exception):
+                    await sub.unsubscribe()
+                log.info(f"[Session {session.uuid}] Data subscription closed")
+
+            # Stream the temp file to S3 via storage_kv_set
+            f.seek(0)
+            storage_kv_set("data", f"{session.uuid}.json", f)
+            log.info(f"[Session {session.uuid}] Uploaded s3://data/{session.uuid}.json")
+
+    except Exception as e:
+        log.error(
+            f"[Session {session.uuid}] Error draining/uploading session data: {e}",
+            exc_info=True,
+        )
+
+    # 4) return session metadata
     return session
 
 
