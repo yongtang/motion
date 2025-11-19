@@ -17,15 +17,17 @@ class BaseClient:
 
     def _request_(self, method: str, path: str, **kwargs) -> httpx.Response:
         url = f"{self._base_}/{path.lstrip('/')}"
-        r = httpx.request(method, url, timeout=self._timeout_, **kwargs)
+        timeout = kwargs.pop("timeout", self._timeout_)
+        r = httpx.request(method, url, timeout=timeout, **kwargs)
         r.raise_for_status()
         return r
 
-    def _download_(self, path: str, file: str | pathlib.Path) -> pathlib.Path:
+    def _download_(self, path: str, file: str | pathlib.Path, **kwargs) -> pathlib.Path:
         file = pathlib.Path(file)
         file.parent.mkdir(parents=True, exist_ok=True)
         url = f"{self._base_}/{path.lstrip('/')}"
-        with httpx.stream("GET", url, timeout=self._timeout_) as r:
+        timeout = kwargs.pop("timeout", self._timeout_)
+        with httpx.stream("GET", url, timeout=timeout, **kwargs) as r:
             r.raise_for_status()
             with file.open("wb") as f:
                 for chunk in r.iter_bytes():
@@ -62,7 +64,8 @@ class SceneClient(BaseClient):
         return Scene(self._base_, scene.uuid, scene.runner, timeout=self._timeout_)
 
     def archive(self, scene: Scene, file: str | pathlib.Path) -> pathlib.Path:
-        return self._download_(f"scene/{scene.uuid}/archive", file)
+        # Download timeout should be much longer
+        return self._download_(f"scene/{scene.uuid}/archive", file, timeout=300)
 
     def search(self, q: str | None = None) -> list[Scene]:
         params = None if not q else {"q": q}

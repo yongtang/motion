@@ -24,11 +24,14 @@ def motionclass(cls):
         r.raise_for_status()
         return r
 
-    async def _download_(self, path: str, file: str | pathlib.Path) -> pathlib.Path:
+    async def _download_(
+        self, path: str, file: str | pathlib.Path, **kwargs
+    ) -> pathlib.Path:
         file = pathlib.Path(file)
         file.parent.mkdir(parents=True, exist_ok=True)
         url = f"{self._base_}/{path.lstrip('/')}"
-        async with self._client_.stream("GET", url, timeout=self._timeout_) as r:
+        timeout = kwargs.pop("timeout", self._timeout_)
+        async with self._client_.stream("GET", url, timeout=timeout, **kwargs) as r:
             r.raise_for_status()
             with file.open("wb") as f:
                 async for chunk in r.aiter_bytes():

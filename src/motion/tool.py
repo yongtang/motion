@@ -535,17 +535,15 @@ async def f_quick(
                         )
 
             finally:
-                with contextlib.suppress(Exception):
-                    await session.stop()
-                    log.info(f"Quick: session {session} stop")
+                await session.stop()
+                log.info(f"Quick: session {session} stop")
 
-                with contextlib.suppress(Exception):
+                if archive:
                     log.info(f"Quick: session {session} archive {archive}")
                     client.session.archive(session=session, file=archive)
 
-                with contextlib.suppress(Exception):
-                    log.info(f"Quick: session {session} delete")
-                    client.session.delete(session)
+                log.info(f"Quick: session {session} delete")
+                client.session.delete(session)
 
         with contextlib.suppress(Exception):
             log.info(f"Quick: scene {scene} delete")

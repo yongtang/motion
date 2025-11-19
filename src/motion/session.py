@@ -345,7 +345,8 @@ class Session(SessionBase):
         return r.json()
 
     async def stop(self):
-        r = await self._request_("POST", f"session/{self.uuid}/stop")
+        # Stop timeout should be much longer
+        r = await self._request_("POST", f"session/{self.uuid}/stop", timeout=300)
         return r.json()
 
     async def wait(self, status: str, timeout: float) -> None:
