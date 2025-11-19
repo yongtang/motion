@@ -79,7 +79,8 @@ class SceneClient(BaseClient):
         ]
 
     def delete(self, scene: Scene) -> None:
-        r = self._request_("DELETE", f"scene/{scene.uuid}")
+        # Delete timeout should be much longer
+        r = self._request_("DELETE", f"scene/{scene.uuid}", timeout=300)
         SceneBase.parse_obj(r.json())
         return None
 

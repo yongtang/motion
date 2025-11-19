@@ -535,7 +535,26 @@ async def session_stop(session: pydantic.UUID4) -> motion.session.SessionBase:
     except FileNotFoundError:
         log.info(f"[Session {session.uuid}] No assignment to release (maybe expired)")
 
-    # 3) drain NATS data into S3 (best-effort, does not affect return)
+    # 3) drain NATS data into S3 (only if missing; otherwise RETURN session)
+    try:
+        # Try reading a single chunk; if file doesn't exist, throws FileNotFoundError
+        next(storage_kv_get("data", f"{session.uuid}.json"))
+        log.info(f"[Session {session.uuid}] Data already exists — skipping drain")
+        return session
+    except FileNotFoundError:
+        log.info(f"[Session {session.uuid}] No existing data — will drain stream")
+        # proceed to drain
+    except Exception as e:
+        # Any other error while checking existence is unexpected -> 500
+        log.error(
+            f"[Session {session.uuid}] Unexpected error checking data object: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Unexpected error while checking session {session}",
+        )
+
     try:
         with tempfile.NamedTemporaryFile(
             prefix=f"{session.uuid}-", suffix=".json"
