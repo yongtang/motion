@@ -99,7 +99,6 @@ def f_gamepad(name, entry):
 
 
 def f_step(device, articulation, controller, provider, gamepad, se3, joint, link, step):
-    step = json.loads(step.decode())
     carb.log_info(f"[motion.extension] [run_call] Step data={step}")
 
     if step["gamepad"] is None:
@@ -224,7 +223,6 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
 def f_data(
     e,
     session,
-    interface,
     channel,
     articulation,
     controller,
@@ -398,8 +396,8 @@ async def run_tick(
 
 async def run_norm(
     session,
-    interface,
     channel,
+    queue,
     device,
     articulation,
     controller,
@@ -419,10 +417,6 @@ async def run_norm(
             carb.log_info(
                 f"[motion.extension] [run_call] [run_norm] Channel callback done"
             )
-            asyncio.run_coroutine_threadsafe(interface.send(data), loop)
-            carb.log_info(
-                f"[motion.extension] [run_call] [run_norm] Interface callback done"
-            )
         except Exception as e:
             carb.log_info(f"[motion.extension] [run_call] [run_norm] Callback: {e}")
             raise
@@ -435,7 +429,6 @@ async def run_norm(
             functools.partial(
                 f_data,
                 session=session,
-                interface=interface,
                 channel=channel,
                 articulation=articulation,
                 controller=controller,
@@ -452,9 +445,14 @@ async def run_norm(
 
     while True:
         await omni.kit.app.get_app().next_update_async()
-        step = await interface.recv()
+        step = []
+        while True:
+            try:
+                step.append(queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
         carb.log_info(f"[motion.extension] [run_call] [run_norm] Interface step {step}")
-        if step is None:
+        if len(step) == 0:
             continue
         f_step(
             device=device,
@@ -648,18 +646,21 @@ async def run_call(session, call):
 async def run_node(session: str, tick: bool):
     carb.log_info(f"[motion.extension] [run_node] session={session} tick={tick}")
 
-    # ZMQ DEALER (encapsulated by Interface)
-    interface = Interface(tick=tick, sync=False)
+    queue = asyncio.Queue()
+
+    async def f(msg):
+        carb.log_info(f"[motion.extension] [run_node] step {msg}")
+        step = json.loads(msg.data)
+        carb.log_info(f"[motion.extension] [run_node] step {step}")
+        await queue.put(step)
+        carb.log_info(f"[motion.extension] [run_node] step queue")
 
     # Channel
     channel = Channel()
     await channel.start()
     carb.log_info(f"[motion.extension] [run_node] channel start")
-
-    # Wait for ROUTER to be ready (server has __PING__/__PONG__ built-in)
-    # Send mode exactly once; runner requires it before first real payload
-    await interface.ready(timeout=2.0, max=300)
-    carb.log_info(f"[motion.extension] [run_node] ready")
+    subscribe = await channel.subscribe_step(session, f)
+    carb.log_info(f"[motion.extension] [run_node] channel subscribe")
 
     loop = asyncio.get_running_loop()
 
@@ -670,16 +671,16 @@ async def run_node(session: str, tick: bool):
                 functools.partial(
                     run_tick,
                     session=session,
-                    interface=interface,
                     channel=channel,
+                    queue=queue,
                     loop=loop,
                 )
                 if tick
                 else functools.partial(
                     run_norm,
                     session=session,
-                    interface=interface,
                     channel=channel,
+                    queue=queue,
                     loop=loop,
                 )
             ),
@@ -687,10 +688,10 @@ async def run_node(session: str, tick: bool):
     except Exception as e:
         carb.log_info(f"[motion.extension] [run_node] [Exception]: {e}")
     finally:
+        carb.log_info(f"[motion.extension] [run_node] channel unsubscribe")
+        await subscribe.unsubscribe()
         carb.log_info(f"[motion.extension] [run_node] channel close")
         await channel.close()
-        carb.log_info(f"[motion.extension] [run_node] close")
-        await interface.close()
 
 
 async def main():
