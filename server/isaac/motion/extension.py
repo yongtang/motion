@@ -180,6 +180,9 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
     jacobian = articulation.get_jacobian_matrices()
     carb.log_info(f"[motion.extension] [run_call] Jacobian: {jacobian.shape}")
 
+    carb.log_info(
+        f"[motion.extension] [run_call] Link: {list(enumerate(articulation.link_paths))}"
+    )
     if "keyboard" in step[0].keys():
         step[0]["gamepad"] = step[0]["keyboard"]
     effector, entries = next(iter(step[0]["gamepad"].items()))
