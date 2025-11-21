@@ -186,9 +186,7 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
     carb.log_info(f"[motion.extension] [run_call] Jacobian command: done")
 
     positions = torch.tensor(articulation.get_dof_positions(), device=device)
-    joint_pos = torch.tensor(
-        positions[index : index + 1], dtype=torch.float32, device=device
-    )
+    joint_pos = positions[index : index + 1]
 
     carb.log_info(
         f"[motion.extension] [run_call] Jacobian compute: jacobian={jacobian.shape} joint_pos={joint_pos.shape}"
