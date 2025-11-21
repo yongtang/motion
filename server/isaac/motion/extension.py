@@ -152,7 +152,9 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
     carb.log_info(f"[motion.extension] [run_call] Option: {option}")
 
     entries = list(
-        itertools.chain.from_iterable(item.values() for item in items[option])
+        itertools.chain.from_iterable(
+            itertools.chain.from_iterable(item.values()) for item in items[option]
+        )
     )
     carb.log_info(f"[motion.extension] [run_call] Entries: {entries}")
 
