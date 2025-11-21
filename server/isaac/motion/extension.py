@@ -21,7 +21,6 @@ import pxr
 import torch
 
 from .channel import Channel
-from .interface import Interface
 
 
 class throttle:
@@ -101,20 +100,39 @@ def f_gamepad(name, entry):
 def f_step(device, articulation, controller, provider, gamepad, se3, joint, link, step):
     carb.log_info(f"[motion.extension] [run_call] Step data={step}")
 
-    if step["gamepad"] is None:
-        assert False, f"{step}"
-    assert len(step["gamepad"]) == 1
-    effector, entries = next(iter(step["gamepad"].items()))
-    carb.log_info(
-        f"[motion.extension] [run_call] Step: effector={effector} entries={entries}"
-    )
+    items = {
+        "gamepad": list(
+            item.get("gamepad") for item in step if item.get("gamepad") is not None
+        ),
+        "keyboard": list(
+            item.get("keyboard") for item in step if item.get("keyboard") is not None
+        ),
+    }
+    carb.log_info(f"[motion.extension] [run_call] Items: {items}")
 
-    for name, entry in entries:
-        carb.log_info(f"[motion.extension] [run_call] Step: {name}={entry}")
-        if name == "BUTTON_GUIDE":
-            continue
-        provider.buffer_gamepad_event(gamepad, *f_gamepad(name, entry))
-    provider.update_gamepad(gamepad)
+    assert not (len(items["gamepad"]) != 0 and len(items["keyboard"]) != 0)
+    option = "gamepad" if len(items["gamepad"]) != 0 else "keyboard"
+    carb.log_info(f"[motion.extension] [run_call] Option: {option}")
+
+    entries = list(
+        itertools.chain.from_iterable(
+            itertools.chain.from_iterable(item.values()) for item in items[option]
+        )
+    )
+    carb.log_info(f"[motion.extension] [run_call] Entries: {entries}")
+
+    effector = set(itertools.chain.from_iterable(item.keys() for item in items[option]))
+    assert len(effector) == 1, f"{effector}"
+    effector = next(iter(effector))
+    carb.log_info(f"[motion.extension] [run_call] Effector: {effector}")
+
+    if option == "gamepad":
+        for name, entry in entries:
+            if name not in ["BUTTON_GUIDE"]:
+                provider.buffer_gamepad_event(gamepad, *f_gamepad(name, entry))
+        provider.update_gamepad(gamepad)
+    else:
+        assert False, f"{option}"
 
     advance = se3.advance()
     command, gripper = advance[:6].unsqueeze(0), advance[6]
@@ -167,9 +185,7 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
     carb.log_info(f"[motion.extension] [run_call] Jacobian command: done")
 
     positions = torch.tensor(articulation.get_dof_positions(), device=device)
-    joint_pos = torch.tensor(
-        positions[index : index + 1], dtype=torch.float32, device=device
-    )
+    joint_pos = positions[index : index + 1]
 
     carb.log_info(
         f"[motion.extension] [run_call] Jacobian compute: jacobian={jacobian.shape} joint_pos={joint_pos.shape}"
@@ -335,8 +351,8 @@ def f_data(
 
 async def run_tick(
     session,
-    interface,
     channel,
+    queue,
     device,
     articulation,
     controller,
@@ -357,7 +373,6 @@ async def run_tick(
         data = f_data(
             None,
             session=session,
-            interface=interface,
             channel=channel,
             articulation=articulation,
             controller=controller,
@@ -373,10 +388,17 @@ async def run_tick(
             carb.log_info(
                 f"[motion.extension] [run_call] [run_tick] Channel callback done"
             )
-            step = await interface.tick(data)
+            step = []
+            while True:
+                try:
+                    step.append(queue.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
             carb.log_info(
                 f"[motion.extension] [run_call] [run_tick] Interface step {step}"
             )
+            if len(step) == 0:
+                continue
             f_step(
                 device=device,
                 articulation=articulation,
