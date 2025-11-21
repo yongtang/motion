@@ -98,23 +98,78 @@ def f_gamepad(name, entry):
     assert False, f"{name} {entry}"
 
 
+# step list [{'keyboard': {'/World/Franka/panda_hand': ['A']}, 'metadata': '{"gripper": ["/World/Franka/panda_hand/panda_finger_joint1", "/World/Franka/panda_hand/panda_finger_joint2"]}'}]
+
+
+def updategamepadkeyboard(provider, step, gamepad):
+    carb.log_error(f"[motion.extension] [updategamepad]")
+    # step already json dict
+    # step = json.loads(step.decode())
+    carb.log_error(f"[motion.extension] [updategamepad] keys {step.keys()}")
+    if not "gamepad" in step.keys() and not "keyboard" in step.keys():
+        carb.log_error(f"[motion.extension] [updategamepad2] unknow control type")
+        return
+    if "gamepad" in step.keys():
+        if step["gamepad"] is None:
+            carb.log_error(f"[motion.extension] [updategamepad2] empty gamepad event")
+            assert False, f"{step}"
+        assert len(step["gamepad"]) == 1
+        effector, entries = next(iter(step["gamepad"].items()))
+        carb.log_error(f"[motion.extension] [updategamepad {entries[0]}")
+        for name, entry in entries:
+            carb.log_info(f"[motion.extension] [updategamepad] entry: {name}={entry}")
+            if name == "BUTTON_GUIDE":
+                continue
+            provider.buffer_gamepad_event(gamepad, *f_gamepad(name, entry))
+    if "keyboard" in step.keys():
+        if step["keyboard"] is None:
+            carb.log_error(f"[motion.extension] [updategamepad2] empty keyboard")
+            assert False, f"{step}"
+        assert len(step["keyboard"]) == 1
+        effector, entries = next(iter(step["keyboard"].items()))
+        carb.log_error(f"[motion.extension] [updategamepad {entries[0]}")
+        for entry in entries:
+            carb.log_info(f"[motion.extension] [updategamepad] entry: ={entry}")
+            provider.buffer_gamepad_event(gamepad, *f_gamepad("AXIS_LEFTX", 1000))
+    provider.update_gamepad(gamepad)
+
+
 def f_step(device, articulation, controller, provider, gamepad, se3, joint, link, step):
     carb.log_info(f"[motion.extension] [run_call] Step data={step}")
 
-    if step["gamepad"] is None:
-        assert False, f"{step}"
-    assert len(step["gamepad"]) == 1
-    effector, entries = next(iter(step["gamepad"].items()))
-    carb.log_info(
-        f"[motion.extension] [run_call] Step: effector={effector} entries={entries}"
-    )
+    items = {
+        "gamepad": list(
+            item.get("gamepad") for item in step if item.get("gamepad") is not None
+        ),
+        "keyboard": list(
+            item.get("keyboard") for item in step if item.get("keyboard") is not None
+        ),
+    }
+    carb.log_info(f"[motion.extension] [run_call] Items: {items}")
 
-    for name, entry in entries:
-        carb.log_info(f"[motion.extension] [run_call] Step: {name}={entry}")
-        if name == "BUTTON_GUIDE":
-            continue
-        provider.buffer_gamepad_event(gamepad, *f_gamepad(name, entry))
-    provider.update_gamepad(gamepad)
+    assert not (len(items["gamepad"]) != 0 and len(items["keyboard"]) != 0)
+    option = "gamepad" if len(items["gamepad"]) != 0 else "keyboard"
+    carb.log_info(f"[motion.extension] [run_call] Option: {option}")
+
+    entries = list(
+        itertools.chain.from_iterable(item.values() for item in items[option])
+    )
+    carb.log_info(f"[motion.extension] [run_call] Entries: {entries}")
+
+    effector = set(itertools.chain.from_iterable(item.keys() for item in items[option]))
+    assert len(effector) == 1, f"{effector}"
+    effector = next(iter(effector))
+    carb.log_info(f"[motion.extension] [run_call] Effector: {effector}")
+
+    if option == "gamepad":
+        for name, entry in entries:
+            carb.log_info(f"[motion.extension] [run_call] Step: {name}, {entry}")
+            if name == "BUTTON_GUIDE":
+                continue
+            provider.buffer_gamepad_event(gamepad, *f_gamepad(name, entry))
+        provider.update_gamepad(gamepad)
+    else:
+        assert False, f"{option}"
 
     advance = se3.advance()
     command, gripper = advance[:6].unsqueeze(0), advance[6]
@@ -123,6 +178,9 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
     jacobian = articulation.get_jacobian_matrices()
     carb.log_info(f"[motion.extension] [run_call] Jacobian: {jacobian.shape}")
 
+    if "keyboard" in step[0].keys():
+        step[0]["gamepad"] = step[0]["keyboard"]
+    effector, entries = next(iter(step[0]["gamepad"].items()))
     index = next(
         (
             index
