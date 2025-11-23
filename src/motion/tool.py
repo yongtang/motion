@@ -251,20 +251,38 @@ async def f_keyboard(data_callback, step_callback):
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
+async def f_replay(file, data_callback, step_callback):
+    period = 0.05  # 20Hz
+    with open(file) as f:
+        for line in f:
+            entry = json.loads(line)
+            if "joint" in entry:
+                await step_callback(entry["joint"])
+                await asyncio.sleep(period)
+
+
 async def f_step(session, control, effector, gripper, data_callback):
     async with session.stream(start=None) as stream:
 
         if control == "xbox":
             f_call = f_xbox
-            e_spec = "gamepad"
         elif control == "keyboard":
             f_call = f_keyboard
-            e_spec = "keyboard"
+        elif control.startswith("replay:"):
+            f_call = functools.partial(f_replay, control.removeprefix("replay:"))
         else:
             assert False, f"{control}"
 
         async def step_callback(entries):
-            step = {e_spec: {effector: entries}}
+            if control == "xbox":
+                step = {"gamepad": {effector: entries}}
+            elif control == "keyboard":
+                step = {"keyboard": {effector: entries}}
+            elif control.startswith("replay:"):
+                step = {"joint": entries}
+            else:
+                assert False, f"{control}"
+
             if gripper:
                 step["metadata"] = json.dumps(
                     {"gripper": list(gripper)}, sort_keys=True
