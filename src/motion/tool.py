@@ -158,8 +158,8 @@ async def f_xbox(data_callback, step_callback):
                     log.info(f"Event: {event.type} skip")
 
             if frame >= start + period:
-                # await data_callback(period)
                 if len(entry) > 0:
+                    # await data_callback(period)
                     await step_callback(entry.items())
 
                 entry = {}
