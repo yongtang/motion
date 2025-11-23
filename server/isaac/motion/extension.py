@@ -114,6 +114,11 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
     option = "gamepad" if len(items["gamepad"]) != 0 else "keyboard"
     carb.log_info(f"[motion.extension] [run_call] Option: {option}")
 
+    metadata = set(
+        item.get("metadata") for item in step if item.get("metadata") is not None
+    )
+    carb.log_info(f"[motion.extension] [run_call] Metadata: {metadata}")
+
     entries = list(
         itertools.chain.from_iterable(
             itertools.chain.from_iterable(item.values()) for item in items[option]
@@ -200,10 +205,9 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
 
     positions[index : index + 1] = joint_pos
 
-    if "metadata" in step:
-        metadata = step["metadata"]
-        carb.log_info(f"[motion.extension] [run_call] Metadata: {metadata}")
-        metadata = json.loads(metadata)
+    if len(metadata) != 0:
+        assert len(metadata) == 1
+        metadata = json.loads(next(iter(metadata)))
         carb.log_info(f"[motion.extension] [run_call] Metadata: {metadata}")
         if metadata.get("gripper"):
             carb.log_info(
