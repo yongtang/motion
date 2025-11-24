@@ -53,7 +53,7 @@ class SceneClient(BaseClient):
                 json.dump({}, mf)
 
             with zipfile.ZipFile(zipf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                zf.write(file, arcname="scene.usd")
+                zf.write(file, arcname=("scene" + file.suffix))
                 zf.write(meta, arcname="meta.json")
 
             with zipf.open("rb") as f:
