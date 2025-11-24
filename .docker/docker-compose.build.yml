@@ -210,7 +210,11 @@ services:
           sleep infinity \n\
           exit 0 \n\
         fi \n\
-        /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers --/log/outputStream=stdout --/log/outputStreamLevel=info --/log/fileEnabled=false \n\
+        if [ -f "/storage/node/scene/scene.py" ]; then \n\
+          LIVESTREAM=2 PYTHONPATH=/workspace/isaaclab /workspace/isaaclab/_isaac_sim/python.sh /storage/node/scene/scene.py \n\
+        else \n\
+          /isaac-sim/runheadless.sh --enable motion.extension --enable isaacsim.replicator.agent.core  --enable isaacsim.replicator.writers --/log/outputStream=stdout --/log/outputStreamLevel=info --/log/fileEnabled=false \n\
+        fi \n\
         exit 0' >/entrypoint.sh
         RUN chmod +x /entrypoint.sh
         ENTRYPOINT ["/entrypoint.sh"]
