@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import functools
 import importlib.resources
 import itertools
 import json
@@ -638,10 +639,10 @@ def server_app_options(context: typer.Context):
 # =========================
 # Scene wrappers
 # =========================
-@scene_app.command("create", help="Create a Scene by uploading a USD file.")
+@scene_app.command("create", help="Create a Scene by uploading a USD/Isaac Lab file.")
 def scene_create(
     context: typer.Context,
-    file: str = typer.Option(..., "--file", help="Path to USD file"),
+    file: str = typer.Option(..., "--file", help="Path to USD/Isaac Lab file"),
     runner: str = typer.Option("counter", "--runner", help="Runner type"),
 ):
     client = motion.client(base=context.obj["base"], timeout=context.obj["timeout"])

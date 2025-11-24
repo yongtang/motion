@@ -40,6 +40,8 @@ class SceneClient(BaseClient):
         file = pathlib.Path(file)
         if not file.is_file():
             raise FileNotFoundError(f"Input file not found: {file}")
+        if file.suffix not in (".usd", ".py"):
+            raise ValueError(f"Only USD or Isaac Lab python supported: {file}")
 
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
