@@ -101,6 +101,9 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
     carb.log_info(f"[motion.extension] [run_call] Step data={step}")
 
     items = {
+        "joint": list(
+            item.get("joint") for item in step if item.get("joint") is not None
+        ),
         "gamepad": list(
             item.get("gamepad") for item in step if item.get("gamepad") is not None
         ),
@@ -110,8 +113,9 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
     }
     carb.log_info(f"[motion.extension] [run_call] Items: {items}")
 
-    assert not (len(items["gamepad"]) != 0 and len(items["keyboard"]) != 0)
-    option = "gamepad" if len(items["gamepad"]) != 0 else "keyboard"
+    option = [e for e in ["joint", "gamepad", "keyboard"] if len(items[e]) != 0]
+    assert len(option) == 1
+    option = next(iter(option))
     carb.log_info(f"[motion.extension] [run_call] Option: {option}")
 
     metadata = set(
