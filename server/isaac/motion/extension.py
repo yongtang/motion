@@ -118,10 +118,36 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
     option = next(iter(option))
     carb.log_info(f"[motion.extension] [run_call] Option: {option}")
 
+    if option == "joint":
+        assert len(items["joint"]) == 1
+        entries = next(iter(items["joint"]))
+        carb.log_info(f"[motion.extension] [run_call] Entries: {entries}")
+
+        carb.log_info(f"[motion.extension] [run_call] DOF: {articulation.dof_paths}")
+
+        positions = [
+            [entries[path] for path in batch] for batch in articulation.dof_paths
+        ]
+        carb.log_info(
+            f"[motion.extension] [run_call] Articulations positions: {positions}"
+        )
+
+        articulation.set_dof_position_targets(positions)
+        carb.log_info(
+            f"[motion.extension] [run_call] Articulations positions: {positions}"
+        )
+
+        return step, None
+
     metadata = set(
         item.get("metadata") for item in step if item.get("metadata") is not None
     )
     carb.log_info(f"[motion.extension] [run_call] Metadata: {metadata}")
+
+    effector = set(itertools.chain.from_iterable(item.keys() for item in items[option]))
+    assert len(effector) == 1, f"{effector}"
+    effector = next(iter(effector))
+    carb.log_info(f"[motion.extension] [run_call] Effector: {effector}")
 
     entries = list(
         itertools.chain.from_iterable(
@@ -129,11 +155,6 @@ def f_step(device, articulation, controller, provider, gamepad, se3, joint, link
         )
     )
     carb.log_info(f"[motion.extension] [run_call] Entries: {entries}")
-
-    effector = set(itertools.chain.from_iterable(item.keys() for item in items[option]))
-    assert len(effector) == 1, f"{effector}"
-    effector = next(iter(effector))
-    carb.log_info(f"[motion.extension] [run_call] Effector: {effector}")
 
     if option == "gamepad":
         for name, entry in entries:
