@@ -180,74 +180,36 @@ async def f_keyboard(data_callback, step_callback):
     import time
     import tty
 
-    # Map escape sequences for arrow keys
     e_arrow = {
-        b"\x1b[A": "UP",
-        b"\x1b[B": "DOWN",
-        b"\x1b[C": "RIGHT",
-        b"\x1b[D": "LEFT",
+        "A": "UP",
+        "B": "DOWN",
+        "C": "RIGHT",
+        "D": "LEFT",
     }
 
-    def kbhit(timeout=0.1):
-        """Return True if a key is available within timeout seconds."""
-        return select.select([sys.stdin], [], [], timeout)[0]
+    period = 0.05  # 20Hz
 
-    def read_key():
-        """Read a single keypress (handles arrow keys)."""
-        ch1 = sys.stdin.buffer.read(1)
-        if ch1 == b"\x1b":  # escape sequence
-            if kbhit(0.0001):
-                ch2 = sys.stdin.buffer.read(1)
-                if ch2 == b"[" and kbhit(0.0001):
-                    ch3 = sys.stdin.buffer.read(1)
-                    seq = ch1 + ch2 + ch3
-                    return e_arrow.get(seq, None)
-        return ch1.decode(errors="ignore")
-
-    e_key = (
-        "K",
-        "W",
-        "S",
-        "A",
-        "D",
-        # "Q", used for quit
-        "E",
-        "Z",
-        "X",
-        "T",
-        "G",
-        "C",
-        "V",
-    )
-
-    period = 0  # as fast as possible
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
 
     try:
-        fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
-        tty.setcbreak(fd)  # put terminal into raw mode
+        tty.setcbreak(fd)
 
-        state = {"run": True}
+        while True:
+            entry = ""
+            if select.select([sys.stdin], [], [], 0)[0]:
+                entry = sys.stdin.read(1)
+                if entry == "\x1b":  # escape sequence
+                    entry = "ESC"
+                    # small delay to allow the rest of the sequence to arrive.
+                    if select.select([sys.stdin], [], [], 0.01)[0]:
+                        ch = sys.stdin.read(1)
+                        if ch == "[":
+                            ch = sys.stdin.read(1)
+                            entry = e_arrow.get(ch, "ESC")
+            await step_callback([entry])
+            await asyncio.sleep(period)
 
-        while state["run"]:
-            await data_callback(period)
-            while True:
-                entries = []
-                if kbhit(0.05):
-                    key = read_key()
-                    key = key.upper()
-                    log.info(f"Keyboard: key={key}")
-                    if key == "q" or key == "Q":
-                        log.info(f"Keyboard: quit")
-                        break
-                    if key in e_key:
-                        log.info(f"Keyboard: entry")
-                        entries.append(key)
-                if len(entries) > 0:
-                    log.info(f"Keyboard: xmit")
-                    break
-                await asyncio.sleep(0.0)
-            await step_callback(entries=entries)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
