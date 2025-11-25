@@ -189,7 +189,7 @@ services:
     build:
       context: ..
       dockerfile_inline: |
-        FROM nvcr.io/nvidia/isaac-lab:2.2.0
+        FROM nvcr.io/nvidia/isaac-lab:2.3.0
         RUN apt -y -qq update && \
             apt -y -qq install curl ffmpeg
         COPY LICENSE /app/LICENSE
