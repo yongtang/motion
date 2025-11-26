@@ -112,23 +112,6 @@ class SessionStepSpec(pydantic.BaseModel):
                     assert value in (0, 1), f"{name} must be 0|1: {value}"
                 else:
                     assert False, f"{name}: {value}"
-        if self.keyboard is not None:
-            for entry in itertools.chain.from_iterable(self.keyboard.values()):
-                assert entry in (
-                    "K",
-                    "W",
-                    "S",
-                    "A",
-                    "D",
-                    "Q",
-                    "E",
-                    "Z",
-                    "X",
-                    "T",
-                    "G",
-                    "C",
-                    "V",
-                ), f"{entry}"
 
 
 class SessionSpec(pydantic.BaseModel):
