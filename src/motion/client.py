@@ -40,7 +40,7 @@ class SceneClient(BaseClient):
         file = pathlib.Path(file)
         if not file.is_file():
             raise FileNotFoundError(f"Input file not found: {file}")
-        if file.suffix not in (".usd", ".py"):
+        if file.suffix not in (".usd", ".zip", ".py"):
             raise ValueError(f"Only USD or Isaac Lab python supported: {file}")
 
         with tempfile.TemporaryDirectory() as directory:
@@ -53,7 +53,15 @@ class SceneClient(BaseClient):
                 json.dump({}, mf)
 
             with zipfile.ZipFile(zipf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                zf.write(file, arcname=("scene" + file.suffix))
+                if file.suffix == ".zip":
+                    with zipfile.ZipFile(file, "r") as inzip:
+                        for info in inzip.infolist():
+                            # Avoid duplicate meta.json at root level
+                            assert info.filename != "meta.json"
+                            zf.writestr(info, inzip.read(info.filename))
+                else:
+                    zf.write(file, arcname=("scene" + file.suffix))
+
                 zf.write(meta, arcname="meta.json")
 
             with zipf.open("rb") as f:
