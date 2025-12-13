@@ -1,10 +1,11 @@
 import asyncio
-import traceback
 import contextlib
 import functools
 import itertools
 import json
+import multiprocessing.shared_memory
 import time
+import traceback
 
 import carb
 import isaaclab.controllers
@@ -318,14 +319,20 @@ def f_data(
         )
         for n, e in entries.items()
     }
-    entries = {n: numpy.ascontiguousarray(e) for n, e in entries.items()}
-    entries = {
-        n: {
+
+    def f_shm(e):
+        memory = multiprocessing.shared_memory.SharedMemory(create=True, size=e.nbytes)
+        view = numpy.ndarray(e.shape, dtype=e.dtype, buffer=memory.buf)
+        view[...] = e
+        memory.close()
+
+        return {
             "dtype": str(e.dtype),
             "shape": str(e.shape),
+            "memory": memory,
         }
-        for n, e in entries.items()
-    }
+
+    entries = {n: f_shm(e) for n, e in entries.items()}
     carb.log_info(
         f"[motion.extension] [run_call] Annotator callback - camera: {entries}"
     )
@@ -372,14 +379,26 @@ def f_data(
     data = json.dumps(
         {
             "joint": state,
-            "camera": entries,
+            "camera": {
+                n: {
+                    "dtype": e["dtype"],
+                    "shape": e["shape"],
+                    "memory": e["memory"].name,
+                }
+                for n, e in entries.items()
+            },
             "pose": pose,
         },
         sort_keys=True,
     ).encode()
     carb.log_info(f"[motion.extension] [run_call] Callback: {data}")
 
-    return callback(data) if callback is not None else data
+    returned = callback(data) if callback is not None else data
+
+    for n, e in entries.items():
+        e["memory"].unlink()
+
+    return returned
 
 
 async def run_tick(
@@ -445,7 +464,9 @@ async def run_tick(
             )
             carb.log_info(f"[motion.extension] [run_call] [run_tick] Step step={step}")
         except Exception as e:
-            carb.log_info(f"[motion.extension] [run_call] [run_tick] Exception: {type(e)} {e}")
+            carb.log_info(
+                f"[motion.extension] [run_call] [run_tick] Exception: {type(e)} {e}"
+            )
         carb.log_info(f"[motion.extension] [run_call] [run_tick] Data done")
 
 
@@ -682,7 +703,9 @@ async def run_call(session, call):
         carb.log_info(f"[motion.extension] [run_call] Callback done")
 
     except Exception as e:
-        carb.log_info(f"[motion.extension] [run_call] [Exception]: {type(e)} {traceback.format_exc()} {e}")
+        carb.log_info(
+            f"[motion.extension] [run_call] [Exception]: {type(e)} {traceback.format_exc()} {e}"
+        )
     finally:
         if len(render):
             with contextlib.suppress(Exception):
@@ -741,7 +764,9 @@ async def run_node(session: str, tick: bool):
             ),
         )
     except Exception as e:
-        carb.log_info(f"[motion.extension] [run_node] [Exception]: {type(e)} {traceback.format_exc()} {e}")
+        carb.log_info(
+            f"[motion.extension] [run_node] [Exception]: {type(e)} {traceback.format_exc()} {e}"
+        )
     finally:
         carb.log_info(f"[motion.extension] [run_node] channel unsubscribe")
         await subscribe.unsubscribe()
