@@ -277,8 +277,11 @@ def f_data(
     annotator,
     callback,
 ):
-    carb.log_info(f"[motion.extension] [run_call] Annotator callback {type(e.get_data())}")
-    entries = {n: numpy.asarray(e.get_data()) for n, e in annotator.items()}
+    carb.log_info(f"[motion.extension] [run_call] Annotator callback")
+    entries = {n: e.get_data() for n, e in annotator.items()}
+    types = {type(e) for n, e in entries.items()}
+    carb.log_info(f"[motion.extension] [run_call] Annotator callback {types}")
+    entries = {n: numpy.asarray(e) for n, e in entries.items()}
     # Expect numpy.uint8 or numpy.float64
     assert all(e.dtype in (numpy.uint8, numpy.float64) for e in entries.values()), {
         n: e.dtype for n, e in entries.items()
