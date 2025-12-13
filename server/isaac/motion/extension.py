@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 import contextlib
 import functools
 import itertools
@@ -276,7 +277,7 @@ def f_data(
     annotator,
     callback,
 ):
-    carb.log_info(f"[motion.extension] [run_call] Annotator callback")
+    carb.log_info(f"[motion.extension] [run_call] Annotator callback {type(e.get_data())}")
     entries = {n: numpy.asarray(e.get_data()) for n, e in annotator.items()}
     # Expect numpy.uint8 or numpy.float64
     assert all(e.dtype in (numpy.uint8, numpy.float64) for e in entries.values()), {
@@ -441,7 +442,7 @@ async def run_tick(
             )
             carb.log_info(f"[motion.extension] [run_call] [run_tick] Step step={step}")
         except Exception as e:
-            carb.log_info(f"[motion.extension] [run_call] [run_tick] Exception: {e}")
+            carb.log_info(f"[motion.extension] [run_call] [run_tick] Exception: {type(e)} {e}")
         carb.log_info(f"[motion.extension] [run_call] [run_tick] Data done")
 
 
@@ -678,7 +679,7 @@ async def run_call(session, call):
         carb.log_info(f"[motion.extension] [run_call] Callback done")
 
     except Exception as e:
-        carb.log_info(f"[motion.extension] [run_call] [Exception]: {e}")
+        carb.log_info(f"[motion.extension] [run_call] [Exception]: {type(e)} {traceback.format_exc()} {e}")
     finally:
         if len(render):
             with contextlib.suppress(Exception):
@@ -737,7 +738,7 @@ async def run_node(session: str, tick: bool):
             ),
         )
     except Exception as e:
-        carb.log_info(f"[motion.extension] [run_node] [Exception]: {e}")
+        carb.log_info(f"[motion.extension] [run_node] [Exception]: {type(e)} {traceback.format_exc()} {e}")
     finally:
         carb.log_info(f"[motion.extension] [run_node] channel unsubscribe")
         await subscribe.unsubscribe()
