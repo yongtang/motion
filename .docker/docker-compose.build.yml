@@ -240,7 +240,8 @@ services:
         COPY server/channel.py /opt/ros/motion/src/ros/channel.py
         COPY server/interface.py /opt/ros/motion/src/ros/interface.py
         WORKDIR /app
-        RUN apt -y -qq install \
+        RUN apt -y -qq update && \
+            apt -y -qq install \
             python3-venv \
             python3-typer \
             python3-httpx
