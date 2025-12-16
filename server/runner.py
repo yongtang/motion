@@ -1,15 +1,23 @@
+import asyncio
 import contextlib
 import json
+import logging
 import os
 import socket
 
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
-@contextlib.contextmanager
-def context():
+
+@contextlib.asynccontextmanager
+async def context():
+    log.info("[runner] file")
     file = os.environ.get("RUNNER_SOCK", "/run/motion/runner.sock")
     with contextlib.suppress(FileNotFoundError):
         os.unlink(file)
+    log.info("[runner] file unlink")
 
+    log.info("[runner] sock")
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     # keep buffers modest so backpressure is visible quickly
     with contextlib.suppress(Exception):
@@ -19,26 +27,27 @@ def context():
 
     sock.bind(file)
     sock.listen(1)
+    sock.setblocking(False)
+
+    log.info("[runner] sock ready")
+
+    loop = asyncio.get_running_loop()
 
     try:
-        conn, _ = sock.accept()
 
         class Context:
-            def __init__(self):
-                pass  # no identity/mode needed with a single connection
-
-            def data(self) -> dict:
-                # Blocking read of one packet (a JSON bytes payload)
-                buf = conn.recv(1024 * 1024)  # 1 MiB cap for control
+            async def data(self) -> dict:
+                buf = await loop.sock_recv(conn, 1024 * 1024)  # 1 MiB cap for control
                 if not buf:
                     return {}
                 return json.loads(buf.decode())
 
-            def step(self, o):
-                # Always reply (blocking). Client-side policy handles congestion.
+            async def step(self, o):
                 payload = json.dumps(o).encode()
-                conn.sendall(payload)
+                await loop.sock_sendall(conn, payload)
 
+        conn, _ = await loop.sock_accept(sock)
+        conn.setblocking(False)
         try:
             yield Context()
         finally:
@@ -46,7 +55,9 @@ def context():
                 conn.close()
 
     finally:
+        log.info("[runner] sock close")
         with contextlib.suppress(Exception):
             sock.close()
+        log.info("[runner] file unlink")
         with contextlib.suppress(FileNotFoundError):
             os.unlink(file)

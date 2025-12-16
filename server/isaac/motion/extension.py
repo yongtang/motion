@@ -23,6 +23,7 @@ import pxr
 import torch
 
 from .channel import Channel
+from .interface import Interface
 
 
 class throttle:
@@ -401,20 +402,19 @@ def f_data(
     return returned
 
 
-async def f_interface(queue):
-    step = []
-    while len(step) < 1:
-        try:
-            step.append(queue.get_nowait())
-        except asyncio.QueueEmpty:
-            break
+async def f_interface(interface):
+    data = json.dumps({}, sort_keys=True).encode()
+    carb.log_info(f"[motion.extension] [run_call] Interface: data={data}")
+    step = json.loads(await interface.tick(data))
+    carb.log_info(f"[motion.extension] [run_call] Interface: step={step}")
+
     return step
 
 
 async def run_tick(
     session,
     channel,
-    queue,
+    interface,
     device,
     articulation,
     controller,
@@ -450,7 +450,7 @@ async def run_tick(
             carb.log_info(
                 f"[motion.extension] [run_call] [run_tick] Channel callback done"
             )
-            step = await f_interface(queue)
+            step = await f_interface(interface)
             carb.log_info(
                 f"[motion.extension] [run_call] [run_tick] Interface step {step}"
             )
@@ -478,7 +478,7 @@ async def run_tick(
 async def run_norm(
     session,
     channel,
-    queue,
+    interface,
     device,
     articulation,
     controller,
@@ -526,7 +526,7 @@ async def run_norm(
 
     while True:
         await omni.kit.app.get_app().next_update_async()
-        step = await f_interface(queue)
+        step = await f_interface(interface)
         carb.log_info(f"[motion.extension] [run_call] [run_norm] Interface step {step}")
         if len(step) == 0:
             continue
@@ -656,7 +656,7 @@ async def run_call(session, call):
     carb.log_info(f"[motion.extension] [run_call] Camera: {camera}")
 
     with open("/run/motion/camera.json", "w") as f:
-        f.write(json.dumps(camera))
+        f.write(json.dumps(camera, sort_keys=True))
     carb.log_info(f"[motion.extension] [run_call] Camera: /run/motion/camera.json")
 
     render = {
@@ -724,21 +724,17 @@ async def run_call(session, call):
 async def run_node(session: str, tick: bool):
     carb.log_info(f"[motion.extension] [run_node] session={session} tick={tick}")
 
-    queue = asyncio.Queue()
+    interface = Interface()
 
-    async def f(msg):
-        carb.log_info(f"[motion.extension] [run_node] step {msg}")
-        step = json.loads(msg.data)
-        carb.log_info(f"[motion.extension] [run_node] step {step}")
-        await queue.put(step)
-        carb.log_info(f"[motion.extension] [run_node] step queue")
+    carb.log_info(f"[motion.extension] [run_node] interface={interface}")
+
+    await interface.ready(timeout=2.0, max=300)
+    carb.log_info(f"[motion.extension] [run_node] interface ready")
 
     # Channel
     channel = Channel()
     await channel.start()
     carb.log_info(f"[motion.extension] [run_node] channel start")
-    subscribe = await channel.subscribe_step(session, f)
-    carb.log_info(f"[motion.extension] [run_node] channel subscribe")
 
     loop = asyncio.get_running_loop()
 
@@ -750,7 +746,7 @@ async def run_node(session: str, tick: bool):
                     run_tick,
                     session=session,
                     channel=channel,
-                    queue=queue,
+                    interface=interface,
                     loop=loop,
                 )
                 if tick
@@ -758,7 +754,7 @@ async def run_node(session: str, tick: bool):
                     run_norm,
                     session=session,
                     channel=channel,
-                    queue=queue,
+                    interface=interface,
                     loop=loop,
                 )
             ),
@@ -768,10 +764,10 @@ async def run_node(session: str, tick: bool):
             f"[motion.extension] [run_node] [Exception]: {type(e)} {traceback.format_exc()} {e}"
         )
     finally:
-        carb.log_info(f"[motion.extension] [run_node] channel unsubscribe")
-        await subscribe.unsubscribe()
         carb.log_info(f"[motion.extension] [run_node] channel close")
         await channel.close()
+        carb.log_info(f"[motion.extension] [run_node] interface close")
+        await interface.close()
 
 
 async def main():

@@ -2,73 +2,13 @@ import argparse
 import asyncio
 import json
 import logging
+import traceback
 import uuid
 
 from server import channel, runner
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
-
-
-async def run_norm(context, session, ch):
-    async def f(msg):
-        log.info(f"[main] msg={msg}")
-
-        step = json.loads(msg.data)
-        log.info(f"[main] model step={step}")
-
-        context.step(step)
-
-        log.info(f"[main] send step={step}")
-
-    sub = await ch.subscribe_step(session, f)
-    log.info(f"[main] sub subscribe")
-
-    try:
-        # No data recv
-        log.info(f"[main] model start")
-        await asyncio.Future()
-    finally:
-        log.info(f"[main] sub unsubscribe")
-        await sub.unsubscribe()
-
-
-async def run_tick(context, session, ch):
-    q = asyncio.Queue()
-
-    async def f(msg):
-        log.info(f"[main] msg={msg}")
-        await q.put(msg.data)
-
-    sub = await ch.subscribe_step(session, f)
-    log.info(f"[main] sub subscribe")
-
-    try:
-        log.info(f"[main] model start")
-        while True:
-            log.info(f"[main] recv")
-            data = context.data()
-            log.info(f"[main] recv data={data}")
-
-            await asyncio.sleep(0.1)
-
-            # model: remote from step
-            # Wait for at least one message
-            step = await q.get()
-            # Flush the queue to keep latest
-            try:
-                while True:
-                    step = q.get_nowait()
-            except asyncio.QueueEmpty:
-                pass
-            step = json.loads(step)
-            log.info(f"[main] model data={data} step={step}")
-
-            context.step(step)
-            log.info(f"[main] send step={step}")
-    finally:
-        log.info(f"[main] sub unsubscribe")
-        await sub.unsubscribe()
 
 
 async def main():
@@ -83,14 +23,44 @@ async def main():
 
     log.info(f"[main] session={session} tick={tick}")
 
+    queue = asyncio.Queue()
+
+    async def f(msg):
+        log.info(f"[main] message {msg}")
+        step = json.loads(msg.data)
+        log.info(f"[main] step {step}")
+        await queue.put(step)
+        log.info(f"[main] step queue")
+
+    # Channel
     ch = channel.Channel()
     await ch.start()
     log.info(f"[main] channel start")
+    subscribe = await ch.subscribe_step(session, f)
+    log.info(f"[main] channel subscribe")
 
     try:
-        with runner.context() as context:
-            await (run_tick if tick else run_norm)(context, session, ch)
+        async with runner.context() as context:
+            while True:
+                log.info(f"[main] wait")
+                data = await context.data()
+                log.info(f"[main] data={data}")
+                step = []
+                while len(step) < 1:
+                    try:
+                        step.append(queue.get_nowait())
+                    except asyncio.QueueEmpty:
+                        break
+                log.info(f"[main] step={step}")
+                await context.step(step)
+                log.info(f"[main] done")
+                await asyncio.sleep(0)
+    except Exception as e:
+        log.info(f"[main] exception: {type(e)} {traceback.format_exc()} {e}")
+        raise
     finally:
+        log.info(f"[main] channel unsubscribe")
+        await subscribe.unsubscribe()
         log.info(f"[main] channel close")
         await ch.close()
 
