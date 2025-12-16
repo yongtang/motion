@@ -401,6 +401,16 @@ def f_data(
     return returned
 
 
+async def f_interface(queue):
+    step = []
+    while len(step) < 1:
+        try:
+            step.append(queue.get_nowait())
+        except asyncio.QueueEmpty:
+            break
+    return step
+
+
 async def run_tick(
     session,
     channel,
@@ -440,12 +450,7 @@ async def run_tick(
             carb.log_info(
                 f"[motion.extension] [run_call] [run_tick] Channel callback done"
             )
-            step = []
-            while len(step) < 1:
-                try:
-                    step.append(queue.get_nowait())
-                except asyncio.QueueEmpty:
-                    break
+            step = await f_interface(queue)
             carb.log_info(
                 f"[motion.extension] [run_call] [run_tick] Interface step {step}"
             )
@@ -521,12 +526,7 @@ async def run_norm(
 
     while True:
         await omni.kit.app.get_app().next_update_async()
-        step = []
-        while len(step) < 1:
-            try:
-                step.append(queue.get_nowait())
-            except asyncio.QueueEmpty:
-                break
+        step = await f_interface(queue)
         carb.log_info(f"[motion.extension] [run_call] [run_norm] Interface step {step}")
         if len(step) == 0:
             continue
