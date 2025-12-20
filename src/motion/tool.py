@@ -181,10 +181,10 @@ async def f_keyboard(data_callback, step_callback):
     import tty
 
     e_arrow = {
-        "A": "UP",
-        "B": "DOWN",
-        "C": "RIGHT",
-        "D": "LEFT",
+        "W": "UP",
+        "X": "DOWN",
+        "D": "RIGHT",
+        "A": "LEFT",
     }
 
     period = 0.05  # 20Hz
@@ -199,15 +199,11 @@ async def f_keyboard(data_callback, step_callback):
             entry = ""
             if select.select([sys.stdin], [], [], 0)[0]:
                 entry = sys.stdin.read(1)
-                if entry == "\x1b":  # escape sequence
-                    entry = "ESC"
-                    # small delay to allow the rest of the sequence to arrive.
-                    if select.select([sys.stdin], [], [], 0.01)[0]:
-                        ch = sys.stdin.read(1)
-                        if ch == "[":
-                            ch = sys.stdin.read(1)
-                            entry = e_arrow.get(ch, "ESC")
-            await step_callback([entry])
+                entry = entry.upper()
+                entry = e_arrow.get(entry, "ZEROS")
+
+            if not entry=="":
+                await step_callback([entry])
             await asyncio.sleep(period)
 
     finally:
