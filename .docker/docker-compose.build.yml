@@ -6,7 +6,7 @@ services:
       dockerfile_inline: |
         FROM python:3.12-slim
         RUN apt -y -qq update && \
-            apt -y -qq install curl
+            apt -y -qq install curl awscli
         COPY LICENSE /app/LICENSE
         COPY pyproject.toml /app/pyproject.toml
         COPY src /app/src
