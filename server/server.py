@@ -541,7 +541,7 @@ async def session_stop(session: pydantic.UUID4) -> motion.session.SessionBase:
         next(storage_kv_get("data", f"{session.uuid}.json"))
         log.info(f"[Session {session.uuid}] Data already exists — skipping drain")
         return session
-    except FileNotFoundError:
+    except (FileNotFoundError, StopIteration):
         log.info(f"[Session {session.uuid}] No existing data — will drain stream")
         # proceed to drain
     except Exception as e:

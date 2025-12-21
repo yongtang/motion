@@ -91,6 +91,7 @@ def storage_kv_set(bucket: str, key: str, data: bytes | typing.IO[bytes]) -> str
 
 def storage_kv_get(bucket: str, key: str):
     def f(body):
+        log.info(f"[KV {bucket}/{key}] Stream started")
         with contextlib.closing(body):
             for chunk in body.iter_chunks(chunk_size=1024 * 1024):
                 yield chunk
@@ -98,7 +99,7 @@ def storage_kv_get(bucket: str, key: str):
 
     try:
         resp = storage.get_object(Bucket=bucket, Key=key)
-        log.info(f"[KV {bucket}/{key}] Stream start")
+        log.info(f"[KV {bucket}/{key}] Stream length={resp.get('ContentLength')}")
         return f(resp["Body"])
     except ClientError as e:
         match str(((e.response or {}).get("Error") or {}).get("Code", "")):
